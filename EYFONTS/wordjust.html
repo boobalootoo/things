@@ -6,8 +6,13 @@
     <title>Interactive Text Editor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Lora:ital@0;1&family=Montserrat:wght@400;700&family=Playfair+Display:ital@0;1&family=Source+Code+Pro&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Lora:ital@0;1&family=Montserrat:wght@400;700&family=Playfair+Display:ital@0;1&family=Source+Code+Pro&family=Kalam&family=Dancing+Script&family=Nunito:wght@400;700&display=swap');
         
+        @font-face {
+            font-family: 'Sassoon Infant';
+            src: url('https://cdn.jsdelivr.net/gh/boobalootoo/things/EYFONTS/SassoonInfantStd.otf') format('opentype');
+        }
+
         body {
             font-family: 'Roboto', sans-serif;
         }
@@ -107,6 +112,11 @@
                     <option value="Montserrat">Montserrat</option>
                     <option value="Playfair Display">Playfair Display</option>
                     <option value="Source Code Pro">Source Code Pro</option>
+                    <option value="Kalam">Kalam (Handwriting)</option>
+                    <option value="Dancing Script">Dancing Script (Cursive)</option>
+                    <option value="Sassoon Infant">Sassoon Infant</option>
+                    <option value="Nunito">Nunito (Clear)</option>
+                    <option value="Tracing">Tracing Dots</option>
                 </select>
             </div>
 
@@ -181,7 +191,13 @@
         // --- Event Listeners for Editor ---
         
         function updateTextAreaStyle() {
-            textInput.style.fontFamily = fontFamilySelect.value;
+            const selectedFont = fontFamilySelect.value;
+            // Use a fallback for the tracing font in the editor itself
+            if (selectedFont === 'Tracing') {
+                textInput.style.fontFamily = 'Kalam, cursive';
+            } else {
+                textInput.style.fontFamily = selectedFont;
+            }
             textInput.style.fontSize = `${fontSizeInput.value}px`;
             textInput.style.fontWeight = isBold ? 'bold' : 'normal';
             textInput.style.fontStyle = isItalic ? 'italic' : 'normal';
@@ -261,18 +277,34 @@
             textEl.setAttribute('y', '0');
             textEl.setAttribute('dominant-baseline', 'hanging');
 
-            // Apply styles from editor
-            textEl.style.fontFamily = fontFamilySelect.value;
-            textEl.style.fontSize = `${fontSizeInput.value}px`;
-            textEl.style.fontWeight = isBold ? 'bold' : 'normal';
-            textEl.style.fontStyle = isItalic ? 'italic' : 'normal';
-            textEl.style.textDecoration = isUnderline ? 'underline' : 'none';
-            textEl.style.fill = fontColorInput.value;
+            const isTracing = fontFamilySelect.value === 'Tracing';
+
+            if (isTracing) {
+                // Apply special tracing styles
+                textEl.style.fontFamily = 'Kalam, cursive'; // Use a handwriting font for the shape
+                textEl.style.fill = 'none';
+                textEl.style.stroke = fontColorInput.value;
+                const fontSize = parseInt(fontSizeInput.value, 10);
+                const strokeWidth = Math.max(1, Math.round(fontSize / 12));
+                textEl.style.strokeWidth = `${strokeWidth}px`;
+                textEl.style.strokeDasharray = `${strokeWidth * 1.5} ${strokeWidth * 2.5}`;
+                textEl.style.strokeLinecap = 'round';
+
+            } else {
+                // Apply regular styles from editor
+                textEl.style.fontFamily = fontFamilySelect.value;
+                textEl.style.fontSize = `${fontSizeInput.value}px`;
+                textEl.style.fontWeight = isBold ? 'bold' : 'normal';
+                textEl.style.fontStyle = isItalic ? 'italic' : 'normal';
+                textEl.style.textDecoration = isUnderline ? 'underline' : 'none';
+                textEl.style.fill = fontColorInput.value;
+            }
 
             svg.appendChild(textEl);
             container.appendChild(svg);
             
-            // Set initial size of container based on text bbox
+            // Set initial size of container based on text bbox.
+            // This MUST be done after styling and appending to the DOM for accurate measurement.
             printableArea.appendChild(container);
             const bbox = textEl.getBBox();
             container.style.width = `${bbox.width}px`;
@@ -280,6 +312,21 @@
             svg.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
             container.style.top = '50px';
             container.style.left = '50px';
+            
+            // If tracing, now we add the starting dot based on the calculated bounding box
+            if (isTracing) {
+                 const fontSize = parseInt(fontSizeInput.value, 10);
+                 const strokeWidth = Math.max(1, Math.round(fontSize / 12));
+                 const dotRadius = strokeWidth * 2;
+                 
+                 const startDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                 startDot.setAttribute('cx', bbox.x + dotRadius); 
+                 startDot.setAttribute('cy', bbox.y + dotRadius); 
+                 startDot.setAttribute('r', dotRadius);
+                 startDot.setAttribute('fill', fontColorInput.value);
+                 svg.insertBefore(startDot, textEl); // Insert dot before the text outline
+            }
+
 
             // Add resize handle
             const handle = document.createElement('div');
@@ -360,3 +407,9 @@
     </script>
 </body>
 </html>
+
+
+
+
+
+
