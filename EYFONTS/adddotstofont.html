@@ -291,16 +291,19 @@
                         // 1. Find which character the dot belongs to
                         const lineIndex = Math.floor((dot.y - PADDING) / (FONT_SIZE * LINE_HEIGHT));
                         const lineStr = STRINGS_TO_DISPLAY[lineIndex];
-                        const lineY = PADDING + (lineIndex + 1) * FONT_SIZE;
+                        // CORRECTED: Calculate baseline Y position consistently with the drawing function
+                        const lineY = PADDING + FONT_SIZE + (lineIndex * FONT_SIZE * LINE_HEIGHT);
 
                         let currentX = PADDING;
                         let targetChar = null;
+                        let charStartX = 0; // Store the starting X of the found character
 
                         for (let i = 0; i < lineStr.length; i++) {
                             const char = lineStr[i];
                             const advanceWidth = originalFont.getAdvanceWidth(char, FONT_SIZE);
-                            if (dot.x >= currentX && dot.x <= currentX + advanceWidth) {
+                            if (dot.x >= currentX && dot.x < currentX + advanceWidth) {
                                 targetChar = char;
+                                charStartX = currentX; // Store the correct starting X
                                 break;
                             }
                             currentX += advanceWidth;
@@ -311,9 +314,8 @@
                             const glyph = newFont.charToGlyph(targetChar);
                             if (glyph) {
                                 // 3. Convert dot coordinates to glyph's coordinate system
-                                const dotXInGlyphSpace = (dot.x - currentX) * scale;
-                                // CORRECTED: Removed the incorrect manual baseline offset.
-                                // This now correctly calculates the dot's vertical position relative to the baseline.
+                                // CORRECTED: Use the stored charStartX for accurate horizontal position
+                                const dotXInGlyphSpace = (dot.x - charStartX) * scale;
                                 const dotYInGlyphSpace = (lineY - dot.y) * scale;
                                 const dotRadiusInGlyphSpace = dot.radius * scale;
                                 
@@ -353,5 +355,6 @@
     </script>
 </body>
 </html>
+
 
 
