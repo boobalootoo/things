@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Text Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Lora:ital@0;1&family=Montserrat:wght@400;700&family=Playfair+Display:ital@0;1&family=Source+Code+Pro&display=swap');
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+
+        /* Custom styles for the printable area and text container */
+        #printable-area {
+            width: 210mm;
+            height: 297mm;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden; /* Important for keeping text blocks inside */
+        }
+        
+        .text-container {
+            position: absolute;
+            cursor: move;
+            border: 1px dashed transparent;
+            min-width: 50px;
+            min-height: 30px;
+        }
+
+        .text-container:hover {
+            border-color: #3b82f6; /* blue-500 */
+        }
+
+        .text-container .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #3b82f6;
+            border: 2px solid white;
+            border-radius: 50%;
+            display: none;
+        }
+
+        .text-container:hover .resize-handle {
+            display: block;
+        }
+
+        .resize-handle.br {
+            bottom: -6px;
+            right: -6px;
+            cursor: se-resize;
+        }
+
+        .text-container svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .text-container text {
+            user-select: none;
+        }
+
+        /* Print-specific styles */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #printable-area, #printable-area * {
+                visibility: visible;
+            }
+            #printable-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                box-shadow: none;
+                border: none;
+            }
+            .text-container {
+                border-color: transparent !important;
+            }
+             .text-container:hover .resize-handle, .resize-handle {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4 space-y-4">
+
+    <!-- Editor View -->
+    <div id="editor-view" class="w-full max-w-4xl bg-white p-6 rounded-lg shadow-md">
+        <h1 class="text-2xl font-bold mb-4 text-gray-700">Text Editor</h1>
+        
+        <!-- Toolbar -->
+        <div class="flex flex-wrap gap-4 items-center border-b pb-4 mb-4">
+            <!-- Font Family -->
+            <div class="flex flex-col">
+                <label for="font-family" class="text-sm font-medium text-gray-600">Font</label>
+                <select id="font-family" class="p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="Roboto">Roboto</option>
+                    <option value="Lora">Lora</option>
+                    <option value="Montserrat">Montserrat</option>
+                    <option value="Playfair Display">Playfair Display</option>
+                    <option value="Source Code Pro">Source Code Pro</option>
+                </select>
+            </div>
+
+            <!-- Font Size -->
+             <div class="flex flex-col">
+                <label for="font-size" class="text-sm font-medium text-gray-600">Size</label>
+                <input type="number" id="font-size" value="16" class="p-2 border rounded-md w-20 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            </div>
+
+            <!-- Font Style -->
+             <div class="flex flex-col">
+                <label class="text-sm font-medium text-gray-600">Style</label>
+                <div class="flex items-center space-x-2 mt-1">
+                    <button id="font-bold" class="px-3 py-2 border rounded-md" title="Bold"><b>B</b></button>
+                    <button id="font-italic" class="px-3 py-2 border rounded-md" title="Italic"><i>I</i></button>
+                    <button id="font-underline" class="px-3 py-2 border rounded-md" title="Underline"><u>U</u></button>
+                </div>
+            </div>
+
+             <!-- Font Color -->
+             <div class="flex flex-col">
+                <label for="font-color" class="text-sm font-medium text-gray-600">Color</label>
+                <input type="color" id="font-color" value="#000000" class="w-12 h-10 border-0 rounded-md cursor-pointer">
+            </div>
+        </div>
+
+        <!-- Text Area -->
+        <textarea id="text-input" rows="10" class="w-full p-4 border rounded-md text-base focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Type your text here..."></textarea>
+    </div>
+    
+    <!-- Action Buttons -->
+    <div id="action-buttons" class="flex space-x-4">
+         <button id="preview-btn" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75">
+            Go to Print Preview
+        </button>
+        <button id="print-btn" class="hidden px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75">
+            Print
+        </button>
+         <button id="back-to-editor-btn" class="hidden px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
+            Back to Editor
+        </button>
+    </div>
+
+    <!-- Preview View -->
+    <div id="preview-view" class="hidden">
+        <div id="printable-area" class="bg-white mx-auto">
+            <!-- Text containers will be added here dynamically -->
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const editorView = document.getElementById('editor-view');
+        const previewView = document.getElementById('preview-view');
+        const textInput = document.getElementById('text-input');
+        const fontFamilySelect = document.getElementById('font-family');
+        const fontSizeInput = document.getElementById('font-size');
+        const fontBoldBtn = document.getElementById('font-bold');
+        const fontItalicBtn = document.getElementById('font-italic');
+        const fontUnderlineBtn = document.getElementById('font-underline');
+        const fontColorInput = document.getElementById('font-color');
+        const previewBtn = document.getElementById('preview-btn');
+        const backToEditorBtn = document.getElementById('back-to-editor-btn');
+        const printBtn = document.getElementById('print-btn');
+        const printableArea = document.getElementById('printable-area');
+        
+        // State variables for text styling
+        let isBold = false;
+        let isItalic = false;
+        let isUnderline = false;
+
+        // --- Event Listeners for Editor ---
+        
+        function updateTextAreaStyle() {
+            textInput.style.fontFamily = fontFamilySelect.value;
+            textInput.style.fontSize = `${fontSizeInput.value}px`;
+            textInput.style.fontWeight = isBold ? 'bold' : 'normal';
+            textInput.style.fontStyle = isItalic ? 'italic' : 'normal';
+            textInput.style.textDecoration = isUnderline ? 'underline' : 'none';
+            textInput.style.color = fontColorInput.value;
+        }
+
+        fontFamilySelect.addEventListener('change', updateTextAreaStyle);
+        fontSizeInput.addEventListener('input', updateTextAreaStyle);
+        fontColorInput.addEventListener('input', updateTextAreaStyle);
+
+        fontBoldBtn.addEventListener('click', () => {
+            isBold = !isBold;
+            fontBoldBtn.classList.toggle('bg-blue-200');
+            updateTextAreaStyle();
+        });
+
+        fontItalicBtn.addEventListener('click', () => {
+            isItalic = !isItalic;
+            fontItalicBtn.classList.toggle('bg-blue-200');
+            updateTextAreaStyle();
+        });
+        
+        fontUnderlineBtn.addEventListener('click', () => {
+            isUnderline = !isUnderline;
+            fontUnderlineBtn.classList.toggle('bg-blue-200');
+            updateTextAreaStyle();
+        });
+
+        // --- View Switching Logic ---
+        previewBtn.addEventListener('click', () => {
+            if (textInput.value.trim() === '') {
+                // In a real app, you might show a more graceful message.
+                // For this example, we prevent creating an empty text block.
+                console.log("Text area is empty. Not creating a block.");
+                return;
+            }
+
+            editorView.classList.add('hidden');
+            previewBtn.classList.add('hidden');
+            
+            previewView.classList.remove('hidden');
+            backToEditorBtn.classList.remove('hidden');
+            printBtn.classList.remove('hidden');
+            
+            createTextContainer();
+        });
+
+        backToEditorBtn.addEventListener('click', () => {
+            editorView.classList.remove('hidden');
+            previewBtn.classList.remove('hidden');
+            
+            previewView.classList.add('hidden');
+            backToEditorBtn.classList.add('hidden');
+            printBtn.classList.add('hidden');
+            
+            // Clear the preview area for next time
+            printableArea.innerHTML = '';
+        });
+
+        printBtn.addEventListener('click', () => {
+            window.print();
+        });
+
+        // --- Dynamic Text Container Creation and Interaction ---
+
+        function createTextContainer() {
+            const container = document.createElement('div');
+            container.className = 'text-container';
+            
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            
+            // Set text content and basic position
+            textEl.textContent = textInput.value;
+            textEl.setAttribute('x', '0');
+            textEl.setAttribute('y', '0');
+            textEl.setAttribute('dominant-baseline', 'hanging');
+
+            // Apply styles from editor
+            textEl.style.fontFamily = fontFamilySelect.value;
+            textEl.style.fontSize = `${fontSizeInput.value}px`;
+            textEl.style.fontWeight = isBold ? 'bold' : 'normal';
+            textEl.style.fontStyle = isItalic ? 'italic' : 'normal';
+            textEl.style.textDecoration = isUnderline ? 'underline' : 'none';
+            textEl.style.fill = fontColorInput.value;
+
+            svg.appendChild(textEl);
+            container.appendChild(svg);
+            
+            // Set initial size of container based on text bbox
+            printableArea.appendChild(container);
+            const bbox = textEl.getBBox();
+            container.style.width = `${bbox.width}px`;
+            container.style.height = `${bbox.height}px`;
+            svg.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
+            container.style.top = '50px';
+            container.style.left = '50px';
+
+            // Add resize handle
+            const handle = document.createElement('div');
+            handle.className = 'resize-handle br';
+            container.appendChild(handle);
+
+            makeInteractive(container);
+        }
+
+        function makeInteractive(element) {
+            let pos = { top: 0, left: 0, x: 0, y: 0 };
+            let size = { w: 0, h: 0, x: 0, y: 0 };
+            
+            const handle = element.querySelector('.resize-handle');
+
+            // --- Dragging Logic ---
+            function dragMouseDown(e) {
+                e.preventDefault();
+                pos.x = e.clientX;
+                pos.y = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos.top = e.clientY - pos.y;
+                pos.left = e.clientX - pos.x;
+                pos.y = e.clientY;
+                pos.x = e.clientX;
+                element.style.top = (element.offsetTop + pos.top) + 'px';
+                element.style.left = (element.offsetLeft + pos.left) + 'px';
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+            
+            // Attach drag listener to the main element, but not its handle
+            element.addEventListener('mousedown', (e) => {
+                if(e.target !== handle){
+                    dragMouseDown(e);
+                }
+            });
+
+
+            // --- Resizing Logic ---
+            function resizeMouseDown(e) {
+                e.preventDefault();
+                e.stopPropagation(); // Prevent drag from firing
+                size.x = e.clientX;
+                size.y = e.clientY;
+                const rect = element.getBoundingClientRect();
+                size.w = rect.width;
+                size.h = rect.height;
+                document.onmousemove = elementResize;
+                document.onmouseup = closeResizeElement;
+            }
+
+            function elementResize(e) {
+                const dx = e.clientX - size.x;
+                const dy = e.clientY - size.y;
+                element.style.width = `${size.w + dx}px`;
+                element.style.height = `${size.h + dy}px`;
+            }
+
+            function closeResizeElement() {
+                document.onmousemove = null;
+                document.onmouseup = null;
+            }
+            
+            handle.addEventListener('mousedown', resizeMouseDown);
+        }
+
+        // Initialize with default styles
+        updateTextAreaStyle();
+    </script>
+</body>
+</html>
