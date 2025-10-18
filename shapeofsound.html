@@ -34,8 +34,14 @@
 
     <div class="bg-white p-4 sm:p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-xl space-y-4">
         
+        <h1 class="text-2xl font-bold text-gray-800 text-center">Pronunciation Waveform Matcher</h1>
+        <p class="text-sm text-gray-500 text-center">Click a letter to load the target sound, then record your own voice below!</p>
+        
         <!-- Target Waveform Display -->
-        <canvas id="targetCanvas" width="1024" height="150" class="bg-gray-50 rounded-lg w-full"></canvas>
+        <div class="p-2 border border-indigo-200 rounded-lg">
+            <p class="text-xs text-indigo-700 font-semibold mb-1">Target Waveform (Reference)</p>
+            <canvas id="targetCanvas" width="1024" height="150" class="bg-indigo-50/50 rounded-lg w-full"></canvas>
+        </div>
 
         <!-- Alphabet Buttons Grid -->
         <div id="alphabet-grid" class="grid grid-cols-7 sm:grid-cols-9 gap-2">
@@ -43,12 +49,15 @@
         </div>
 
         <!-- User Waveform and Record Button -->
-        <div class="relative">
-            <canvas id="userCanvas" width="1024" height="150" class="bg-gray-50 rounded-lg w-full"></canvas>
-            <button id="recordBtn" class="record-button absolute bottom-3 right-3 bg-red-500 hover:bg-red-600 text-white p-3 rounded-full focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-50 transition">
+        <div class="relative p-2 border border-red-200 rounded-lg">
+            <p class="text-xs text-red-700 font-semibold mb-1">Your Recording (Attempt)</p>
+            <canvas id="userCanvas" width="1024" height="150" class="bg-red-50/50 rounded-lg w-full"></canvas>
+            <button id="recordBtn" class="record-button absolute bottom-5 right-5 bg-red-500 hover:bg-red-600 text-white p-4 rounded-full shadow-lg focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-50 transition">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
             </button>
         </div>
+
+        <p id="messageBox" class="text-center text-sm text-gray-600 h-6"></p>
 
     </div>
 
@@ -57,6 +66,7 @@
         const userCanvas = document.getElementById('userCanvas');
         const alphabetGrid = document.getElementById('alphabet-grid');
         const recordBtn = document.getElementById('recordBtn');
+        const messageBox = document.getElementById('messageBox');
 
         const targetCtx = targetCanvas.getContext('2d');
         const userCtx = userCanvas.getContext('2d');
@@ -65,7 +75,7 @@
         let mediaRecorder;
         let isRecording = false;
         let recordedChunks = [];
-        let targetPeakAmplitude = 1.0; // Default peak
+        let targetPeakAmplitude = 1.0; // Default peak for normalization
         let liveWaveformFrameId;
         let userMicSource;
         let scriptNode;
@@ -73,22 +83,32 @@
 
 
         const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
+        // IMPORTANT: Using the raw content URL and expecting .wav files
         const baseUrl = 'https://raw.githubusercontent.com/boobalootoo/things/main/abc/';
 
-        // --- Core Functions ---
+        // --- Utility Functions ---
+
+        function showMessage(text, color = 'text-gray-600') {
+            messageBox.className = `text-center text-sm h-6 ${color}`;
+            messageBox.textContent = text;
+        }
 
         function initAudioContext() {
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
             }
         }
         
-        // This function now handles both real AudioBuffers and our fake buffer object for live drawing
         function drawWaveform(canvasContext, audioBuffer, peak, color = '#4f46e5') {
             const ctx = canvasContext;
             const canvas = ctx.canvas;
-            // Get the raw audio data from channel 0
-            const data = audioBuffer.getChannelData(0);
+            
+            // Handle both AudioBuffer (from decoded file/blob) and Float32Array (from live buffer)
+            const data = audioBuffer.getChannelData ? audioBuffer.getChannelData(0) : audioBuffer;
+            
             const width = canvas.width;
             const height = canvas.height;
             const amp = height / 2;
@@ -98,12 +118,13 @@
             ctx.lineWidth = 2;
             ctx.beginPath();
             
-            const sliceWidth = width / data.length;
+            const bufferLength = data.length;
+            const sliceWidth = width / bufferLength;
             let x = 0;
 
-            for (let i = 0; i < data.length; i++) {
+            for (let i = 0; i < bufferLength; i++) {
                 // Scale the sample by the peak amplitude to normalize it
-                const y = (data[i] / peak) * amp + amp;
+                const y = (data[i] / (peak || 1.0)) * amp + amp; // Use 1.0 as a safe fallback peak
                 if (i === 0) {
                     ctx.moveTo(x, y);
                 } else {
@@ -114,14 +135,14 @@
             ctx.stroke();
         }
         
-        // New drawing loop for the accumulating live waveform
         function drawLiveAccumulatedWaveformLoop() {
             if (!isRecording) return; // Stop the loop if recording has stopped
 
             liveWaveformFrameId = requestAnimationFrame(drawLiveAccumulatedWaveformLoop);
 
-            // Flatten the array of chunks into one big array
             if (liveRecordingBuffer.length === 0) return;
+            
+            // Flatten the array of chunks into one big Float32Array for drawing
             const totalLength = liveRecordingBuffer.reduce((acc, val) => acc + val.length, 0);
             const pcmData = new Float32Array(totalLength);
             let offset = 0;
@@ -132,20 +153,32 @@
 
             if (pcmData.length === 0) return;
             
-            // Use the main drawWaveform function with a "fake" buffer object
-            const fakeBuffer = { getChannelData: () => pcmData };
-            drawWaveform(userCtx, fakeBuffer, targetPeakAmplitude, '#ef4444');
+            // Draw the accumulated raw PCM data
+            drawWaveform(userCtx, pcmData, targetPeakAmplitude, '#ef4444');
         }
 
 
         async function loadAndPlayPronunciation(letter) {
+            if (isRecording) {
+                showMessage('Please stop recording before selecting a new letter.', 'text-red-500');
+                return;
+            }
+            showMessage(`Loading target sound: ${letter.toUpperCase()}...`);
+            userCtx.clearRect(0, 0, userCanvas.width, userCanvas.height);
+            targetCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+            
             try {
                 initAudioContext();
-                const audioUrl = `${baseUrl}${letter}.m4a`;
+                // Fetching the .wav file as requested by the user
+                const audioUrl = `${baseUrl}${letter}.wav`; 
                 const response = await fetch(audioUrl);
-                if (!response.ok) throw new Error(`Audio file not found for letter "${letter}"`);
+                
+                if (!response.ok) {
+                    throw new Error(`Audio file not found for letter "${letter}" at ${audioUrl}. Status: ${response.status}`);
+                }
                 
                 const arrayBuffer = await response.arrayBuffer();
+                // Slice is important for Chrome compatibility after fetch
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
                 
                 // Find the peak amplitude for scaling both waveforms
@@ -155,46 +188,69 @@
                     const abs = Math.abs(data[i]);
                     if (abs > peak) peak = abs;
                 }
-                targetPeakAmplitude = peak > 0 ? peak : 1.0;
+                // Set the peak for normalization, ensuring it's not zero
+                targetPeakAmplitude = peak > 0 ? peak : 0.5; 
                 
-                drawWaveform(targetCtx, audioBuffer, targetPeakAmplitude);
+                drawWaveform(targetCtx, audioBuffer, targetPeakAmplitude, '#4f46e5');
+                showMessage(`Playing sound for: ${letter.toUpperCase()}`, 'text-indigo-600');
 
+                // Play the sound
                 const source = audioContext.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(audioContext.destination);
                 source.start(0);
 
             } catch (error) {
-                console.error(error);
-                targetCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+                console.error("Error loading or decoding audio:", error);
+                showMessage(`Error loading audio for ${letter.toUpperCase()}: ${error.message.substring(0, 50)}...`, 'text-red-500');
             }
         }
         
         // --- Recording Logic ---
 
         async function toggleRecording() {
+            if (!targetPeakAmplitude || targetPeakAmplitude === 1.0) {
+                 showMessage('Please select a target letter first!', 'text-red-500');
+                 return;
+            }
+
             if (isRecording) {
                 // --- STOP RECORDING ---
                 mediaRecorder.stop();
                 cancelAnimationFrame(liveWaveformFrameId);
                 isRecording = false;
-                recordBtn.classList.remove('recording');
+                recordBtn.classList.remove('recording', 'bg-red-500');
+                recordBtn.classList.add('bg-gray-400'); // Indicate stop/processing
+
+                // Disconnect nodes to allow garbage collection
                 if (userMicSource) userMicSource.disconnect();
                 if (scriptNode) scriptNode.disconnect();
+                
+                showMessage('Processing recording...');
 
             } else {
                 // --- START RECORDING ---
                 try {
                     initAudioContext();
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
                     isRecording = true;
-                    recordBtn.classList.add('recording');
+                    recordBtn.classList.add('recording', 'bg-red-500');
+                    recordBtn.classList.remove('bg-gray-400');
                     userCtx.clearRect(0, 0, userCanvas.width, userCanvas.height);
+                    showMessage('Recording... Say the letter!', 'text-red-500 font-bold');
 
-                    // 1. Setup for live data capture
+                    // 1. Setup for live data capture (for drawing the live waveform)
                     liveRecordingBuffer = [];
+                    // Ensure the audio context is active
+                    if (audioContext.state === 'suspended') {
+                        await audioContext.resume();
+                    }
+                    
                     userMicSource = audioContext.createMediaStreamSource(stream);
-                    scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
+                    // Create script processor node (Deprecated, but widely supported for this use case)
+                    // Use a buffer size of 4096, 1 input channel, 1 output channel
+                    scriptNode = audioContext.createScriptProcessor(4096, 1, 1); 
                     
                     scriptNode.onaudioprocess = (e) => {
                         if (isRecording) {
@@ -220,22 +276,39 @@
                     mediaRecorder.addEventListener('stop', async () => {
                         const blob = new Blob(recordedChunks, { type: 'audio/webm' });
                         const arrayBuffer = await blob.arrayBuffer();
+                        
                         try {
+                            // Decode the final recorded blob for accurate visualization
                             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                            
                             // Draw final, accurate recorded waveform with the same scaling
                             drawWaveform(userCtx, audioBuffer, targetPeakAmplitude, '#ef4444');
+                            showMessage('Recording finished. Compare the waveforms!', 'text-green-600 font-bold');
+                            
+                            // Optional: Play back the user recording
+                            // const source = audioContext.createBufferSource();
+                            // source.buffer = audioBuffer;
+                            // source.connect(audioContext.destination);
+                            // source.start(0);
+
                         } catch(e) {
                             console.error("Could not decode recorded audio", e);
-                            userCtx.clearRect(0, 0, userCanvas.width, userCanvas.height);
+                            showMessage("Could not process recorded audio.", 'text-red-500');
                         }
+                        // Stop the stream tracks after use
                         stream.getTracks().forEach(track => track.stop());
+                        recordBtn.classList.remove('bg-gray-400');
+                        recordBtn.classList.add('bg-red-500'); // Ready to record again
                     });
                     
                     mediaRecorder.start();
 
                 } catch (error) {
-                    console.error('Microphone access denied:', error);
-                    alert("Microphone access is required to record. Please allow access and try again.");
+                    console.error('Microphone access error:', error);
+                    showMessage("Microphone access is required to record. Please allow access.", 'text-red-500');
+                    // Reset button state on failure
+                    isRecording = false;
+                    recordBtn.classList.remove('recording');
                 }
             }
         }
@@ -245,15 +318,18 @@
         alphabet.forEach(letter => {
             const button = document.createElement('button');
             button.textContent = letter.toUpperCase();
-            button.className = 'letter-button text-xl font-bold p-2 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 aspect-square';
+            button.className = 'letter-button text-xl font-bold p-2 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 aspect-square shadow-md';
             button.addEventListener('click', () => loadAndPlayPronunciation(letter));
             alphabetGrid.appendChild(button);
         });
         
         recordBtn.addEventListener('click', toggleRecording);
         
+        // Initial state
         targetCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
         userCtx.clearRect(0, 0, userCanvas.width, userCanvas.height);
+        recordBtn.classList.add('bg-red-500'); // Initial color
+        showMessage('Select a letter to begin.');
 
     </script>
 </body>
