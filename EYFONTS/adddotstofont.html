@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTF Font Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- opentype.js is a library to read and parse font files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+    <style>
+        body {
+            background-color: #f0f2f5;
+        }
+        #font-preview-container {
+            position: relative;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            /* Ensure the container itself doesn't shrink smaller than the canvas */
+            min-width: min-content;
+        }
+        #dot-canvas {
+            position: absolute;
+            top: 1rem; /* Match padding */
+            left: 1rem; /* Match padding */
+            cursor: crosshair;
+        }
+        .loader {
+            border: 8px solid #e2e8f0;
+            border-top: 8px solid #3b82f6;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="antialiased text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8 bg-white p-6 rounded-lg shadow-md">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">OTF Font Editor</h1>
+            <p class="mt-2 text-gray-600">Upload an `.otf` file to view the character set and add or remove dots.</p>
+        </header>
+
+        <div class="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-md mb-8">
+            <label for="font-upload" class="block text-lg font-medium text-gray-700 mb-2">Upload Font File</label>
+            <input type="file" id="font-upload" accept=".otf" class="block w-full text-sm text-gray-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-blue-50 file:text-blue-700
+                hover:file:bg-blue-100
+                cursor-pointer
+            "/>
+            <p id="status" class="mt-4 text-sm text-gray-500">Please select a valid OpenType Font (.otf) file.</p>
+        </div>
+        
+        <div id="loader-container" class="hidden justify-center items-center my-8">
+            <div class="loader"></div>
+        </div>
+
+        <!-- This container will now hold the single preview canvas -->
+        <div id="font-preview-wrapper" class="w-full overflow-x-auto">
+             <div id="font-preview-container" class="hidden">
+                <!-- Canvases will be injected here -->
+            </div>
+        </div>
+
+        <div class="text-center mt-8">
+            <button id="download-btn" class="hidden bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
+                Download Edited OTF File
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const fontUpload = document.getElementById('font-upload');
+        const previewContainer = document.getElementById('font-preview-container');
+        const statusEl = document.getElementById('status');
+        const loader = document.getElementById('loader-container');
+        const downloadBtn = document.getElementById('download-btn');
+        
+        let dots = []; // Array to store {x, y, radius} of each dot
+        let letterCanvas, dotCanvas; // Hold references to the canvases
+        let originalFont; // Hold reference to the parsed font object
+
+        // Define the character sets to display
+        const STRINGS_TO_DISPLAY = [
+            'abcdefghijklmnopqrstuvwxyz',
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            '1234567890 .:,;\'"(!?)+-*/='
+        ];
+        const FONT_SIZE = 72;
+        const LINE_HEIGHT = 1.5;
+        const PADDING = 20;
+
+        fontUpload.addEventListener('change', handleFileUpload);
+        downloadBtn.addEventListener('click', handleDownload);
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                statusEl.textContent = 'No file selected.';
+                return;
+            }
+            if (!file.name.toLowerCase().endsWith('.otf')) {
+                statusEl.textContent = 'Error: Please upload a valid .otf file.';
+                statusEl.classList.add('text-red-500');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const font = opentype.parse(e.target.result);
+                    originalFont = font; // Store the original font
+                    statusEl.textContent = `Successfully loaded font: ${font.names.fontFamily.en}`;
+                    statusEl.classList.remove('text-red-500');
+                    renderFontPreview(font);
+                } catch (err) {
+                    statusEl.textContent = `Error parsing font file: ${err.message}`;
+                    statusEl.classList.add('text-red-500');
+                    loader.classList.add('hidden');
+                    console.error(err);
+                }
+            };
+            
+            reader.onerror = () => {
+                statusEl.textContent = 'Error reading the file.';
+                statusEl.classList.add('text-red-500');
+                loader.classList.add('hidden');
+            };
+
+            previewContainer.innerHTML = ''; // Clear previous font
+            previewContainer.classList.add('hidden');
+            dots = []; // Reset dots
+            downloadBtn.classList.add('hidden'); // Hide download button on new upload
+            statusEl.textContent = 'Loading font...';
+            statusEl.classList.remove('text-red-500');
+            loader.classList.remove('hidden');
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderFontPreview(font) {
+            previewContainer.innerHTML = ''; // Clear for new font
+            
+            // Calculate canvas dimensions
+            let maxWidth = 0;
+            for (const str of STRINGS_TO_DISPLAY) {
+                const width = font.getAdvanceWidth(str, FONT_SIZE);
+                if (width > maxWidth) {
+                    maxWidth = width;
+                }
+            }
+            const canvasWidth = Math.ceil(maxWidth) + PADDING * 2;
+            const canvasHeight = (STRINGS_TO_DISPLAY.length * FONT_SIZE * LINE_HEIGHT) + PADDING * 2;
+
+            // Create main canvas for letters
+            letterCanvas = document.createElement('canvas');
+            letterCanvas.width = canvasWidth;
+            letterCanvas.height = canvasHeight;
+            const letterCtx = letterCanvas.getContext('2d');
+
+            // Create overlay canvas for dots
+            dotCanvas = document.createElement('canvas');
+            dotCanvas.width = canvasWidth;
+            dotCanvas.height = canvasHeight;
+            dotCanvas.id = 'dot-canvas';
+            
+            // Draw each line of text
+            let currentY = FONT_SIZE + PADDING;
+            for (const str of STRINGS_TO_DISPLAY) {
+                font.draw(letterCtx, str, PADDING, currentY, FONT_SIZE);
+                currentY += FONT_SIZE * LINE_HEIGHT;
+            }
+            
+            // Add canvases to the container and display it
+            previewContainer.appendChild(letterCanvas);
+            previewContainer.appendChild(dotCanvas);
+            previewContainer.classList.remove('hidden');
+
+            // Add click listener
+            dotCanvas.addEventListener('click', handleCanvasClick);
+
+            loader.classList.add('hidden');
+            downloadBtn.classList.remove('hidden'); // Show the download button
+        }
+        
+        function handleCanvasClick(event) {
+            const rect = dotCanvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            // Check if we are clicking on an existing dot to remove it
+            const clickedDotIndex = dots.findIndex(dot => {
+                const distance = Math.sqrt(Math.pow(x - dot.x, 2) + Math.pow(y - dot.y, 2));
+                return distance < dot.radius;
+            });
+
+            if (clickedDotIndex > -1) {
+                // Remove the dot
+                dots.splice(clickedDotIndex, 1);
+            } else {
+                // Otherwise, check to add a new dot
+                const letterCtx = letterCanvas.getContext('2d', { willReadFrequently: true });
+                const pixelData = letterCtx.getImageData(x, y, 1, 1).data;
+                
+                if (pixelData[3] > 0) { // Check if the pixel is part of a letter (alpha > 0)
+                    const imageData = letterCtx.getImageData(0, 0, letterCanvas.width, letterCanvas.height);
+                    const diameter = calculateStrokeWidth(x, y, imageData);
+                    dots.push({ x, y, radius: diameter / 2 });
+                }
+            }
+            
+            redrawDots();
+        }
+
+        function redrawDots() {
+            const dotCtx = dotCanvas.getContext('2d');
+            dotCtx.clearRect(0, 0, dotCanvas.width, dotCanvas.height);
+            dots.forEach(dot => {
+                dotCtx.beginPath();
+                dotCtx.arc(dot.x, dot.y, dot.radius, 0, 2 * Math.PI, false);
+                dotCtx.fillStyle = 'red';
+                dotCtx.fill();
+            });
+        }
+        
+        function calculateStrokeWidth(x, y, imageData) {
+            const { width, height, data } = imageData;
+            const intX = Math.floor(x);
+            const intY = Math.floor(y);
+
+            // --- Horizontal measurement ---
+            let startX = intX;
+            let endX = intX;
+            while (startX > 0) {
+                if (data[(intY * width + (startX - 1)) * 4 + 3] === 0) break;
+                startX--;
+            }
+            while (endX < width - 1) {
+                if (data[(intY * width + (endX + 1)) * 4 + 3] === 0) break;
+                endX++;
+            }
+            const horizontalDiameter = endX - startX + 1;
+
+            // --- Vertical measurement ---
+            let startY = intY;
+            let endY = intY;
+            while (startY > 0) {
+                if (data[((startY - 1) * width + intX) * 4 + 3] === 0) break;
+                startY--;
+            }
+            while (endY < height - 1) {
+                if (data[((endY + 1) * width + intX) * 4 + 3] === 0) break;
+                endY++;
+            }
+            const verticalDiameter = endY - startY + 1;
+            
+            // Use the smaller of the two measurements for a more accurate dot size
+            const diameter = Math.min(horizontalDiameter, verticalDiameter);
+            return Math.max(2, diameter); // Ensure a minimum size
+        }
+
+        function handleDownload() {
+            if (!originalFont || dots.length === 0) {
+                alert('Please load a font and add some dots first.');
+                return;
+            }
+
+            downloadBtn.textContent = 'Processing...';
+            downloadBtn.disabled = true;
+
+            // Use a timeout to allow the UI to update before the heavy processing begins
+            setTimeout(() => {
+                try {
+                    // Create a deep copy of the font object to modify
+                    const newFont = opentype.parse(originalFont.toArrayBuffer());
+
+                    // This scale factor converts canvas pixels to font units
+                    const scale = newFont.unitsPerEm / FONT_SIZE;
+
+                    dots.forEach(dot => {
+                        // 1. Find which character the dot belongs to
+                        const lineIndex = Math.floor((dot.y - PADDING) / (FONT_SIZE * LINE_HEIGHT));
+                        const lineStr = STRINGS_TO_DISPLAY[lineIndex];
+                        const lineY = PADDING + (lineIndex + 1) * FONT_SIZE;
+
+                        let currentX = PADDING;
+                        let targetChar = null;
+
+                        for (let i = 0; i < lineStr.length; i++) {
+                            const char = lineStr[i];
+                            const advanceWidth = originalFont.getAdvanceWidth(char, FONT_SIZE);
+                            if (dot.x >= currentX && dot.x <= currentX + advanceWidth) {
+                                targetChar = char;
+                                break;
+                            }
+                            currentX += advanceWidth;
+                        }
+
+                        if (targetChar) {
+                            // 2. Get the glyph object from the new font
+                            const glyph = newFont.charToGlyph(targetChar);
+                            if (glyph) {
+                                // 3. Convert dot coordinates to glyph's coordinate system
+                                const dotXInGlyphSpace = (dot.x - currentX) * scale;
+                                // CORRECTED: Removed the incorrect manual baseline offset.
+                                // This now correctly calculates the dot's vertical position relative to the baseline.
+                                const dotYInGlyphSpace = (lineY - dot.y) * scale;
+                                const dotRadiusInGlyphSpace = dot.radius * scale;
+                                
+                                // 4. Create a vector path for the circle
+                                const circlePath = new opentype.Path();
+                                const r = dotRadiusInGlyphSpace;
+                                const x = dotXInGlyphSpace;
+                                const y = dotYInGlyphSpace;
+                                const C = 0.552284749831; // Constant for bezier circle approximation
+                                
+                                circlePath.moveTo(x, y - r);
+                                circlePath.bezierCurveTo(x + r * C, y - r, x + r, y - r * C, x + r, y);
+                                circlePath.bezierCurveTo(x + r, y + r * C, x + r * C, y + r, x, y + r);
+                                circlePath.bezierCurveTo(x - r * C, y + r, x - r, y + r * C, x - r, y);
+                                circlePath.bezierCurveTo(x - r, y - r * C, x - r * C, y - r, x, y - r);
+                                circlePath.closePath();
+
+                                // 5. Add the circle path to the glyph
+                                glyph.path.extend(circlePath);
+                            }
+                        }
+                    });
+
+                    // Trigger the download
+                    newFont.download();
+                } catch (err) {
+                    console.error('Failed to process and download font:', err);
+                    alert('An error occurred while creating the font file. See console for details.');
+                } finally {
+                    // Reset button state
+                    downloadBtn.textContent = 'Download Edited OTF File';
+                    downloadBtn.disabled = false;
+                }
+            }, 10);
+        }
+
+    </script>
+</body>
+</html>
+
+
