@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Page Canvas Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        
+        @font-face {
+            font-family: 'Sassoon Infant';
+            src: url('https://cdn.jsdelivr.net/gh/boobalootoo/things/EYFONTS/SassoonInfantStd.otf') format('opentype');
+        }
+
+        @font-face {
+            font-family: 'Sassoon Infant Dots';
+            src: url('https://cdn.jsdelivr.net/gh/boobalootoo/things/EYFONTS/SassoonInfantStddots.otf') format('opentype');
+        }
+
+        @font-face {
+            font-family: 'Sassoon Infant Dotted TTF';
+            src: url('https://cdn.jsdelivr.net/gh/boobalootoo/things/EYFONTS/sassoon-infant-dotted.ttf') format('truetype');
+        }
+
+        body {
+            font-family: 'Sassoon Infant', sans-serif;
+            padding-top: 220px; /* Increased space for the taller toolbar */
+        }
+        
+        #floating-toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+        }
+
+        .printable-area {
+            width: 210mm;
+            height: 297mm;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+            background-color: white;
+        }
+        
+        .delete-page-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 50;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+            visibility: hidden;
+        }
+
+        .printable-area:hover .delete-page-btn {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .canvas-object {
+            position: absolute;
+            cursor: move;
+            border: 2px dashed transparent;
+            min-width: 20px; /* Reduced min size for lines */
+            min-height: 20px;
+            box-sizing: border-box;
+            transform-origin: center center;
+        }
+
+        .canvas-object.selected {
+            border-color: #3b82f6;
+            border-style: solid;
+        }
+        
+        .canvas-object:not(.selected):hover {
+             border-color: #93c5fd;
+        }
+
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #3b82f6;
+            border: 2px solid white;
+            border-radius: 50%;
+            display: none;
+            z-index: 10;
+        }
+        
+        .canvas-object.selected .resize-handle { display: block; }
+        .resize-handle.tl { top: -7px; left: -7px; cursor: nwse-resize; }
+        .resize-handle.tr { top: -7px; right: -7px; cursor: nesw-resize; }
+        .resize-handle.bl { bottom: -7px; left: -7px; cursor: nesw-resize; }
+        .resize-handle.br { bottom: -7px; right: -7px; cursor: nwse-resize; }
+
+        .rotate-handle {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background-color: #f59e0b;
+            border: 2px solid white;
+            border-radius: 50%;
+            bottom: -35px;
+            left: calc(50% - 8px);
+            cursor: grabbing;
+            display: none;
+            z-index: 10;
+        }
+        .rotate-handle::before {
+            content: '';
+            position: absolute;
+            bottom: 10px;
+            left: 5px;
+            width: 2px;
+            height: 25px;
+            background-color: #f59e0b;
+            z-index: -1;
+        }
+        .canvas-object.selected .rotate-handle { display: block; }
+
+        .canvas-object svg, .canvas-object img { width: 100%; height: 100%; user-select: none; }
+        .canvas-object img { object-fit: cover; }
+        .canvas-object svg { overflow: visible; } /* Allow strokes to go outside the box */
+        
+        .edit-toolbar {
+            position: absolute; top: -32px; right: 0;
+            display: none; gap: 4px; z-index: 20;
+        }
+        .canvas-object.selected .edit-toolbar { display: flex; }
+
+        .toolbar-btn, .tool-btn {
+            background: white; border: 1px solid #ccc; border-radius: 5px;
+            height: 28px; display: flex; align-items: center;
+            justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .toolbar-btn { width: 28px; }
+        .tool-btn { padding: 0 12px; }
+        .tool-btn.active {
+            background-color: #dbeafe;
+            border-color: #3b82f6;
+        }
+        .toolbar-btn:hover, .tool-btn:hover { background: #f0f0f0; }
+        
+        .editing-textarea {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            border: none; outline: none; resize: none;
+            background-color: transparent;
+            margin: 0; padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+            white-space: pre-wrap;
+        }
+        
+        #drawing-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 99; /* Below toolbar but above pages */
+            display: none;
+        }
+
+        #drawing-overlay.active {
+            display: block;
+        }
+        
+        #drawing-preview-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+
+        @media print {
+            body { padding-top: 0; }
+            #floating-toolbar, .edit-toolbar, .resize-handle, .rotate-handle, .delete-page-btn, #drawing-overlay { display: none !important; }
+            #pages-container {
+                margin: 0;
+                padding: 0;
+            }
+            .printable-area {
+                box-shadow: none;
+                border: none;
+                margin: 0;
+                page-break-after: always;
+            }
+            .canvas-object.selected, .canvas-object:hover { border-color: transparent !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="floating-toolbar" class="bg-white p-4 shadow-md">
+        <div class="max-w-6xl mx-auto flex flex-col gap-4">
+             <div class="flex flex-wrap items-center gap-6">
+                <button id="add-text-box-btn" class="px-5 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Add Text</button>
+                <button id="add-rect-btn" class="px-5 py-2 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Add Rectangle</button>
+                <button id="add-circle-btn" class="px-5 py-2 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Add Circle</button>
+                <button id="add-image-btn" class="px-5 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700">Add Image</button>
+                <input type="file" id="image-upload" class="hidden" accept="image/*">
+
+                 <div class="h-8 border-l border-gray-300"></div>
+                 <button id="add-page-btn" class="px-5 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Add Page</button>
+                 <button id="print-btn" class="px-5 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Print</button>
+            </div>
+             <div class="flex flex-wrap items-center gap-6 border-t pt-4">
+                 <fieldset class="p-0 m-0 border-0">
+                    <legend class="text-sm font-medium text-gray-600 mb-1">Drawing Tools</legend>
+                    <div class="flex items-center gap-4">
+                        <button class="tool-btn" data-tool="select">Select</button>
+                        <button class="tool-btn" data-tool="line">Line</button>
+                        <button class="tool-btn" data-tool="scribble">Scribble</button>
+                        <button class="tool-btn" data-tool="polygon">Polygon</button>
+                    </div>
+                </fieldset>
+            </div>
+            <div class="flex flex-wrap gap-x-6 gap-y-4 items-end border-t pt-4">
+                <fieldset id="font-style-fieldset" class="p-0 m-0 border-0">
+                     <legend class="text-sm font-medium text-gray-600 mb-1">Font Style</legend>
+                    <div class="flex items-center gap-4">
+                        <select id="font-family" class="p-2 border rounded-md">
+                            <option value="Sassoon Infant">Sassoon Infant</option>
+                            <option value="Sassoon Infant Dots">Sassoon Infant Dots</option>
+                            <option value="Sassoon Infant Dotted TTF">Sassoon Infant Dotted (TTF)</option>
+                        </select>
+                        <input type="number" id="font-size" value="48" class="p-2 border rounded-md w-20">
+                         <div class="flex items-center space-x-2">
+                            <button id="font-bold" class="px-3 py-2 border rounded-md"><b>B</b></button>
+                            <button id="font-italic" class="px-3 py-2 border rounded-md"><i>I</i></button>
+                            <button id="font-underline" class="px-3 py-2 border rounded-md"><u>U</u></button>
+                        </div>
+                        <input type="color" id="font-color" value="#000000" class="w-12 h-10 border-0 rounded-md cursor-pointer">
+                    </div>
+                </fieldset>
+                
+                <fieldset id="text-box-fieldset" class="p-0 m-0 border-0">
+                     <legend class="text-sm font-medium text-gray-600 mb-1">Text Box Options</legend>
+                     <div class="flex items-center gap-4">
+                        <input type="color" id="box-bg-color" value="#ffffff" class="w-12 h-10 border-0 rounded-md cursor-pointer">
+                        <input type="number" id="box-padding" value="10" min="0" class="p-2 border rounded-md w-20">
+                    </div>
+                </fieldset>
+
+                <fieldset id="shape-props-fieldset" class="p-0 m-0 border-0 hidden">
+                    <legend class="text-sm font-medium text-gray-600 mb-1">Shape Properties</legend>
+                    <div class="flex items-center gap-4">
+                       <label class="text-xs text-gray-500">Fill:<input type="color" id="shape-fill-color" value="#cccccc" class="w-12 h-10 border-0 rounded-md cursor-pointer"></label>
+                       <label class="text-xs text-gray-500">Border:<input type="color" id="shape-stroke-color" value="#333333" class="w-12 h-10 border-0 rounded-md cursor-pointer"></label>
+                   </div>
+               </fieldset>
+                <fieldset id="line-props-fieldset" class="p-0 m-0 border-0 hidden">
+                    <legend class="text-sm font-medium text-gray-600 mb-1">Line Properties</legend>
+                    <div class="flex items-center gap-4">
+                       <label class="text-xs text-gray-500">Color:<input type="color" id="line-color" value="#000000" class="w-12 h-10 border-0 rounded-md cursor-pointer"></label>
+                       <label class="text-xs text-gray-500">Width:<input type="number" id="line-width" value="3" min="1" class="p-2 border rounded-md w-20"></label>
+                   </div>
+               </fieldset>
+            </div>
+        </div>
+    </div>
+    
+    <div id="pages-container" class="relative">
+        <div id="drawing-overlay">
+             <svg id="drawing-preview-svg"></svg>
+        </div>
+        <div id="page-list" class="flex flex-col items-center gap-8 py-8">
+            <div class="printable-area"></div>
+        </div>
+    </div>
+
+    <script>
+        // DOM ELEMENTS
+        const fontFamilySelect = document.getElementById('font-family');
+        const fontSizeInput = document.getElementById('font-size');
+        const fontBoldBtn = document.getElementById('font-bold');
+        const fontItalicBtn = document.getElementById('font-italic');
+        const fontUnderlineBtn = document.getElementById('font-underline');
+        const fontColorInput = document.getElementById('font-color');
+        const addTextBoxBtn = document.getElementById('add-text-box-btn');
+        const addRectBtn = document.getElementById('add-rect-btn');
+        const addCircleBtn = document.getElementById('add-circle-btn');
+        const addImageBtn = document.getElementById('add-image-btn');
+        const imageUploadInput = document.getElementById('image-upload');
+        const addPageBtn = document.getElementById('add-page-btn');
+        const printBtn = document.getElementById('print-btn');
+        const pagesContainer = document.getElementById('pages-container');
+        const pageList = document.getElementById('page-list');
+        const boxBgColorInput = document.getElementById('box-bg-color');
+        const boxPaddingInput = document.getElementById('box-padding');
+        const shapeFillColorInput = document.getElementById('shape-fill-color');
+        const shapeStrokeColorInput = document.getElementById('shape-stroke-color');
+        const lineColorInput = document.getElementById('line-color');
+        const lineWidthInput = document.getElementById('line-width');
+        const fontStyleFieldset = document.getElementById('font-style-fieldset');
+        const textBoxFieldset = document.getElementById('text-box-fieldset');
+        const shapePropsFieldset = document.getElementById('shape-props-fieldset');
+        const linePropsFieldset = document.getElementById('line-props-fieldset');
+        const drawingOverlay = document.getElementById('drawing-overlay');
+        const previewSvg = document.getElementById('drawing-preview-svg');
+        const toolButtons = document.querySelectorAll('.tool-btn');
+        
+        let isBold = false, isItalic = false, isUnderline = false;
+        let activeTool = 'select';
+        let isDrawing = false;
+        let currentDrawingPoints = [];
+        let tempDrawingElement = null;
+        let drawingStartInfo = null;
+
+        // --- Event Listeners ---
+        addTextBoxBtn.addEventListener('click', () => createObject('text'));
+        addRectBtn.addEventListener('click', () => createObject('rect'));
+        addCircleBtn.addEventListener('click', () => createObject('circle'));
+        addImageBtn.addEventListener('click', () => imageUploadInput.click());
+        imageUploadInput.addEventListener('change', handleImageUpload);
+        addPageBtn.addEventListener('click', () => addPage());
+        printBtn.addEventListener('click', () => window.print());
+
+        toolButtons.forEach(btn => {
+            btn.addEventListener('click', () => setActiveTool(btn.dataset.tool));
+        });
+        
+        pageList.addEventListener('click', (e) => {
+            const clickedObject = e.target.closest('.canvas-object');
+            if (!clickedObject) {
+                 document.querySelectorAll('.canvas-object').forEach(el => el.classList.remove('selected'));
+                 updateToolbarFromSelection(null);
+            }
+        });
+
+        // --- Tool Management ---
+        function setActiveTool(tool) {
+            activeTool = tool;
+            toolButtons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tool === tool);
+            });
+            
+            if (tool === 'select') {
+                drawingOverlay.classList.remove('active');
+                drawingOverlay.style.cursor = 'default';
+                updateToolbarFromSelection(document.querySelector('.canvas-object.selected'));
+            } else {
+                drawingOverlay.classList.add('active');
+                drawingOverlay.style.cursor = 'crosshair';
+                fontStyleFieldset.classList.add('hidden');
+                textBoxFieldset.classList.add('hidden');
+                shapePropsFieldset.classList.add('hidden');
+                linePropsFieldset.classList.remove('hidden');
+            }
+        }
+        
+        // --- Drawing Handlers ---
+        drawingOverlay.addEventListener('mousedown', startDrawing);
+        drawingOverlay.addEventListener('mousemove', draw);
+        drawingOverlay.addEventListener('mouseup', endDrawing);
+        drawingOverlay.addEventListener('dblclick', endDrawing);
+        
+        function startDrawing(e) {
+            if (activeTool === 'select') return;
+            
+            drawingOverlay.style.pointerEvents = 'none';
+            const targetPage = document.elementFromPoint(e.clientX, e.clientY).closest('.printable-area');
+            drawingOverlay.style.pointerEvents = 'auto';
+
+            if (!targetPage) return;
+
+            isDrawing = true;
+            // FIX: Get the point relative to the page, not the entire overlay,
+            // then offset it to the overlay for drawing preview.
+            const pt = getPointRelativeToPage(e.clientX, e.clientY, targetPage);
+            const overlayPt = getSvgPoint(e.clientX, e.clientY);
+            currentDrawingPoints = [{x: overlayPt.x, y: overlayPt.y}];
+            drawingStartInfo = { targetPage, pageOffset: { x: pt.x - overlayPt.x, y: pt.y - overlayPt.y } };
+
+            if (activeTool === 'line') {
+                tempDrawingElement = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                tempDrawingElement.setAttribute('x1', overlayPt.x);
+                tempDrawingElement.setAttribute('y1', overlayPt.y);
+                tempDrawingElement.setAttribute('x2', overlayPt.x);
+                tempDrawingElement.setAttribute('y2', overlayPt.y);
+            } else if (activeTool === 'scribble' || activeTool === 'polygon') {
+                 tempDrawingElement = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                 tempDrawingElement.setAttribute('points', `${overlayPt.x},${overlayPt.y}`);
+            }
+
+            if (tempDrawingElement) {
+                tempDrawingElement.setAttribute('stroke', lineColorInput.value);
+                tempDrawingElement.setAttribute('stroke-width', lineWidthInput.value);
+                tempDrawingElement.setAttribute('fill', 'none');
+                previewSvg.appendChild(tempDrawingElement);
+            }
+            if (activeTool === 'polygon') { isDrawing = false; }
+        }
+
+        function draw(e) {
+            if ((activeTool !== 'select' && !isDrawing) && activeTool !== 'polygon') return;
+             const pt = getSvgPoint(e.clientX, e.clientY);
+
+            if (activeTool === 'line' && tempDrawingElement) {
+                tempDrawingElement.setAttribute('x2', pt.x);
+                tempDrawingElement.setAttribute('y2', pt.y);
+            } else if (activeTool === 'scribble' && tempDrawingElement) {
+                const currentPoints = tempDrawingElement.getAttribute('points');
+                tempDrawingElement.setAttribute('points', currentPoints + ` ${pt.x},${pt.y}`);
+                currentDrawingPoints.push(pt);
+            } else if (activeTool === 'polygon' && tempDrawingElement) {
+                let previewLine = previewSvg.querySelector('#polygon-preview-line');
+                if (!previewLine) {
+                    previewLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    previewLine.id = 'polygon-preview-line';
+                    previewLine.setAttribute('stroke', lineColorInput.value);
+                    previewLine.setAttribute('stroke-width', lineWidthInput.value);
+                    previewLine.setAttribute('stroke-dasharray', '5,5');
+                    previewSvg.appendChild(previewLine);
+                }
+                const lastPoint = currentDrawingPoints[currentDrawingPoints.length - 1];
+                previewLine.setAttribute('x1', lastPoint.x);
+                previewLine.setAttribute('y1', lastPoint.y);
+                previewLine.setAttribute('x2', pt.x);
+                previewLine.setAttribute('y2', pt.y);
+            }
+        }
+
+        function endDrawing(e) {
+            if (activeTool === 'select') return;
+            if (activeTool === 'polygon') {
+                if (e.type === 'mousedown') {
+                    const pt = getSvgPoint(e.clientX, e.clientY);
+                    currentDrawingPoints.push(pt);
+                    const pointsString = currentDrawingPoints.map(p => `${p.x},${p.y}`).join(' ');
+                    tempDrawingElement.setAttribute('points', pointsString);
+                    return;
+                }
+                if (e.type !== 'dblclick') return;
+            }
+            if (!isDrawing && activeTool !== 'polygon') return;
+            isDrawing = false;
+
+            if (tempDrawingElement && currentDrawingPoints.length > 1 && drawingStartInfo.targetPage) {
+                const type = activeTool;
+                createObject(type, { element: tempDrawingElement, targetPage: drawingStartInfo.targetPage, drawingOffset: drawingStartInfo.pageOffset });
+            }
+
+            previewSvg.innerHTML = '';
+            tempDrawingElement = null;
+            currentDrawingPoints = [];
+            drawingStartInfo = null;
+            setActiveTool('select');
+        }
+
+        function getSvgPoint(clientX, clientY) {
+            const containerRect = drawingOverlay.getBoundingClientRect();
+            const svgPoint = previewSvg.createSVGPoint();
+            svgPoint.x = clientX - containerRect.left;
+            svgPoint.y = clientY - containerRect.top;
+            return svgPoint;
+        }
+
+        function getPointRelativeToPage(clientX, clientY, targetPage) {
+            const pageRect = targetPage.getBoundingClientRect();
+            return {
+                x: clientX - pageRect.left + pageList.scrollLeft,
+                y: clientY - pageRect.top + pageList.scrollTop
+            };
+        }
+
+        function createObject(type, options = {}) {
+            const targetPage = options.targetPage || document.querySelector('.printable-area:last-child');
+            if (!targetPage) return;
+
+            const container = document.createElement('div');
+            container.className = 'canvas-object';
+            container.dataset.objectType = type;
+            container.dataset.rotation = '0';
+            
+            if (type === 'text') {
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                container.appendChild(svg);
+                applyStylesToContainer(container, options.textContent || "Double-click to edit");
+            } else if (type === 'rect' || type === 'circle') {
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                const shape = document.createElementNS('http://www.w3.org/2000/svg', type);
+                if (type === 'rect') {
+                    shape.setAttribute('width', '100%');
+                    shape.setAttribute('height', '100%');
+                } else {
+                    shape.setAttribute('cx', '50%');
+                    shape.setAttribute('cy', '50%');
+                    shape.setAttribute('r', '50%');
+                }
+                shape.setAttribute('fill', shapeFillColorInput.value);
+                shape.setAttribute('stroke', shapeStrokeColorInput.value);
+                svg.appendChild(shape);
+                container.appendChild(svg);
+                container.style.width = '150px';
+                container.style.height = '150px';
+            } else if (type === 'image') {
+                const img = document.createElement('img');
+                img.src = options.src;
+                container.appendChild(img);
+                container.style.width = '200px';
+                container.style.height = 'auto';
+            } else if (['line', 'scribble', 'polygon'].includes(type)) {
+                 const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                 const pathData = getPathDataFromElement(options.element);
+                 const newPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                 newPath.setAttribute('d', pathData.d);
+                 newPath.setAttribute('stroke', options.element.getAttribute('stroke'));
+                 newPath.setAttribute('stroke-width', options.element.getAttribute('stroke-width'));
+                 const isPolygon = type === 'polygon';
+                 newPath.setAttribute('fill', (isPolygon ? shapeFillColorInput.value : 'none'));
+                 newPath.setAttribute('stroke-linecap', 'round'); // Improve scribble appearance
+                 svg.appendChild(newPath);
+                 container.appendChild(svg);
+                 
+                 // FIX: Position relative to the *page* based on the bounding box
+                 const pageRect = targetPage.getBoundingClientRect();
+                 const overlayRect = drawingOverlay.getBoundingClientRect();
+                 
+                 // pathData.x/y is the ABSOLUTE top/left of the BBox relative to the OVERLAY
+                 // We need to offset that by the page's absolute position within the overlay
+                 container.style.left = `${pathData.x - (pageRect.left - overlayRect.left)}px`;
+                 container.style.top = `${pathData.y - (pageRect.top - overlayRect.top)}px`;
+                 container.style.width = `${pathData.width}px`;
+                 container.style.height = `${pathData.height}px`;
+                 svg.setAttribute('viewBox', `0 0 ${pathData.width} ${pathData.height}`);
+            }
+
+            if (!container.style.top) container.style.top = '50px';
+            if (!container.style.left) container.style.left = '50px';
+            targetPage.appendChild(container);
+            
+            createEditingHandles(container);
+            makeInteractive(container);
+            handleSelection(container);
+        }
+
+        function getPathDataFromElement(element) {
+            const finalPoints = [];
+            
+            if (element.tagName === 'line') {
+                finalPoints.push({ x: parseFloat(element.getAttribute('x1')), y: parseFloat(element.getAttribute('y1')) });
+                finalPoints.push({ x: parseFloat(element.getAttribute('x2')), y: parseFloat(element.getAttribute('y2')) });
+            } else if (element.tagName === 'polyline') {
+                 element.getAttribute('points').trim().split(' ').forEach(p => {
+                     const [x, y] = p.split(',');
+                     if(!isNaN(parseFloat(x)) && !isNaN(parseFloat(y))) {
+                        finalPoints.push({ x: parseFloat(x), y: parseFloat(y) });
+                     }
+                 });
+            }
+
+            if (finalPoints.length === 0) return { d: '', x: 0, y: 0, width: 0, height: 0 };
+
+            const minX = Math.min(...finalPoints.map(p => p.x));
+            const minY = Math.min(...finalPoints.map(p => p.y));
+            const maxX = Math.max(...finalPoints.map(p => p.x));
+            const maxY = Math.max(...finalPoints.map(p => p.y));
+
+            const relativePoints = finalPoints.map(p => `${p.x - minX} ${p.y - minY}`);
+            let d = 'M ' + relativePoints.join(' L ');
+            if (activeTool === 'polygon') d += ' Z';
+            
+            // Return the absolute position (minX/minY) and the dimensions
+            return { d, x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+        }
+        
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => createObject('image', { src: e.target.result });
+                reader.readAsDataURL(file);
+            }
+            event.target.value = null;
+        }
+
+        function applyStylesToContainer(container, textContent) {
+            container.dataset.textContent = textContent;
+            container.dataset.fontFamily = fontFamilySelect.value;
+            container.dataset.fontSize = fontSizeInput.value;
+            container.dataset.fontWeight = isBold ? 'bold' : 'normal';
+            container.dataset.fontStyle = isItalic ? 'italic' : 'normal';
+            container.dataset.textDecoration = isUnderline ? 'underline' : 'none';
+            container.dataset.fontColor = fontColorInput.value;
+            container.style.backgroundColor = boxBgColorInput.value;
+            container.style.padding = `${boxPaddingInput.value}px`;
+            renderTextBoxText(container);
+        }
+
+        function renderTextBoxText(container) {
+            const svg = container.querySelector('svg');
+            if (!svg) return;
+            while (svg.firstChild) svg.removeChild(svg.firstChild);
+            const { textContent, fontFamily, fontSize, fontWeight, fontStyle, textDecoration, fontColor } = container.dataset;
+            const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            textEl.textContent = textContent;
+            textEl.setAttribute('x', '0');
+            textEl.setAttribute('y', '0');
+            textEl.setAttribute('dominant-baseline', 'hanging');
+            textEl.style.fontFamily = fontFamily;
+            textEl.style.fontSize = `${fontSize}px`;
+            textEl.style.fontWeight = fontWeight;
+            textEl.style.fontStyle = fontStyle;
+            textEl.style.textDecoration = textDecoration;
+            textEl.style.fill = fontColor;
+            svg.appendChild(textEl);
+            updateContainerSize(container);
+        }
+
+        function updateContainerSize(container) {
+            if (container.dataset.objectType !== 'text') return;
+            const svg = container.querySelector('svg');
+            const padding = parseInt(container.style.padding, 10) || 0;
+            setTimeout(() => {
+                if (!container.querySelector('text')) return;
+                const bbox = container.querySelector('text').getBBox();
+                if (bbox.width > 0 && bbox.height > 0) {
+                    container.style.width = `${bbox.width + padding * 2}px`;
+                    container.style.height = `${bbox.height + padding * 2}px`;
+                    svg.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
+                } else {
+                    container.style.width = `${50 + padding * 2}px`;
+                    container.style.height = `${30 + padding * 2}px`;
+                }
+            }, 50);
+        }
+
+        function createEditingHandles(container) {
+            const toolbar = document.createElement('div');
+            toolbar.className = 'edit-toolbar';
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'toolbar-btn';
+            deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg>`;
+            deleteBtn.onclick = () => container.remove();
+            toolbar.appendChild(deleteBtn);
+            container.appendChild(toolbar);
+            const rotateHandle = document.createElement('div');
+            rotateHandle.className = 'rotate-handle';
+            container.appendChild(rotateHandle);
+            ['tl', 'tr', 'bl', 'br'].forEach(pos => {
+                const handle = document.createElement('div');
+                handle.className = `resize-handle ${pos}`;
+                container.appendChild(handle);
+            });
+        }
+        
+        function handleSelection(targetElement) {
+            document.querySelectorAll('.canvas-object').forEach(el => el.classList.remove('selected'));
+            targetElement.classList.add('selected');
+            updateToolbarFromSelection(targetElement);
+        }
+        
+        function makeInteractive(element) {
+            if (element.dataset.objectType === 'text') {
+                element.addEventListener('dblclick', () => enableEditing(element));
+            }
+
+            function dragMouseDown(e) {
+                if (e.target.closest('.toolbar-btn') || e.target.classList.contains('resize-handle') || e.target.classList.contains('rotate-handle') || e.target.closest('.editing-textarea')) return;
+                e.preventDefault();
+                handleSelection(element);
+                let pos = { x: e.clientX, y: e.clientY };
+                function elementDrag(ev) {
+                    ev.preventDefault();
+                    let newPos = { top: ev.clientY - pos.y, left: ev.clientX - pos.x };
+                    pos.y = ev.clientY; pos.x = ev.clientX;
+                    element.style.top = `${element.offsetTop + newPos.top}px`;
+                    element.style.left = `${element.offsetLeft + newPos.left}px`;
+                }
+                function closeDragElement() { document.onmouseup = null; document.onmousemove = null; }
+                document.onmousemove = elementDrag;
+                document.onmouseup = closeDragElement;
+            }
+            element.addEventListener('mousedown', dragMouseDown);
+
+            function resizeMouseDown(e) {
+                e.preventDefault(); e.stopPropagation();
+                handleSelection(element);
+                let size = { x: e.clientX, y: e.clientY, w: element.offsetWidth, h: element.offsetHeight, l: element.offsetLeft, t: element.offsetTop };
+                const handleType = e.target.className.split(' ')[1];
+                function elementResize(ev) {
+                    const dx = ev.clientX - size.x;
+                    const dy = ev.clientY - size.y;
+                    let newWidth = size.w, newHeight = size.h, newLeft = size.l, newTop = size.t;
+                    if (handleType.includes('r')) newWidth = size.w + dx;
+                    if (handleType.includes('l')) { newWidth = size.w - dx; newLeft = size.l + dx; }
+                    if (handleType.includes('b')) newHeight = size.h + dy;
+                    if (handleType.includes('t')) { newHeight = size.h - dy; newTop = size.t + dy; }
+                    if(newWidth > 20) { element.style.width = `${newWidth}px`; element.style.left = `${newLeft}px`; }
+                    if(newHeight > 20) { element.style.height = `${newHeight}px`; element.style.top = `${newTop}px`; }
+                }
+                function closeResizeElement() { document.onmousemove = null; document.onmouseup = null; }
+                document.onmousemove = elementResize;
+                document.onmouseup = closeResizeElement;
+            }
+            element.querySelectorAll('.resize-handle').forEach(h => h.addEventListener('mousedown', resizeMouseDown));
+        
+            function rotateMouseDown(e) {
+                e.preventDefault(); e.stopPropagation();
+                handleSelection(element);
+                const rect = element.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                function elementRotate(ev) {
+                    const angleRad = Math.atan2(ev.clientY - centerY, ev.clientX - centerX);
+                    let angleDeg = angleRad * (180 / Math.PI) + 90;
+                    if (ev.shiftKey) angleDeg = Math.round(angleDeg / 15) * 15;
+                    element.style.transform = `rotate(${angleDeg}deg)`;
+                    element.dataset.rotation = angleDeg;
+                }
+                function closeRotateElement() { document.removeEventListener('mousemove', elementRotate); document.removeEventListener('mouseup', closeRotateElement); }
+                document.addEventListener('mousemove', elementRotate);
+                document.addEventListener('mouseup', closeRotateElement);
+            }
+            element.querySelector('.rotate-handle').addEventListener('mousedown', rotateMouseDown);
+        }
+
+        function enableEditing(container) {
+            const svg = container.querySelector('svg');
+            if (!svg) return;
+            svg.style.display = 'none';
+            const textarea = document.createElement('textarea');
+            textarea.className = 'editing-textarea';
+            textarea.value = container.dataset.textContent;
+            textarea.style.fontFamily = container.dataset.fontFamily;
+            textarea.style.fontSize = `${container.dataset.fontSize}px`;
+            textarea.style.fontWeight = container.dataset.fontWeight;
+            textarea.style.fontStyle = container.dataset.fontStyle;
+            textarea.style.textDecoration = container.dataset.textDecoration;
+            textarea.style.color = container.dataset.fontColor;
+            textarea.style.padding = container.style.padding;
+            container.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            textarea.addEventListener('blur', () => {
+                container.dataset.textContent = textarea.value;
+                renderTextBoxText(container);
+                svg.style.display = 'block';
+                container.removeChild(textarea);
+            });
+        }
+        
+        function updateToolbarFromSelection(element) {
+            fontStyleFieldset.classList.add('hidden');
+            textBoxFieldset.classList.add('hidden');
+            shapePropsFieldset.classList.add('hidden');
+            linePropsFieldset.classList.add('hidden');
+            if (!element) {
+                fontStyleFieldset.classList.remove('hidden');
+                textBoxFieldset.classList.remove('hidden');
+                return;
+            }
+            const type = element.dataset.objectType;
+            if (type === 'text') {
+                fontStyleFieldset.classList.remove('hidden');
+                textBoxFieldset.classList.remove('hidden');
+                const { fontFamily, fontSize, fontWeight, fontStyle, textDecoration, fontColor } = element.dataset;
+                fontFamilySelect.value = fontFamily;
+                fontSizeInput.value = fontSize;
+                fontColorInput.value = fontColor;
+                boxBgColorInput.value = rgbToHex(element.style.backgroundColor);
+                boxPaddingInput.value = parseInt(element.style.padding, 10) || 0;
+                isBold = fontWeight === 'bold';
+                isItalic = fontStyle === 'italic';
+                isUnderline = textDecoration === 'underline';
+                fontBoldBtn.classList.toggle('bg-blue-200', isBold);
+                fontItalicBtn.classList.toggle('bg-blue-200', isItalic);
+                fontUnderlineBtn.classList.toggle('bg-blue-200', isUnderline);
+            } else if (type === 'rect' || type === 'circle') {
+                shapePropsFieldset.classList.remove('hidden');
+                const shape = element.querySelector(type);
+                shapeFillColorInput.value = rgbToHex(shape.getAttribute('fill'));
+                shapeStrokeColorInput.value = rgbToHex(shape.getAttribute('stroke'));
+            } else if (['line', 'scribble', 'polygon'].includes(type)) {
+                linePropsFieldset.classList.remove('hidden');
+                const path = element.querySelector('path');
+                lineColorInput.value = rgbToHex(path.getAttribute('stroke'));
+                lineWidthInput.value = path.getAttribute('stroke-width');
+                if (type === 'polygon') {
+                    shapePropsFieldset.classList.remove('hidden');
+                    shapeFillColorInput.value = rgbToHex(path.getAttribute('fill'));
+                    shapeStrokeColorInput.value = rgbToHex(path.getAttribute('stroke'));
+                }
+            } 
+        }
+
+        function applyStylesToSelected() {
+            const selected = document.querySelector('.canvas-object.selected');
+            if (!selected) return;
+            const type = selected.dataset.objectType;
+            if (type === 'text') {
+                applyStylesToContainer(selected, selected.dataset.textContent);
+            } else if (type === 'rect' || type === 'circle') {
+                const shape = selected.querySelector(type);
+                shape.setAttribute('fill', shapeFillColorInput.value);
+                shape.setAttribute('stroke', shapeStrokeColorInput.value);
+            } else if (['line', 'scribble', 'polygon'].includes(type)) {
+                const path = selected.querySelector('path');
+                path.setAttribute('stroke', lineColorInput.value);
+                path.setAttribute('stroke-width', lineWidthInput.value);
+                if (type === 'polygon') {
+                    path.setAttribute('fill', shapeFillColorInput.value);
+                    path.setAttribute('stroke', shapeStrokeColorInput.value);
+                }
+            }
+        }
+
+        [fontFamilySelect, fontSizeInput, fontColorInput, boxBgColorInput, boxPaddingInput, shapeFillColorInput, shapeStrokeColorInput, lineColorInput, lineWidthInput].forEach(el => el.addEventListener('input', applyStylesToSelected));
+        fontBoldBtn.addEventListener('click', () => { isBold = !isBold; fontBoldBtn.classList.toggle('bg-blue-200'); applyStylesToSelected(); });
+        fontItalicBtn.addEventListener('click', () => { isItalic = !isItalic; fontItalicBtn.classList.toggle('bg-blue-200'); applyStylesToSelected(); });
+        fontUnderlineBtn.addEventListener('click', () => { isUnderline = !isUnderline; fontUnderlineBtn.classList.toggle('bg-blue-200'); applyStylesToSelected(); });
+
+        function rgbToHex(rgb) {
+            if (!rgb || !rgb.startsWith('rgb')) return rgb;
+            let [r, g, b] = rgb.match(/\d+/g).map(Number);
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+
+        function addPage() {
+            const newPage = document.createElement('div');
+            newPage.className = 'printable-area';
+            createDeleteButton(newPage);
+            pageList.appendChild(newPage);
+            newPage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function createDeleteButton(pageElement) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-page-btn toolbar-btn';
+            deleteBtn.title = "Delete Page";
+            deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash3-fill" viewBox="0 0 16 16"><path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3 0l-.5 8.5a.5.5 0 1 0 .998-.06l.5-8.5a.5.5 0 1 0-.998.06m2.5.025l-.5 8.5a.5.5 0 1 0 .998-.06l.5-8.5a.5.5 0 0 0-.998-.06Z"/></svg>`;
+            
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (document.querySelectorAll('.printable-area').length > 1) {
+                    pageElement.remove();
+                } else {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.style.position = 'fixed';
+                    alertDiv.style.top = '20px';
+                    alertDiv.style.left = '50%';
+                    alertDiv.style.transform = 'translateX(-50%)';
+                    alertDiv.style.padding = '12px 24px';
+                    alertDiv.style.backgroundColor = '#f8d7da';
+                    alertDiv.style.color = '#721c24';
+                    alertDiv.style.border = '1px solid #f5c6cb';
+                    alertDiv.style.borderRadius = '8px';
+                    alertDiv.style.zIndex = '200';
+                    alertDiv.textContent = "You can't delete the last page.";
+                    document.body.appendChild(alertDiv);
+                    setTimeout(() => alertDiv.remove(), 3000);
+                }
+            });
+            pageElement.appendChild(deleteBtn);
+        }
+
+        createDeleteButton(document.querySelector('.printable-area'));
+        setActiveTool('select');
+    </script>
+</body>
+</html>
