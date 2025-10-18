@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Page Canvas Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        
+        @font-face {
+            font-family: 'Sassoon Infant';
+            src: url('https://cdn.jsdelivr.net/gh/boobalootoo/things/EYFONTS/SassoonInfantStd.otf') format('opentype');
+        }
+
+        @font-face {
+            font-family: 'Sassoon Infant Dots';
+            src: url('https://cdn.jsdelivr.net/gh/boobalootoo/things/EYFONTS/SassoonInfantStddots.otf') format('opentype');
+        }
+
+        body {
+            font-family: 'Sassoon Infant', sans-serif;
+            padding-top: 150px; /* Make space for the fixed toolbar */
+        }
+        
+        #floating-toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+        }
+
+        .printable-area {
+            width: 210mm;
+            height: 297mm;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+            background-color: white;
+        }
+        
+        .text-container {
+            position: absolute;
+            cursor: move;
+            border: 2px dashed transparent;
+            min-width: 50px;
+            min-height: 30px;
+            box-sizing: border-box;
+            /* Set transform origin to the center for rotation */
+            transform-origin: center center;
+        }
+
+        .text-container.selected {
+            border-color: #3b82f6;
+            border-style: solid;
+        }
+        
+        .text-container:not(.selected):hover {
+             border-color: #93c5fd;
+        }
+
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #3b82f6;
+            border: 2px solid white;
+            border-radius: 50%;
+            display: none;
+            z-index: 10;
+        }
+        
+        .text-container.selected .resize-handle { display: block; }
+        .resize-handle.tl { top: -7px; left: -7px; cursor: nwse-resize; }
+        .resize-handle.tr { top: -7px; right: -7px; cursor: nesw-resize; }
+        .resize-handle.bl { bottom: -7px; left: -7px; cursor: nesw-resize; }
+        .resize-handle.br { bottom: -7px; right: -7px; cursor: nwse-resize; }
+
+        .rotate-handle {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background-color: #f59e0b; /* Amber 500 */
+            border: 2px solid white;
+            border-radius: 50%;
+            bottom: -35px; /* Position it below the box */
+            left: calc(50% - 8px); /* Center it horizontally */
+            cursor: grabbing;
+            display: none;
+            z-index: 10;
+        }
+        /* Line connecting handle to the box */
+        .rotate-handle::before {
+            content: '';
+            position: absolute;
+            bottom: 10px;
+            left: 5px;
+            width: 2px;
+            height: 25px;
+            background-color: #f59e0b;
+            z-index: -1;
+        }
+        .text-container.selected .rotate-handle { display: block; }
+
+        .text-container svg { width: 100%; height: 100%; overflow: visible; }
+        .text-container text { user-select: none; }
+        
+        .edit-toolbar {
+            position: absolute; top: -32px; left: 0;
+            display: none; gap: 4px; z-index: 20;
+        }
+        .text-container.selected .edit-toolbar { display: flex; }
+
+        .toolbar-btn {
+            background: white; border: 1px solid #ccc; border-radius: 5px;
+            width: 28px; height: 28px; display: flex; align-items: center;
+            justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .toolbar-btn:hover { background: #f0f0f0; }
+        
+        .editing-textarea {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            border: none; outline: none; resize: none;
+            background-color: transparent;
+            margin: 0; padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+            white-space: pre-wrap;
+        }
+
+        @media print {
+            body { padding-top: 0; }
+            #floating-toolbar, .edit-toolbar, .resize-handle, .rotate-handle { display: none !important; }
+            #pages-container {
+                margin: 0;
+                padding: 0;
+            }
+            .printable-area {
+                box-shadow: none;
+                border: none;
+                margin: 0;
+                page-break-after: always; /* Add page break after each page */
+            }
+            .text-container.selected, .text-container:hover { border-color: transparent !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- Floating Toolbar -->
+    <div id="floating-toolbar" class="bg-white p-4 shadow-md">
+        <div class="max-w-6xl mx-auto flex flex-col gap-4">
+             <div class="flex flex-wrap items-center gap-6">
+                <button id="add-text-box-btn" class="px-5 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75">
+                    Add Text Box
+                </button>
+                 <button id="add-page-btn" class="px-5 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-75">
+                    Add Page
+                </button>
+                 <div class="h-8 border-l border-gray-300"></div>
+                 <button id="print-btn" class="px-5 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75">
+                    Print
+                </button>
+            </div>
+            <div class="flex flex-wrap gap-x-6 gap-y-4 items-end border-t pt-4">
+                <fieldset class="p-0 m-0 border-0">
+                     <legend class="text-sm font-medium text-gray-600 mb-1">Font Style (for selected box)</legend>
+                    <div class="flex items-center gap-4">
+                        <select id="font-family" class="p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                            <option value="Sassoon Infant">Sassoon Infant</option>
+                            <option value="Sassoon Infant Dots">Sassoon Infant Dots</option>
+                        </select>
+                        <input type="number" id="font-size" value="48" class="p-2 border rounded-md w-20 focus:ring-2 focus:ring-blue-500 focus:outline-none" title="Font Size">
+                         <div class="flex items-center space-x-2">
+                            <button id="font-bold" class="px-3 py-2 border rounded-md" title="Bold"><b>B</b></button>
+                            <button id="font-italic" class="px-3 py-2 border rounded-md" title="Italic"><i>I</i></button>
+                            <button id="font-underline" class="px-3 py-2 border rounded-md" title="Underline"><u>U</u></button>
+                        </div>
+                        <input type="color" id="font-color" value="#000000" class="w-12 h-10 border-0 rounded-md cursor-pointer" title="Font Color">
+                    </div>
+                </fieldset>
+                
+                <fieldset class="p-0 m-0 border-0">
+                     <legend class="text-sm font-medium text-gray-600 mb-1">Text Box Options (for selected box)</legend>
+                     <div class="flex items-center gap-4">
+                        <input type="color" id="box-bg-color" value="#ffffff" class="w-12 h-10 border-0 rounded-md cursor-pointer" title="Background Color">
+                        <input type="number" id="box-padding" value="10" min="0" class="p-2 border rounded-md w-20 focus:ring-2 focus:ring-blue-500 focus:outline-none" title="Padding (px)">
+                    </div>
+                </fieldset>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Canvas / Pages Container -->
+    <div id="pages-container" class="flex flex-col items-center gap-8 py-8">
+        <div class="printable-area">
+            <!-- First page content will be added here -->
+        </div>
+    </div>
+
+    <script>
+        // DOM ELEMENTS
+        const fontFamilySelect = document.getElementById('font-family');
+        const fontSizeInput = document.getElementById('font-size');
+        const fontBoldBtn = document.getElementById('font-bold');
+        const fontItalicBtn = document.getElementById('font-italic');
+        const fontUnderlineBtn = document.getElementById('font-underline');
+        const fontColorInput = document.getElementById('font-color');
+        const addTextBoxBtn = document.getElementById('add-text-box-btn');
+        const addPageBtn = document.getElementById('add-page-btn');
+        const printBtn = document.getElementById('print-btn');
+        const pagesContainer = document.getElementById('pages-container');
+        const boxBgColorInput = document.getElementById('box-bg-color');
+        const boxPaddingInput = document.getElementById('box-padding');
+        
+        let isBold = false;
+        let isItalic = false;
+        let isUnderline = false;
+
+        // EVENT LISTENERS
+        addTextBoxBtn.addEventListener('click', () => createTextContainer());
+        addPageBtn.addEventListener('click', () => addPage());
+        printBtn.addEventListener('click', () => window.print());
+
+        function addPage() {
+            const newPage = document.createElement('div');
+            newPage.className = 'printable-area';
+            pagesContainer.appendChild(newPage);
+            newPage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function createTextContainer() {
+            const lastPage = document.querySelector('.printable-area:last-child');
+            if (!lastPage) return;
+
+            const container = document.createElement('div');
+            container.className = 'text-container';
+            container.dataset.rotation = '0'; // Initialize rotation
+            
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            
+            textEl.textContent = "Double-click to edit";
+            textEl.setAttribute('x', '0');
+            textEl.setAttribute('y', '0');
+            textEl.setAttribute('dominant-baseline', 'hanging');
+            textEl.style.fontFamily = fontFamilySelect.value;
+            textEl.style.fontSize = `${fontSizeInput.value}px`;
+            textEl.style.fontWeight = isBold ? 'bold' : 'normal';
+            textEl.style.fontStyle = isItalic ? 'italic' : 'normal';
+            textEl.style.textDecoration = isUnderline ? 'underline' : 'none';
+            textEl.style.fill = fontColorInput.value;
+
+            svg.appendChild(textEl);
+            container.appendChild(svg);
+            lastPage.appendChild(container);
+            
+            const padding = parseInt(boxPaddingInput.value, 10) || 0;
+            container.style.backgroundColor = boxBgColorInput.value;
+            container.style.padding = `${padding}px`;
+            
+            updateContainerSize(container);
+            
+            container.style.top = '50px';
+            container.style.left = '50px';
+            
+            createEditingHandles(container);
+            makeInteractive(container);
+            handleSelection(container);
+        }
+
+        function updateContainerSize(container) {
+            const textEl = container.querySelector('text');
+            const svg = container.querySelector('svg');
+            const padding = parseInt(container.style.padding, 10) || 0;
+            // A temporary fix for a Firefox bug where getBBox is incorrect on first render
+            setTimeout(() => {
+                const bbox = textEl.getBBox();
+                container.style.width = `${bbox.width + (padding * 2)}px`;
+                container.style.height = `${bbox.height + (padding * 2)}px`;
+                svg.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
+            }, 0);
+        }
+
+        function createEditingHandles(container) {
+            const toolbar = document.createElement('div');
+            toolbar.className = 'edit-toolbar';
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'toolbar-btn';
+            deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg>`;
+            deleteBtn.onclick = () => container.remove();
+            
+            deleteBtn.style.marginLeft = 'auto'; 
+            toolbar.appendChild(deleteBtn);
+            container.appendChild(toolbar);
+
+            // Rotation handle
+            const rotateHandle = document.createElement('div');
+            rotateHandle.className = 'rotate-handle';
+            container.appendChild(rotateHandle);
+
+            // Resize handles
+            ['tl', 'tr', 'bl', 'br'].forEach(pos => {
+                const handle = document.createElement('div');
+                handle.className = `resize-handle ${pos}`;
+                container.appendChild(handle);
+            });
+        }
+        
+        function handleSelection(targetElement) {
+            document.querySelectorAll('.text-container').forEach(el => el.classList.remove('selected'));
+            targetElement.classList.add('selected');
+            updateToolbarFromSelection(targetElement);
+        }
+
+        pagesContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('printable-area')) {
+                 document.querySelectorAll('.text-container').forEach(el => el.classList.remove('selected'));
+            }
+        });
+        
+        function makeInteractive(element) {
+            element.addEventListener('dblclick', () => enableEditing(element));
+
+            function dragMouseDown(e) {
+                if (e.target.closest('.toolbar-btn') || e.target.classList.contains('resize-handle') || e.target.classList.contains('rotate-handle')) return;
+                e.preventDefault();
+                handleSelection(element);
+                let pos = { x: e.clientX, y: e.clientY };
+                
+                function elementDrag(ev) {
+                    ev.preventDefault();
+                    let newPos = { top: ev.clientY - pos.y, left: ev.clientX - pos.x };
+                    pos.y = ev.clientY;
+                    pos.x = ev.clientX;
+                    element.style.top = `${element.offsetTop + newPos.top}px`;
+                    element.style.left = `${element.offsetLeft + newPos.left}px`;
+                }
+                function closeDragElement() {
+                    document.onmouseup = null; document.onmousemove = null;
+                }
+                document.onmousemove = elementDrag;
+                document.onmouseup = closeDragElement;
+            }
+            element.addEventListener('mousedown', dragMouseDown);
+
+            function resizeMouseDown(e) {
+                e.preventDefault(); e.stopPropagation();
+                handleSelection(element);
+                let size = { x: e.clientX, y: e.clientY, w: element.offsetWidth, h: element.offsetHeight, l: element.offsetLeft, t: element.offsetTop };
+                const handleType = e.target.className.split(' ')[1];
+
+                function elementResize(ev) {
+                    const dx = ev.clientX - size.x;
+                    const dy = ev.clientY - size.y;
+                    let newWidth = size.w, newHeight = size.h, newLeft = size.l, newTop = size.t;
+                    if (handleType.includes('r')) newWidth = size.w + dx;
+                    if (handleType.includes('l')) { newWidth = size.w - dx; newLeft = size.l + dx; }
+                    if (handleType.includes('b')) newHeight = size.h + dy;
+                    if (handleType.includes('t')) { newHeight = size.h - dy; newTop = size.t + dy; }
+                    if(newWidth > 20) { element.style.width = `${newWidth}px`; element.style.left = `${newLeft}px`; }
+                    if(newHeight > 20) { element.style.height = `${newHeight}px`; element.style.top = `${newTop}px`; }
+                }
+                function closeResizeElement() { document.onmousemove = null; document.onmouseup = null; }
+                document.onmousemove = elementResize;
+                document.onmouseup = closeResizeElement;
+            }
+            element.querySelectorAll('.resize-handle').forEach(h => h.addEventListener('mousedown', resizeMouseDown));
+        
+            function rotateMouseDown(e) {
+                e.preventDefault(); e.stopPropagation();
+                handleSelection(element);
+                const rect = element.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+
+                function elementRotate(ev) {
+                    const angleRad = Math.atan2(ev.clientY - centerY, ev.clientX - centerX);
+                    let angleDeg = angleRad * (180 / Math.PI) + 90; // Offset by 90 to make 'up' 0 degrees
+                    if (ev.shiftKey) angleDeg = Math.round(angleDeg / 15) * 15; // Snap to 15-degree increments
+                    element.style.transform = `rotate(${angleDeg}deg)`;
+                    element.dataset.rotation = angleDeg;
+                }
+
+                function closeRotateElement() {
+                    document.removeEventListener('mousemove', elementRotate);
+                    document.removeEventListener('mouseup', closeRotateElement);
+                }
+                document.addEventListener('mousemove', elementRotate);
+                document.addEventListener('mouseup', closeRotateElement);
+            }
+            element.querySelector('.rotate-handle').addEventListener('mousedown', rotateMouseDown);
+        }
+
+        function enableEditing(container) {
+            const svg = container.querySelector('svg');
+            const textEl = container.querySelector('text');
+
+            // FIX: The error indicates the svg element is sometimes not found.
+            // This guard prevents the script from crashing if either the svg or text
+            // element is missing when trying to enter edit mode.
+            if (!svg || !textEl) {
+                console.error("Cannot edit text box: internal svg/text element not found.");
+                return;
+            }
+
+            svg.style.display = 'none';
+            const textarea = document.createElement('textarea');
+            textarea.className = 'editing-textarea';
+            textarea.value = textEl.textContent;
+            textarea.style.fontFamily = textEl.style.fontFamily;
+            textarea.style.fontSize = textEl.style.fontSize;
+            textarea.style.fontWeight = textEl.style.fontWeight;
+            textarea.style.fontStyle = textEl.style.fontStyle;
+            textarea.style.textDecoration = textEl.style.textDecoration;
+            textarea.style.color = textEl.style.fill;
+            textarea.style.padding = container.style.padding;
+            container.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            textarea.addEventListener('blur', () => {
+                textEl.textContent = textarea.value;
+                svg.style.display = 'block';
+                container.removeChild(textarea);
+                updateContainerSize(container);
+            });
+        }
+
+        function updateToolbarFromSelection(element) {
+            const textEl = element.querySelector('text');
+            fontFamilySelect.value = textEl.style.fontFamily;
+            fontSizeInput.value = parseInt(textEl.style.fontSize, 10);
+            fontColorInput.value = rgbToHex(textEl.style.fill);
+            boxBgColorInput.value = rgbToHex(element.style.backgroundColor);
+            boxPaddingInput.value = parseInt(element.style.padding, 10) || 0;
+            isBold = textEl.style.fontWeight === 'bold';
+            isItalic = textEl.style.fontStyle === 'italic';
+            isUnderline = textEl.style.textDecoration === 'underline';
+            fontBoldBtn.classList.toggle('bg-blue-200', isBold);
+            fontItalicBtn.classList.toggle('bg-blue-200', isItalic);
+            fontUnderlineBtn.classList.toggle('bg-blue-200', isUnderline);
+        }
+
+        function applyStylesToSelected() {
+            const selected = document.querySelector('.text-container.selected');
+            if (!selected) return;
+            const textEl = selected.querySelector('text');
+            textEl.style.fontFamily = fontFamilySelect.value;
+            textEl.style.fontSize = `${fontSizeInput.value}px`;
+            textEl.style.fontWeight = isBold ? 'bold' : 'normal';
+            textEl.style.fontStyle = isItalic ? 'italic' : 'normal';
+            textEl.style.textDecoration = isUnderline ? 'underline' : 'none';
+            textEl.style.fill = fontColorInput.value;
+            selected.style.backgroundColor = boxBgColorInput.value;
+            selected.style.padding = `${boxPaddingInput.value}px`;
+            updateContainerSize(selected);
+        }
+
+        [fontFamilySelect, fontSizeInput, fontColorInput, boxBgColorInput, boxPaddingInput].forEach(el => el.addEventListener('input', applyStylesToSelected));
+        fontBoldBtn.addEventListener('click', () => { isBold = !isBold; fontBoldBtn.classList.toggle('bg-blue-200'); applyStylesToSelected(); });
+        fontItalicBtn.addEventListener('click', () => { isItalic = !isItalic; fontItalicBtn.classList.toggle('bg-blue-200'); applyStylesToSelected(); });
+        fontUnderlineBtn.addEventListener('click', () => { isUnderline = !isUnderline; fontUnderlineBtn.classList.toggle('bg-blue-200'); applyStylesToSelected(); });
+
+        function rgbToHex(rgb) {
+            if (!rgb || !rgb.startsWith('rgb')) return rgb;
+            let [r, g, b] = rgb.match(/\d+/g).map(Number);
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+    </script>
+</body>
+</html>
+
