@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Audio Uploader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5; /* Light gray background */
+        }
+        .audio-player-container {
+            background-color: white;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: all 0.2s ease-in-out;
+        }
+        .upload-area {
+            border: 2px dashed #d1d5db;
+            transition: all 0.2s ease-in-out;
+        }
+        .upload-area.dragover {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            transition: background-color 0.2s;
+        }
+        .file-item:hover {
+            background-color: #f3f4f6;
+        }
+        .play-button {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .play-button.playing { background-color: #ef4444; }
+        .play-button:not(.playing) { background-color: #3b82f6; }
+        .waveform-container {
+            position: relative;
+            flex-grow: 1;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            margin: 0 1rem;
+            overflow: hidden;
+        }
+        .waveform-progress {
+            position: absolute;
+            height: 100%;
+            background-color: rgba(59, 130, 246, 0.4);
+            z-index: 2;
+        }
+        .waveform-cursor {
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background-color: #1d4ed8;
+            z-index: 3;
+            left: 0;
+        }
+        .waveform-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div class="audio-player-container w-full max-w-4xl">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">Audio Editor</h1>
+        <p class="text-gray-500 mb-6">Upload audio files to trim silence, then download the results.</p>
+        
+        <!-- Global Controls -->
+        <div class="mb-6 p-4 bg-gray-50 rounded-lg border grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label for="silence-threshold" class="block text-sm font-medium text-gray-700">Silence Threshold</label>
+                <div class="flex items-center space-x-3 mt-1">
+                    <input id="silence-threshold" type="range" min="0" max="100" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                    <span id="threshold-value" class="text-sm text-gray-600 font-mono w-12 text-right">1%</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Sounds below this volume will be considered silence.</p>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+                <button id="trim-all-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition-colors text-sm">Trim All</button>
+                <button id="undo-all-btn" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 rounded-lg transition-colors text-sm">Undo All</button>
+                <button id="download-all-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg transition-colors text-sm">Download All</button>
+            </div>
+        </div>
+
+        <!-- File Upload Area -->
+        <div id="upload-area" class="upload-area rounded-lg p-10 text-center cursor-pointer mb-6">
+            <input type="file" id="file-input" class="hidden" multiple accept="audio/*">
+            <div class="flex flex-col items-center">
+                <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <p class="mt-2 text-sm text-gray-600"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                <p class="text-xs text-gray-500">MP3, WAV, OGG, or any audio format</p>
+            </div>
+        </div>
+
+        <!-- Audio File List -->
+        <div id="file-list-container">
+            <h2 class="text-lg font-semibold text-gray-700 mb-4 hidden" id="list-header">Uploaded Files</h2>
+            <div id="file-list" class="space-y-3"></div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const listHeader = document.getElementById('list-header');
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const silenceThresholdSlider = document.getElementById('silence-threshold');
+        const thresholdValueSpan = document.getElementById('threshold-value');
+        const trimAllBtn = document.getElementById('trim-all-btn');
+        const undoAllBtn = document.getElementById('undo-all-btn');
+        const downloadAllBtn = document.getElementById('download-all-btn');
+
+        silenceThresholdSlider.addEventListener('input', (e) => {
+            thresholdValueSpan.textContent = `${e.target.value}%`;
+        });
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        trimAllBtn.addEventListener('click', () => document.querySelectorAll('.trim-btn:not(.hidden)').forEach(btn => btn.click()));
+        undoAllBtn.addEventListener('click', () => document.querySelectorAll('.undo-btn:not(.hidden)').forEach(btn => btn.click()));
+        downloadAllBtn.addEventListener('click', async () => {
+            const items = document.querySelectorAll('.file-item');
+            if (items.length === 0) return;
+
+            downloadAllBtn.textContent = 'Zipping...';
+            downloadAllBtn.disabled = true;
+
+            const zip = new JSZip();
+            const promises = [];
+
+            items.forEach((item, index) => {
+                const audioEl = item.querySelector('audio');
+                if (audioEl) {
+                    const audioSrc = audioEl.src;
+                    const filename = `trimmed-${index + 1}-${item.dataset.filename || 'audio'}.wav`;
+                    promises.push(
+                        fetch(audioSrc)
+                            .then(res => res.blob())
+                            .then(blob => zip.file(filename, blob))
+                    );
+                }
+            });
+
+            await Promise.all(promises);
+
+            const zipBlob = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(zipBlob);
+            link.download = 'trimmed_audio_files.zip';
+            link.click();
+            URL.revokeObjectURL(link.href);
+
+            downloadAllBtn.textContent = 'Download All';
+            downloadAllBtn.disabled = false;
+        });
+
+        function handleFiles(files) {
+            if (files.length > 0) listHeader.classList.remove('hidden');
+            [...files].forEach(file => {
+                if (file.type.startsWith('audio/')) createAudioPlayer(file);
+            });
+        }
+        
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${secs.toFixed(2).padStart(5, '0')}`;
+        }
+        
+        function drawWaveformFromBuffer(audioBuffer, canvas) {
+            const data = audioBuffer.getChannelData(0);
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            const width = canvas.clientWidth, height = canvas.clientHeight, middle = height / 2;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#9ca3af';
+            ctx.beginPath();
+            const samples = width;
+            const chunkSize = Math.floor(data.length / samples);
+            for (let i = 0; i < samples; i++) {
+                const chunkStart = i * chunkSize;
+                let min = 1.0, max = -1.0;
+                for (let j = 0; j < chunkSize; j++) {
+                    const sample = data[chunkStart + j];
+                    if (sample < min) min = sample;
+                    if (sample > max) max = sample;
+                }
+                ctx.moveTo(i, middle + min * middle);
+                ctx.lineTo(i, middle + max * middle);
+            }
+            ctx.stroke();
+        }
+
+        async function decodeAndDrawWaveform(file, canvas) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                canvas.parentElement.audioBuffer = audioBuffer; 
+                drawWaveformFromBuffer(audioBuffer, canvas);
+            } catch (error) {
+                console.error("Error drawing waveform:", error);
+            }
+        }
+        
+        function trimSilence(audioBuffer, threshold) {
+            const data = audioBuffer.getChannelData(0);
+            let startIndex = 0, endIndex = data.length - 1;
+
+            for (let i = 0; i < data.length; i++) {
+                if (Math.abs(data[i]) > threshold) { startIndex = i; break; }
+            }
+            for (let i = data.length - 1; i >= 0; i--) {
+                if (Math.abs(data[i]) > threshold) { endIndex = i; break; }
+            }
+            if (startIndex >= endIndex) return audioBuffer;
+
+            const padding = 1000;
+            startIndex = Math.max(0, startIndex - padding);
+            endIndex = Math.min(data.length - 1, endIndex + padding);
+
+            const newLength = endIndex - startIndex + 1;
+            const newBuffer = audioContext.createBuffer(audioBuffer.numberOfChannels, newLength, audioContext.sampleRate);
+            for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+                newBuffer.getChannelData(channel).set(audioBuffer.getChannelData(channel).subarray(startIndex, endIndex + 1));
+            }
+            return newBuffer;
+        }
+
+        function bufferToWave(audioBuffer) {
+            let numOfChan = audioBuffer.numberOfChannels,
+                length = audioBuffer.length * numOfChan * 2 + 44,
+                buffer = new ArrayBuffer(length),
+                view = new DataView(buffer),
+                channels = [], i, sample, offset = 0, pos = 0;
+            const setUint16 = data => { view.setUint16(pos, data, true); pos += 2; };
+            const setUint32 = data => { view.setUint32(pos, data, true); pos += 4; };
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1);
+            setUint16(numOfChan); setUint32(audioBuffer.sampleRate);
+            setUint32(audioBuffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16);
+            setUint32(0x61746164); setUint32(length - pos - 4);
+            for (i = 0; i < audioBuffer.numberOfChannels; i++) channels.push(audioBuffer.getChannelData(i));
+            while (pos < length) {
+                for (i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    view.setInt16(pos, sample, true); pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([buffer], { type: "audio/wav" });
+        }
+
+        function createAudioPlayer(file) {
+            const fileId = `file-${Math.random().toString(36).substr(2, 9)}`;
+            
+            const playerItem = document.createElement('div');
+            playerItem.className = 'file-item';
+            playerItem.id = fileId;
+            playerItem.dataset.filename = file.name;
+
+            playerItem.innerHTML = `
+                <audio class="hidden" src="${URL.createObjectURL(file)}"></audio>
+                <button class="play-button flex-shrink-0">
+                    <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+                </button>
+                <div class="waveform-container">
+                    <canvas class="waveform-canvas"></canvas>
+                    <div class="waveform-progress"></div>
+                    <div class="waveform-cursor"></div>
+                </div>
+                <div class="flex items-center text-gray-600 text-sm font-mono flex-shrink-0">
+                    <span id="current-time-${fileId}">00:00.00</span>
+                    <span id="duration-${fileId}" class="ml-1">/ 00:00.00</span>
+                </div>
+                <div class="flex items-center flex-shrink-0 ml-4 space-x-2">
+                    <button class="text-gray-400 hover:text-blue-500 transition-colors trim-btn" title="Trim Silence">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121M12 12L4 4m15 15l-7-7m7 7H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2z"></path></svg>
+                    </button>
+                    <button class="text-gray-400 hover:text-yellow-500 transition-colors undo-btn hidden" title="Undo Trim">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
+                    </button>
+                    <button class="text-gray-400 hover:text-green-500 transition-colors download-btn" title="Download">
+                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    </button>
+                    <button class="text-gray-400 hover:text-red-500 transition-colors remove-btn" title="Remove">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"></path></svg>
+                    </button>
+                </div>
+            `;
+            fileList.appendChild(playerItem);
+            
+            const audio = playerItem.querySelector('audio');
+            const canvas = playerItem.querySelector('.waveform-canvas');
+            decodeAndDrawWaveform(file, canvas);
+
+            const playButton = playerItem.querySelector('.play-button');
+            const progressEl = playerItem.querySelector('.waveform-progress');
+            const cursorEl = playerItem.querySelector('.waveform-cursor');
+            const trimBtn = playerItem.querySelector('.trim-btn');
+            const undoBtn = playerItem.querySelector('.undo-btn');
+            const downloadBtn = playerItem.querySelector('.download-btn');
+            const removeBtn = playerItem.querySelector('.remove-btn');
+
+            let currentDuration = 0;
+            audio.addEventListener('loadedmetadata', () => {
+                currentDuration = audio.duration;
+                document.getElementById(`duration-${fileId}`).textContent = `/ ${formatTime(currentDuration)}`;
+            });
+
+            const updateAudioSrc = (newBlob) => {
+                const oldUrl = audio.src;
+                audio.src = URL.createObjectURL(newBlob);
+                URL.revokeObjectURL(oldUrl);
+            };
+
+            trimBtn.addEventListener('click', () => {
+                const waveformContainer = canvas.parentElement;
+                const currentBuffer = waveformContainer.audioBuffer;
+                if (!currentBuffer) return;
+                
+                if (!waveformContainer.originalBuffer) {
+                    waveformContainer.originalBuffer = currentBuffer;
+                }
+                
+                const threshold = parseInt(silenceThresholdSlider.value) / 100;
+                const newTrimmedBuffer = trimSilence(currentBuffer, threshold);
+                
+                waveformContainer.audioBuffer = newTrimmedBuffer;
+                updateAudioSrc(bufferToWave(newTrimmedBuffer));
+                drawWaveformFromBuffer(newTrimmedBuffer, canvas);
+
+                trimBtn.classList.add('hidden');
+                undoBtn.classList.remove('hidden');
+            });
+
+            undoBtn.addEventListener('click', () => {
+                const waveformContainer = canvas.parentElement;
+                const originalBuffer = waveformContainer.originalBuffer;
+                if (!originalBuffer) return;
+
+                waveformContainer.audioBuffer = originalBuffer;
+                updateAudioSrc(bufferToWave(originalBuffer));
+                drawWaveformFromBuffer(originalBuffer, canvas);
+                
+                undoBtn.classList.add('hidden');
+                trimBtn.classList.remove('hidden');
+            });
+            
+            downloadBtn.addEventListener('click', () => {
+                const link = document.createElement('a');
+                link.href = audio.src;
+                link.download = `trimmed-${playerItem.dataset.filename || 'audio'}.wav`;
+                link.click();
+            });
+
+            removeBtn.addEventListener('click', () => {
+                audio.pause();
+                URL.revokeObjectURL(audio.src);
+                playerItem.remove();
+                if (fileList.children.length === 0) listHeader.classList.add('hidden');
+            });
+
+            playButton.addEventListener('click', () => {
+                if (audio.paused) audio.play(); else audio.pause();
+            });
+            
+            audio.addEventListener('play', () => {
+                playButton.classList.add('playing');
+                playButton.innerHTML = `<svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"></path></svg>`;
+            });
+
+            const onPauseOrEnd = () => {
+                playButton.classList.remove('playing');
+                playButton.innerHTML = `<svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
+                if (audio.ended) {
+                     progressEl.style.width = '0%';
+                     cursorEl.style.left = `0%`;
+                     document.getElementById(`current-time-${fileId}`).textContent = formatTime(0);
+                }
+            };
+            audio.addEventListener('pause', onPauseOrEnd);
+            audio.addEventListener('ended', onPauseOrEnd);
+
+            audio.addEventListener('timeupdate', () => {
+                if (currentDuration > 0) {
+                    const progress = (audio.currentTime / currentDuration) * 100;
+                    document.getElementById(`current-time-${fileId}`).textContent = formatTime(audio.currentTime);
+                    progressEl.style.width = `${progress}%`;
+                    cursorEl.style.left = `${progress}%`;
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+
