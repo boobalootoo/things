@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simplified Single-Task Train Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --train-translate-x: 0px; }
+        body { background: #f3ffec; font-family: 'Inter', sans-serif; }
+        /* --- Train & Track --- */
+        #train-container { position: absolute; top: 0; left: 0%; transform: translateX(var(--train-translate-x)); transition: transform 1s linear; will-change: transform; z-index: 10; }
+        #train-emoji { font-size: 4rem; transform: scaleX(-1); display: inline-block; }
+        #track-container { 
+            position: relative; 
+            height: 10rem; 
+            width: 100%; 
+            max-width: 100%; /* Ensures full width */
+        }
+        #track-bed { 
+            position: absolute; 
+            width: 100%; 
+            height: 3rem; 
+            bottom: 3.5rem; 
+            overflow: hidden; 
+            
+            /* Using the requested external track image */
+            background-image: url('https://raw.githubusercontent.com/boobalootoo/BRAINFRESHEN/main/RUNAWAYBRAIN/tracks.png'); 
+            background-repeat: repeat-x;
+            background-size: auto 100%; 
+            
+            border-radius: 4px; 
+            z-index: 1; 
+        }
+        .station-marker { display: none; /* Hide station markers as we only have one task */ }
+        
+        /* Modal Styling */
+        .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.55); backdrop-filter: blur(4px); }
+        .control-button { @apply px-4 py-2 text-base rounded-xl font-bold transition-all duration-200 shadow-md; @apply focus:outline-none focus:ring-4 focus:ring-offset-2; }
+
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- SETUP MODAL (appears on load/reset) --><div id="setup-modal" class="fixed inset-0 flex items-center justify-center p-4 z-50 transition-opacity duration-300 hidden">
+        <div class="modal-backdrop" id="setup-backdrop"></div>
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm z-10 border-t-8 border-indigo-500 transform scale-100 transition-transform duration-300" role="dialog" aria-modal="true" aria-label="Set Timer Duration">
+            <h2 class="text-2xl font-extrabold mb-5 text-gray-800 text-center">Start Your Focus Journey</h2>
+            
+            <!-- Duration Input --><div class="mb-5">
+                <label for="duration-input" class="block text-sm font-medium text-gray-700 mb-2">Total Duration (Minutes)</label>
+                <input type="number" id="duration-input" min="1" value="25" class="w-full p-3 border-2 border-indigo-300 rounded-lg text-xl text-center focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="e.g., 25">
+            </div>
+
+            <!-- Announcement Checkbox --><div class="mb-6 bg-indigo-50 p-3 rounded-lg border border-indigo-200">
+                <label class="inline-flex items-center cursor-pointer w-full">
+                    <input type="checkbox" id="announce-toggle" checked class="form-checkbox h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500">
+                    <span class="ml-3 text-sm font-medium text-gray-700">Announce 5 minutes before end</span>
+                </label>
+            </div>
+
+            <button id="start-journey-button" class="control-button bg-indigo-600 hover:bg-indigo-700 text-white focus:ring-indigo-300 w-full justify-center flex">
+                Start Timer 🚀
+            </button>
+        </div>
+    </div>
+
+    <!-- Alert/Message Container --><div id="message-display" class="fixed top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-red-600 text-white rounded-lg shadow-xl hidden transition-opacity duration-300 opacity-0 z-[100]"></div>
+
+    <!-- TRACK + TRAIN --><div class="flex flex-col items-center w-full mt-8 mb-12">
+        <div id="track-container" class="mx-auto px-4 md:px-8">
+            <div id="train-container" class="cursor-pointer" title="I am the Minute Express!">
+                <span id="train-emoji" role="img" aria-label="Train Emoji">🚂</span>
+            </div>
+            <div id="track-bed"></div>
+            <!-- Station markers container remains but is hidden via CSS as there is only one destination --><div id="station-markers-container"></div>
+        </div>
+    </div>
+
+    <!-- Timer Display and Controls (Now includes the Live Clock) --><div class="flex flex-col items-center bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full">
+        
+        <div class="flex justify-between items-end w-full space-x-4 mb-4">
+            <!-- Countdown Timer --><div class="flex-1 text-center border-r pr-4">
+                <div class="text-xs font-semibold uppercase text-red-600 mb-1">Remaining</div>
+                <div id="compact-status-display" class="text-4xl font-mono font-extrabold text-gray-900">00:00</div>
+            </div>
+            <!-- Live Clock --><div class="flex-1 text-center pl-4">
+                <div class="text-xs font-semibold uppercase text-indigo-600 mb-1">Current Time</div>
+                <!-- Reduced font size to accommodate AM/PM suffix, and now only shows HH:MM -->
+                <div id="live-clock-display" class="text-3xl font-mono font-bold text-gray-700">--:-- --</div>
+            </div>
+        </div>
+
+        <div class="flex space-x-4 pt-4 w-full justify-center">
+            <!-- Start/Pause/Reset Button --><button id="start-reset-button" class="text-3xl p-4 rounded-full transition-all duration-200 shadow-xl focus:outline-none focus:ring-4 focus:ring-offset-2 bg-gray-200 hover:bg-gray-300 text-gray-800" title="Start / Pause / Reset">
+                <span id="control-icon" class="text-3xl leading-none">▶️</span>
+            </button>
+            
+            <!-- Mute Button --><button id="mute-button" class="text-3xl p-4 rounded-full transition-all duration-200 shadow-xl focus:outline-none focus:ring-4 focus:ring-offset-2 bg-gray-200 hover:bg-gray-300" title="Toggle Sound">
+                <span id="mute-icon" class="text-3xl leading-none">🔈</span>
+            </button>
+
+            <!-- Settings Button (to re-open setup modal) --><button id="open-setup-button" class="text-3xl p-4 rounded-full transition-all duration-200 shadow-xl focus:outline-none focus:ring-4 focus:ring-offset-2 bg-gray-200 hover:bg-gray-300 text-gray-800" title="Change Timer Settings">
+                ⚙️
+            </button>
+        </div>
+        
+        <div id="station-list-preview" class="mt-3 text-gray-500 text-sm text-center w-full pt-1 border-t">Task: Focus Session</div>
+    </div>
+
+
+    <script>
+        // --- State & DOM references ---
+        let isAudioInitialized = false;
+        let isMuted = false;
+        let totalDurationSeconds = 0;
+        let startTime = 0;
+        let elapsedTimeOnPause = 0;
+        let animationFrameId = null;
+        let isRunning = false;
+        let fiveMinuteAnnounced = false;
+        let arrivalAnnounceEnabled = true; // Default setting loaded from setup modal
+        
+        const trackContainer = document.getElementById('track-container');
+        const trainContainer = document.getElementById('train-container');
+        const trainEmoji = document.getElementById('train-emoji');
+        const messageDisplay = document.getElementById('message-display');
+
+        // Main Controls
+        const compactStatusDisplay = document.getElementById('compact-status-display');
+        const startResetButton = document.getElementById('start-reset-button');
+        const muteButton = document.getElementById('mute-button');
+        const muteIcon = document.getElementById('mute-icon');
+        const controlIcon = document.getElementById('control-icon');
+        const openSetupButton = document.getElementById('open-setup-button');
+        const taskNameDisplay = document.getElementById('station-list-preview');
+
+        // New Clock Display element
+        const liveClockDisplay = document.getElementById('live-clock-display');
+        let clockIntervalId = null; 
+
+        // Setup Modal Elements
+        const setupModal = document.getElementById('setup-modal');
+        const durationInput = document.getElementById('duration-input');
+        const announceToggle = document.getElementById('announce-toggle');
+        const startJourneyButton = document.getElementById('start-journey-button');
+
+        // Audio & assets URLs (using same assets for consistency)
+        const CHUG_URL = 'https://raw.githubusercontent.com/boobalootoo/BRAINFRESHEN/main/RUNAWAYBRAIN/chug.wav';
+        const CHOO_URL = 'https://raw.githubusercontent.com/boobalootoo/BRAINFRESHEN/main/RUNAWAYBRAIN/choo.mp3';
+        let chugAudio = null, chooAudio = null;
+        const LOCAL_STORAGE_KEY = 'simplifiedTrainTimerConfig'; 
+
+        // --- Custom Message Display (Replaces alert()) ---
+        function displayMessage(text, isError = true) {
+            console.warn(`[Message] ${text}`);
+            messageDisplay.textContent = text;
+            messageDisplay.classList.remove('hidden', 'bg-green-500', 'bg-red-600', 'opacity-0');
+            messageDisplay.classList.add(isError ? 'bg-red-600' : 'bg-green-500', 'opacity-100');
+            setTimeout(() => {
+                messageDisplay.classList.remove('opacity-100');
+                messageDisplay.classList.add('opacity-0');
+                setTimeout(() => messageDisplay.classList.add('hidden'), 300);
+            }, 5000);
+        }
+
+        // --- Audio & Mute ---
+        function initializeAudio(){ 
+            if(isAudioInitialized) return; 
+            chugAudio = new Audio(CHUG_URL); 
+            chugAudio.loop=true; 
+            chugAudio.volume=0.5; 
+            chooAudio = new Audio(CHOO_URL); 
+            chooAudio.volume=1.0; 
+            chugAudio.load(); 
+            chooAudio.load(); 
+            isAudioInitialized=true; 
+            setMute(isMuted); 
+        }
+
+        function speak(text){ 
+            if(isMuted || !window.speechSynthesis) return; 
+            window.speechSynthesis.cancel(); 
+            const u = new SpeechSynthesisUtterance(text); 
+            u.volume = 1; 
+            window.speechSynthesis.speak(u); 
+        }
+
+        function setMute(m){ 
+            isMuted = m; 
+            muteIcon.textContent = isMuted ? '🔇' : '🔈'; 
+            if(chugAudio) chugAudio.volume = isMuted ? 0 : 0.5; 
+            if(chooAudio) chooAudio.volume = isMuted ? 0 : 1.0; 
+            if(isMuted && window.speechSynthesis) window.speechSynthesis.cancel(); 
+            // Save mute state
+            saveConfigToLocal();
+        }
+
+        // --- Local Storage Persistence ---
+        function saveConfigToLocal() {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                durationMinutes: totalDurationSeconds / 60,
+                announceEnabled: arrivalAnnounceEnabled,
+                isMuted: isMuted
+            }));
+        }
+
+        function loadConfigFromLocal() {
+            const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+            if (savedData) {
+                try {
+                    const data = JSON.parse(savedData);
+                    const durationMins = parseInt(data.durationMinutes, 10);
+                    
+                    if (durationMins > 0) {
+                        totalDurationSeconds = durationMins * 60;
+                        arrivalAnnounceEnabled = !!data.announceEnabled;
+                        isMuted = !!data.isMuted;
+                        
+                        // Set UI controls to reflect loaded state
+                        durationInput.value = durationMins;
+                        announceToggle.checked = arrivalAnnounceEnabled;
+                        setMute(isMuted); // Apply mute state to icon
+                        
+                        // Update display and prepare to start/pause
+                        updateStatusDisplay(0);
+                        return true;
+                    }
+                } catch (e) {
+                    console.error('Error parsing local storage data:', e);
+                }
+            }
+            return false;
+        }
+
+        // Movement calculations 
+        let maxTravelDistancePx = 0, trainWidthPx = 0; 
+        const TRAIN_HEIGHT_ESTIMATE_PX = 64, TRAIN_VERTICAL_ALIGNMENT_OFFSET_PX = 15;
+        
+        function calculateMovementDimensions(){ 
+            const trackWidth = trackContainer.getBoundingClientRect().width; 
+            const trackBed = document.getElementById('track-bed'); 
+            const trainRect = trainEmoji.getBoundingClientRect(); 
+            
+            if(trackBed){ 
+                const trackContainerRect = trackContainer.getBoundingClientRect(); 
+                const trackBedRect = trackBed.getBoundingClientRect(); 
+                const trackBedTopY = trackBedRect.top - trackContainerRect.top; 
+                const trainTopPosition = trackBedTopY - TRAIN_HEIGHT_ESTIMATE_PX + TRAIN_VERTICAL_ALIGNMENT_OFFSET_PX; 
+                trainContainer.style.top = `${trainTopPosition}px`; 
+            } 
+            trainWidthPx = trainRect.width * 0.8; 
+            maxTravelDistancePx = trackWidth - trainWidthPx - 10; 
+        }
+
+        // --- Clock and Timer Update Logic ---
+
+        // Function to update the real-time clock to 12-hour format (without seconds)
+        function updateClockDisplay() {
+            const now = new Date();
+            let hours = now.getHours();
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            
+            // Convert to 12-hour format
+            hours = hours % 12;
+            hours = hours ? hours : 12; // The hour '0' should be '12'
+            
+            // Pad hours to maintain monospace alignment
+            hours = hours.toString().padStart(2, '0'); 
+
+            // Display format: HH:MM AM/PM
+            liveClockDisplay.textContent = `${hours}:${minutes} ${ampm}`;
+        }
+
+        function updateStatusDisplay(currentElapsedSeconds){ 
+            let statusText = '00:00'; 
+            let isFinished = currentElapsedSeconds >= totalDurationSeconds && totalDurationSeconds > 0; 
+            const remainingSeconds = Math.max(0, totalDurationSeconds - currentElapsedSeconds); 
+            const minutes = Math.floor(remainingSeconds/60).toString().padStart(2,'0'); 
+            const seconds = Math.floor(remainingSeconds%60).toString().padStart(2,'0'); 
+
+            if(totalDurationSeconds > 0){
+                statusText = `${minutes}:${seconds}`; 
+            }
+            
+            compactStatusDisplay.textContent = statusText;
+
+            let icon = '▶️', ringColor = 'ring-indigo-500'; 
+            
+            if(isRunning){ 
+                icon = '⏸️'; 
+                ringColor = 'ring-yellow-500'; 
+            } else if(isFinished){ 
+                icon = '🔄'; 
+                ringColor = 'ring-green-500'; 
+            }
+            
+            controlIcon.textContent = icon;
+            startResetButton.className = `text-3xl p-4 rounded-full transition-all duration-200 shadow-xl focus:outline-none focus:ring-4 focus:ring-offset-2 text-gray-900 bg-gray-200 hover:bg-gray-300 ${ringColor}`;
+            startResetButton.disabled = totalDurationSeconds === 0 && !isFinished;
+        }
+
+        function announceFiveMinutesRemaining(elapsedSeconds){ 
+            if(!arrivalAnnounceEnabled || fiveMinuteAnnounced || totalDurationSeconds === 0) return; 
+            
+            const remaining = totalDurationSeconds - elapsedSeconds;
+
+            // Check if remaining time is 5 minutes (300 seconds) or less, but greater than zero
+            if (remaining <= 300 && remaining > 0) {
+                const announcementText = `Attention: Five minutes remaining until the journey's end.`; 
+                speak(announcementText); 
+                fiveMinuteAnnounced = true; // Set flag so it only announces once
+            }
+        }
+
+        function updateTrainPosition(timestamp){ 
+            if(!isRunning) return; 
+            
+            const timeElapsedSinceStart = (Date.now() - startTime) / 1000; 
+            const elapsedSeconds = timeElapsedSinceStart + elapsedTimeOnPause; 
+            let percentage = (elapsedSeconds / totalDurationSeconds) * 100; 
+            
+            if(percentage >= 100){ 
+                percentage = 100; 
+                stopTimer(true); // Completed
+            }
+
+            const currentTravelPx = (percentage / 100) * maxTravelDistancePx; 
+            trainContainer.style.setProperty('--train-translate-x', `${Math.min(currentTravelPx, maxTravelDistancePx)}px`);
+            
+            updateStatusDisplay(elapsedSeconds);
+            
+            // Check for 5-minute announcement
+            announceFiveMinutesRemaining(elapsedSeconds);
+
+            if(isRunning) animationFrameId = requestAnimationFrame(updateTrainPosition);
+        }
+
+        function startTimer(){ 
+            if(isRunning || totalDurationSeconds === 0) return; 
+            
+            startTime = Date.now(); 
+            initializeAudio(); 
+            calculateMovementDimensions(); 
+            isRunning = true; 
+            
+            // Reset five minute announcement flag if timer is starting/resuming from 5 min mark or earlier
+            if ((totalDurationSeconds - elapsedTimeOnPause) > 300) {
+                fiveMinuteAnnounced = false;
+            }
+
+            if(elapsedTimeOnPause > 0){ 
+                const startPercentage = (elapsedTimeOnPause / totalDurationSeconds) * 100; 
+                const startTranslationPx = (startPercentage / 100) * maxTravelDistancePx; 
+                trainContainer.style.setProperty('--train-translate-x', `${Math.min(startTranslationPx, maxTravelDistancePx)}px`); 
+            } else { 
+                trainContainer.style.setProperty('--train-translate-x', `0px`); 
+            } 
+            
+            if(chugAudio && !isMuted) chugAudio.play().catch(e => console.error(e)); 
+            animationFrameId = requestAnimationFrame(updateTrainPosition);
+        }
+
+        function stopTimer(completed = false){ 
+            if(!isRunning && !completed) return; 
+            isRunning = false; 
+            cancelAnimationFrame(animationFrameId); 
+            
+            if(chugAudio) chugAudio.pause(); 
+            if(window.speechSynthesis) window.speechSynthesis.cancel(); 
+            
+            let finalElapsed = totalDurationSeconds; 
+            
+            const timeElapsedSinceStart = (Date.now() - startTime) / 1000; 
+            
+            if(completed) {
+                elapsedTimeOnPause = totalDurationSeconds;
+            } else { 
+                elapsedTimeOnPause += timeElapsedSinceStart; 
+                finalElapsed = elapsedTimeOnPause; 
+            } 
+            
+            if(completed){ 
+                trainContainer.style.setProperty('--train-translate-x', `${maxTravelDistancePx}px`); 
+                if(chooAudio && !isMuted){ 
+                    chooAudio.currentTime = 0; 
+                    chooAudio.play().catch(e => console.error(e)); 
+                } 
+                speak('Attention, we have arrived at the final destination. Journey completed.'); 
+            }
+            
+            updateStatusDisplay(finalElapsed);
+        }
+
+        function resetTimer(){ 
+            isRunning = false; 
+            cancelAnimationFrame(animationFrameId); 
+            
+            if(chugAudio){ 
+                chugAudio.pause(); 
+                chugAudio.currentTime = 0; 
+            } 
+            
+            if(window.speechSynthesis) window.speechSynthesis.cancel(); 
+            
+            startTime = 0; 
+            elapsedTimeOnPause = 0; 
+            fiveMinuteAnnounced = false; 
+            
+            trainContainer.style.setProperty('--train-translate-x', `0px`); 
+            updateStatusDisplay(0);
+        }
+
+        // --- Setup Modal Logic ---
+
+        function showSetupModal() {
+            // Populate inputs with current (or default) values
+            durationInput.value = totalDurationSeconds > 0 ? totalDurationSeconds / 60 : 25;
+            announceToggle.checked = arrivalAnnounceEnabled;
+            
+            // Show the modal
+            setupModal.classList.remove('hidden');
+        }
+
+        function saveConfigFromModal() {
+            const durationMins = parseInt(durationInput.value, 10);
+            
+            if (isNaN(durationMins) || durationMins <= 0) {
+                displayMessage('Please enter a valid duration greater than zero.', true);
+                return;
+            }
+
+            // 1. Update global state
+            totalDurationSeconds = durationMins * 60;
+            arrivalAnnounceEnabled = announceToggle.checked;
+            
+            // 2. Save to local storage
+            saveConfigToLocal();
+
+            // 3. Close modal and reset/prepare timer
+            setupModal.classList.add('hidden');
+            resetTimer(); // Reset position and time
+            updateStatusDisplay(0); // Update display with new total time
+            displayMessage(`Timer set for ${durationMins} minutes!`, false);
+            
+            // 4. Start the timer immediately (user clicked "Start Journey")
+            startTimer();
+        }
+
+
+        // --- Event Wiring ---
+        window.onload = function(){ 
+            
+            // 1. Load configuration from local storage
+            const hasSavedConfig = loadConfigFromLocal();
+
+            // 2. Calculate track dimensions and initial position
+            calculateMovementDimensions();
+            
+            // 3. Update status display with loaded time (or default 00:00)
+            updateStatusDisplay(0);
+            
+            // 4. Show setup modal if no configuration was loaded
+            if (!hasSavedConfig) {
+                showSetupModal();
+            }
+
+            // 5. Start the clock display and set it to update every second
+            updateClockDisplay();
+            clockIntervalId = setInterval(updateClockDisplay, 1000);
+
+            // Main Controls
+            startResetButton.addEventListener('click', ()=>{ 
+                const isFinished = elapsedTimeOnPause >= totalDurationSeconds && totalDurationSeconds > 0; 
+                if(isRunning) {
+                    stopTimer(false);
+                } else if(isFinished) {
+                    resetTimer();
+                } else if(totalDurationSeconds > 0) {
+                    startTimer();
+                } else {
+                    showSetupModal(); // If total duration is 0, prompt setup
+                }
+            });
+
+            muteButton.addEventListener('click', ()=>{ 
+                initializeAudio(); 
+                setMute(!isMuted); 
+            });
+            
+            openSetupButton.addEventListener('click', showSetupModal);
+            
+            // Setup Modal Wiring
+            startJourneyButton.addEventListener('click', saveConfigFromModal);
+            document.getElementById('setup-backdrop').addEventListener('click', ()=> setupModal.classList.add('hidden'));
+
+            // Handle resize
+            window.addEventListener('resize', ()=>{ 
+                calculateMovementDimensions(); 
+                // Restore train position after resize
+                const percentage = (elapsedTimeOnPause / totalDurationSeconds) * 100;
+                const currentTravelPx = (percentage / 100) * maxTravelDistancePx; 
+                trainContainer.style.setProperty('--train-translate-x', `${Math.min(currentTravelPx, maxTravelDistancePx)}px`);
+            });
+
+            // Cleanup clock interval on beforeunload (good practice)
+            window.addEventListener('beforeunload', () => {
+                if (clockIntervalId) {
+                    clearInterval(clockIntervalId);
+                }
+            });
+        };
+    </script>
+</body>
+</html>
