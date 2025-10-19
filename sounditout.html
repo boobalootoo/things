@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Sequencer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+        }
+        /* Styling for draggable items */
+        .draggable {
+            cursor: grab;
+            transition: transform 0.1s;
+            user-select: none;
+        }
+        .draggable:active {
+            transform: scale(1.05);
+        }
+        .drag-over {
+            border: 2px dashed #4f46e5;
+            background-color: #e0e7ff;
+        }
+        
+        /* SEQUENCE GRID STYLING - FIXED SQUARE SHAPE */
+        .sequence-cell {
+            width: 100%; 
+            /* Ensure the slot is perfectly square */
+            aspect-ratio: 1 / 1; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #9ca3af; 
+            background-color: #ffffff;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            border-radius: 0.5rem; 
+        }
+
+        /* Override for the overall grid container to properly handle the rounded cells */
+        #sequence-grid {
+            border: none;
+            padding: 0;
+            gap: 2px; 
+            grid-template-columns: repeat(10, 1fr);
+            border-radius: 0.75rem; 
+            background-color: transparent; /* Changed to transparent for a cleaner look */
+            padding: 0;
+        }
+
+        /* PAUSE is still functional if dragged from an existing cell, but not available in source */
+        .pause-cell {
+            background-color: #fcd34d !important; /* Yellow-500 equivalent */
+            color: #78350f !important; /* Dark text for contrast */
+            font-weight: bold;
+        }
+        .cell-filled {
+            background-color: #6366f1 !important; /* Indigo-500 equivalent */
+            color: white !important;
+            font-weight: bold;
+        }
+
+        /* SOURCE GRID STYLING (A-Z, Pause, Play) */
+        #letter-source-grid > div,
+        #letter-source-grid > button {
+            /* Inherit common styling for aspect ratio and rounding */
+            aspect-ratio: 1 / 1;
+            height: auto; 
+            width: auto;
+            min-height: 50px; 
+            min-width: 50px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-4 sm:p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-4xl space-y-6">
+        
+        <!-- Sequence Grid Area (Fixed 10x2) -->
+        <div class="space-y-3">
+            <div id="sequence-grid" class="grid">
+                <!-- 20 Cells will be dynamically inserted here -->
+            </div>
+            
+            <p id="messageBox" class="hidden"></p>
+        </div>
+
+        <!-- Draggable Source Elements (A-Z and Play/Pause Button) -->
+        <div class="space-y-3 pt-2">
+            <div id="letter-source-grid" class="grid grid-cols-9 gap-2 p-3 bg-white border-none">
+                <!-- Draggable letters (A-Z) and Play/Pause button will be dynamically inserted here -->
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        const baseUrl = 'https://raw.githubusercontent.com/boobalootoo/things/main/abc/';
+        const PAUSE_SYMBOL = '||'; 
+        const PAUSE_DURATION_SECONDS = 0.35; 
+
+        // --- DOM Elements ---
+        const sequenceGrid = document.getElementById('sequence-grid');
+        const letterSourceGrid = document.getElementById('letter-source-grid');
+        const messageBox = document.getElementById('messageBox'); // Kept for silent logging/debugging
+        let playBtn; 
+
+        // --- State ---
+        let audioContext;
+        let sequence = Array(20).fill(' '); 
+        let audioCache = {};
+        let isPlaying = false; 
+        let playPromise = Promise.resolve(); 
+
+        // --- Utility Functions ---
+
+        function showMessage(text, color = 'text-gray-600') {
+            // Silence messages as requested, but log for debugging
+            console.log(`[STATUS] ${text}`);
+        }
+
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+            }
+        }
+        
+        // --- Drag and Drop Handlers ---
+
+        function handleDragStart(e) {
+            e.dataTransfer.setData('text/plain', e.target.dataset.value);
+            e.target.classList.add('opacity-50');
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('opacity-50');
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault(); 
+            e.currentTarget.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            
+            const value = e.dataTransfer.getData('text/plain');
+            const targetIndex = parseInt(e.currentTarget.dataset.index);
+
+            sequence[targetIndex] = value;
+            renderSequence(); 
+        }
+
+        // --- Sequence Rendering ---
+
+        function clearCell(index) {
+            sequence[index] = ' '; 
+            renderSequence();
+        }
+
+        function createSequenceCell(value, index) {
+            const cell = document.createElement('div');
+            cell.dataset.index = index;
+            cell.classList.add('sequence-cell');
+            
+            // Base style
+            cell.textContent = ''; 
+            cell.classList.remove('pause-cell', 'cell-filled');
+            cell.classList.add('bg-white', 'hover:bg-gray-100', 'text-black', 'text-2xl');
+
+            // Set text content and apply styling based on value
+            if (value === PAUSE_SYMBOL) {
+                cell.textContent = PAUSE_SYMBOL;
+                cell.classList.add('pause-cell');
+            } else if (value && value !== ' ') {
+                cell.textContent = value;
+                cell.classList.add('cell-filled');
+            }
+
+
+            // Drop handlers
+            cell.addEventListener('dragover', handleDragOver);
+            cell.addEventListener('dragleave', handleDragLeave);
+            cell.addEventListener('drop', handleDrop);
+
+            // Clear cell on click
+            cell.addEventListener('click', () => clearCell(index));
+
+            return cell;
+        }
+        
+        function renderSequence() {
+            sequenceGrid.innerHTML = '';
+            sequence.forEach((value, index) => {
+                sequenceGrid.appendChild(createSequenceCell(value, index));
+            });
+        }
+        
+        // --- Source Element Setup (Creates A-Z and Play/Pause button) ---
+
+        function setupSourceGrid() {
+            letterSourceGrid.innerHTML = '';
+            
+            // 1. Letters A-Z
+            alphabet.forEach(letter => {
+                const letterDiv = document.createElement('div');
+                letterDiv.textContent = letter;
+                letterDiv.dataset.value = letter;
+                letterDiv.draggable = true;
+                letterDiv.classList.add(
+                    'draggable', 'text-2xl', 'font-bold', 'rounded-lg', 
+                    'bg-indigo-600', 'text-white', 'shadow-md', 
+                    'hover:bg-indigo-700', 'focus:outline-none', 
+                    'flex', 'items-center', 'justify-center', 'p-3'
+                );
+                letterDiv.addEventListener('dragstart', handleDragStart);
+                letterDiv.addEventListener('dragend', handleDragEnd);
+                letterSourceGrid.appendChild(letterDiv);
+            });
+            
+            // 2. Play/Pause Button (The last slot in the grid)
+            const playButton = document.createElement('button');
+            playButton.id = 'playBtn';
+            // Set to same indigo color as letters
+            playButton.classList.add(
+                'bg-indigo-600', 'hover:bg-indigo-700', 'text-white', 'font-extrabold', 
+                'rounded-lg', 'shadow-md', 'transition', 
+                'flex', 'items-center', 'justify-center', 'w-full', 'h-full', 'p-3'
+            );
+            // Default to Play icon
+            playButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24" fill="currentColor"><path d="M6 3l15 9-15 9V3z"/></svg>';
+            
+            playButton.addEventListener('click', togglePlayback);
+            letterSourceGrid.appendChild(playButton);
+
+            // Update the global reference
+            playBtn = playButton; 
+        }
+        
+        // --- Playback/Control Logic ---
+
+        function updatePlayButton(state) {
+            if (state === 'playing') {
+                // Pause Icon (two vertical lines)
+                playBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+            } else {
+                // Play Icon (triangle)
+                playBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24" fill="currentColor"><path d="M6 3l15 9-15 9V3z"/></svg>';
+            }
+            // Color remains indigo as requested
+        }
+
+        function togglePlayback() {
+            if (isPlaying) {
+                isPlaying = false;
+                updatePlayButton('paused');
+                showMessage('Playback stopping after current sound.');
+            } else {
+                isPlaying = true;
+                updatePlayButton('playing');
+                playPromise = playSequence().finally(() => {
+                    isPlaying = false;
+                    updatePlayButton('paused');
+                    showMessage('Playback finished.');
+                });
+            }
+        }
+
+        async function loadAudio(letter) {
+            initAudioContext();
+            if (audioCache[letter]) {
+                return audioCache[letter];
+            }
+            
+            const audioUrl = `${baseUrl}${letter.toLowerCase()}.wav`;
+            try {
+                const response = await fetch(audioUrl);
+                if (!response.ok) throw new Error(`Failed to load: ${audioUrl}`);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                audioCache[letter] = audioBuffer;
+                return audioBuffer;
+            } catch (error) {
+                console.error(`Error loading audio for ${letter}:`, error);
+                audioCache[letter] = null; 
+                return null;
+            }
+        }
+
+        async function playSequence() {
+            initAudioContext();
+            
+            const playableSequence = sequence.filter(val => val !== ' ');
+            
+            if (playableSequence.length === 0) {
+                showMessage('The sequence is empty. Drag letters into the grid!');
+                return;
+            }
+            
+            showMessage(`Playing ${playableSequence.length} sounds.`);
+            
+            let currentTime = audioContext.currentTime;
+
+            for (let i = 0; i < sequence.length; i++) {
+                if (!isPlaying) break; 
+
+                const value = sequence[i];
+                const cellElement = sequenceGrid.children[i];
+                
+                // --- Highlight Start ---
+                cellElement.style.boxShadow = '0 0 15px rgba(255, 255, 0, 0.8)';
+                cellElement.style.transform = 'scale(1.1)';
+
+
+                if (value === PAUSE_SYMBOL) {
+                    currentTime += PAUSE_DURATION_SECONDS;
+                } else if (value && value !== ' ') {
+                    const audioBuffer = await loadAudio(value);
+                    if (audioBuffer) {
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioContext.destination);
+                        source.start(currentTime);
+                        
+                        currentTime += audioBuffer.duration;
+                    }
+                }
+                
+                // Add a small gap
+                currentTime += 0.05; 
+                
+                // Wait for the sound/pause time to pass before moving
+                await new Promise(resolve => setTimeout(resolve, (currentTime - audioContext.currentTime) * 1000));
+                
+                // --- Highlight Reset ---
+                cellElement.style.boxShadow = 'none';
+                cellElement.style.transform = 'scale(1.0)';
+            }
+        }
+
+        // --- Initialization ---
+        
+        setupSourceGrid();
+        renderSequence();
+        showMessage('Application ready.');
+    </script>
+</body>
+</html>
