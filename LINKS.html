@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Categorized Project Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* Modal Backdrop */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Prevent scroll on the background */
+            background-color: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+        }
+        /* Modal Content Container */
+        .modal-content {
+            background-color: #fefefe;
+            padding: 0;
+            border-radius: 16px;
+            width: 95%;
+            max-width: 1000px;
+            height: 95%;
+            max-height: 900px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+        /* Close Button Styling */
+        .close {
+            color: #fff;
+            font-size: 32px;
+            font-weight: bold;
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            transform: translateY(-50%);
+            line-height: 1;
+            transition: color 0.2s;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: #d1d5db;
+        }
+        /* Iframe Styling */
+        .modal-iframe {
+            flex-grow: 1;
+            border-radius: 0 0 16px 16px;
+        }
+        /* Card Grid: Mobile first (1 column), then Tablet/Desktop (2 columns) */
+        .category-grid {
+            display: grid;
+            grid-template-columns: repeat(1, minmax(0, 1fr));
+            gap: 16px;
+        }
+        @media (min-width: 768px) {
+            .category-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+        /* Custom card focus style */
+        .card-main-area {
+            transition: background-color 0.15s;
+        }
+        .card-main-area:hover {
+            background-color: #f9fafb; /* Light hover background */
+        }
+        .card-main-area:focus {
+            outline: 3px solid theme('colors.blue.500');
+            outline-offset: 3px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+<div class="max-w-6xl mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-2xl">
+    <h1 class="text-3xl sm:text-4xl font-extrabold text-center mb-4 text-gray-900">EY Project Dashboard</h1>
+    <p class="text-center text-gray-600 mb-8">Click the main card area for a preview, or the blue button to open in a full new tab.</p>
+
+    <!-- Modal window -->
+    <div id="urlModal" class="modal">
+        <div class="modal-content shadow-2xl border border-gray-300">
+            <!-- Modal Header -->
+            <div class="p-4 bg-blue-600 flex justify-between items-center rounded-t-2xl relative">
+                <div class="flex-1 overflow-hidden pr-10">
+                     <p id="modalTitle" class="text-lg sm:text-xl font-bold text-white truncate"></p>
+                </div>
+                <!-- Close button -->
+                <span class="close" title="Close Preview">&times;</span>
+            </div>
+            <!-- Iframe for content preview -->
+            <iframe id="urlIframe" class="modal-iframe w-full h-full" frameborder="0"></iframe>
+        </div>
+    </div>
+
+    <!-- URL list Grid Container -->
+    <div id="urlList" class="space-y-10">
+        <!-- Categorized card sections will be generated here by JavaScript -->
+    </div>
+</div>
+
+<script>
+    // Data with categories assigned
+    const urls = [
+        // --- CREATIVE & VISUAL ARTS ---
+        { category: 'Creative & Visual Arts🎨', title: 'Soot Sprite music Visualiser🎵', description: 'Music visualiser, inspired by Studio Ghibli soot sprites.', url: 'https://boobalootoo.github.io/basicvisualiser/sootsprite' },
+        { category: 'Creative & Visual Arts🎨', title: 'Image to Colouring Sheet🖍️', description: 'Upload any image to turn it into a colouring sheet, includes live edge detection adjustment.', url: 'https://boobalootoo.github.io/postermaker/edgemap.html' },
+        { category: 'Creative & Visual Arts🎨', title: 'Virtual Stickerbook🖼️', description: 'A fun, interactive virtual stickerbook application.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/DIGISTICK' },
+        { category: 'Creative & Visual Arts🎨', title: 'Story Idea Generator💡', description: 'Choose a genre and receive a character, creature, location and object to build a story around.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/storymaker/' },
+        { category: 'Creative & Visual Arts🎨', title: 'CMYK Colour Mixing Wheel🌈', description: 'A tool that visually demonstrates how to create colors by mixing different amounts of Cyan, Magenta, Yellow, Black, and White.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/colourwheel.html' },
+
+        // --- INTERACTIVE & CAMERA ---
+        { category: 'Interactive & Camera📸', title: 'Face Blocker & Sticker🎭', description: 'Automatically blocks faces, only takes a picture if it is blocked, lets you choose a sticker or draw your own.', url: 'https://boobalootoo.github.io/facerase/2.html' },
+        { category: 'Interactive & Camera📸', title: 'Bubble Pop Game (Hand Detection)🫧☝️', description: 'Bubble pop game using hand detection—point to pop the bubbles.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/bubpop/index.html' },
+        { category: 'Interactive & Camera📸', title: 'Croc Puppet (Hand)🐊', description: 'Hand puppet that moves with the user\'s hand movements on the camera feed.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/puppets/croc1.html' },
+        { category: 'Interactive & Camera📸', title: 'Bongos (Hand Play)🪘🖐️', description: 'Bongos shown on camera feed that you can play by tapping with your hand.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/music/bongos' },
+        { category: 'Interactive & Camera📸', title: 'Trace & Paint on Camera🖼️', description: 'Draw over the live camera feed and mix custom colors using the integrated palette.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/tracepaint/index.html' },
+        { category: 'Interactive & Camera📸', title: 'Butterfly Camouflage Finder🔍🦋', description: 'Butterfly camouflage activity: one person captures an image, which is placed in a frame, and the other person tries to find where the picture was taken.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/butterflind' },
+
+        // --- LEARNING & EDUCATION ---
+        { category: 'Learning & Education🧑‍🏫', title: 'Tree ID Cards🌳', description: 'A set of printouts for tree identification cards.', url: 'https://boobalootoo.github.io/trees/' },
+        { category: 'Learning & Education🧑‍🏫', title: 'Digital Bird ID🐦‍⬛', description: 'A digital tool for bird watching and identification.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/bird/birdIDJ' },
+        { category: 'Learning & Education🧑‍🏫', title: 'Read Aloud Book Example📖☝️', description: 'Example of an interactive book where words are revealed and read out loud on click.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/examplebook.html' },
+        { category: 'Learning & Education🧑‍🏫', title: 'Find The Item Game🔍', description: 'Find the item: click anything to hear its name and sound effect. Includes categories like farm, zoo, vehicles, etc.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/FINDME' },
+        { category: 'Learning & Education🧑‍🏫', title: 'Point And Label Game🔍☝️', description: 'Point to anything to hear its name and sound effect. Items appear and disappear dynamically.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/PAL' },
+        { category: 'Learning & Education🧑‍🏫', title: 'Dice Roll Subitising🎲', description: 'Teaches subitising (instant recognition of quantity) and adding. Click dice to see number, word, or hear it out loud.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/diceroll' },
+        { category: 'Learning & Education🧑‍🏫', title: 'Video Playlist📺', description: 'A simple video playlist application.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/videos' },
+        { category: 'Learning & Education🧑‍🏫', title: 'Tree Leaf Puzzle🌳', description: 'A puzzle activity where you fit the correct leaf shape into the right cutout on a tree image.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/treepuzzle/6.html' },
+
+        // --- WELLBEING & FOCUS ---
+        { category: 'Wellbeing & Focus🧠🧘', title: 'Visual Pomodoro⏳🌈', description: 'A simple, visual pomodoro timer for focused work or breaks.', url: 'https://boobalootoo.github.io/bungeealice/15.html' },
+        { category: 'Wellbeing & Focus🧠🧘', title: 'Train timer⏳🚂', description: 'A timer that lets you see how far along a task you are, with a sound to announce when it is done.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/RUNAWAYBRAIN/5' },
+        { category: 'Wellbeing & Focus🧠🧘', title: 'Grounding Technique👀👂👃🖐️', description: 'An interactive guide for the 5-4-3-2-1 grounding technique.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/54321' },
+        { category: 'Wellbeing & Focus🧠🧘', title: 'Mindfulness Visual👀', description: 'Provides a visual element to distract and focus, inspired by theories that eye movements affect mood.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/MeyeNDFULL' },
+        { category: 'Wellbeing & Focus🧠🧘', title: 'Food Planner🍽️', description: 'Shows what amounts of what foods you should eat, allowing you to drag foods onto a table and adjust sliders.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/foodplanner' },
+        { category: 'Wellbeing & Focus🧠🧘', title: 'Animated Deep Breathing Guide🌬️', description: 'Teaches deep breathing using flower and bubble animations to visually guide breathing in through the nose and out through the mouth.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/breathing.html' },
+
+        // --- MUSIC & COMMUNICATION ---
+        { category: 'Music & Communication🎵🗣️', title: '7-Key Piano🎹', description: 'A 7-key piano that is colour coordinated and includes icons to help learn notes.', url: 'https://boobalootoo.github.io/Piano/3.html' },
+        { category: 'Music & Communication🎵🗣️', title: 'Icon Keyboard⌨️', description: 'A keyboard featuring common words represented by icons instead of letters.', url: 'https://boobalootoo.github.io/BRAINFRESHEN/icontype' },
+        { category: 'Music & Communication🎵🗣️', title: 'Image-to-Sound Synthesizer🎵🖼️', description: 'Draw or upload an image to synthesize the visual data into sound patterns and music.', url: 'https://boobalootoo.github.io/HILIGHTS/MUSPIX/extra' }
+    ];
+
+    const urlList = document.getElementById('urlList');
+    const urlModal = document.getElementById('urlModal');
+    const urlIframe = document.getElementById('urlIframe');
+    const modalTitle = document.getElementById('modalTitle');
+    const closeBtn = document.querySelector('.close');
+
+    /**
+     * Groups the URL data by category.
+     * @param {Array<Object>} list The full list of URL objects.
+     * @returns {Object} An object where keys are categories and values are arrays of URL objects.
+     */
+    function groupByCategory(list) {
+        return list.reduce((acc, item) => {
+            // Use the full category string (including emojis) as the key
+            const categoryKey = item.category.trim(); 
+            
+            if (!acc[categoryKey]) {
+                acc[categoryKey] = [];
+            }
+            acc[categoryKey].push(item);
+            return acc;
+        }, {});
+    }
+
+    // Function to create and append card buttons, grouped by category
+    function createCategorizedDashboard() {
+        try {
+            const groupedUrls = groupByCategory(urls);
+            urlList.innerHTML = ''; // Clear existing content
+
+            // Use the exact category strings (including emojis) to ensure correct iteration
+            const categoryOrder = [
+                'Interactive & Camera📸',
+                'Learning & Education🧑‍🏫',
+                'Wellbeing & Focus🧠🧘',
+                'Creative & Visual Arts🎨',
+                'Music & Communication🎵🗣️'
+            ];
+
+            categoryOrder.forEach(category => {
+                const sites = groupedUrls[category];
+                if (!sites || sites.length === 0) return;
+
+                // 1. Create Category Heading
+                const categorySection = document.createElement('section');
+                categorySection.className = 'category-section';
+
+                const divider = document.createElement('hr');
+                divider.className = 'border-t-2 border-gray-200 mb-6 mt-4';
+                categorySection.appendChild(divider);
+                
+                const header = document.createElement('h2');
+                header.className = 'text-2xl font-extrabold text-gray-800 mb-6 px-3 py-1 rounded-lg inline-block bg-blue-100 shadow-md';
+                header.textContent = category; // Use the full category name
+                categorySection.appendChild(header);
+
+                // 2. Create Grid Container for Cards
+                const gridContainer = document.createElement('div');
+                gridContainer.className = 'category-grid';
+
+                sites.forEach(site => {
+                    // Outer card container
+                    const card = document.createElement('div');
+                    card.className = 'bg-white border border-gray-200 rounded-xl shadow-lg transition-all duration-300 hover:shadow-xl flex flex-col justify-between';
+
+                    // Main Clickable Area (for Modal Preview)
+                    const mainArea = document.createElement('button');
+                    mainArea.className = 'card-main-area w-full p-5 text-left flex flex-col justify-start items-start space-y-2 cursor-pointer bg-white rounded-t-xl';
+                    mainArea.setAttribute('tabindex', '0');
+                    mainArea.onclick = () => {
+                        urlIframe.src = site.url;
+                        modalTitle.textContent = site.title + ' Preview';
+                        urlModal.style.display = 'flex';
+                    };
+                    
+                    // Card Title
+                    const title = document.createElement('h3');
+                    title.className = 'text-xl font-bold text-blue-700';
+                    title.textContent = site.title;
+
+                    // Full Description
+                    const description = document.createElement('p');
+                    description.className = 'text-gray-700 text-base font-medium';
+                    description.textContent = site.description;
+
+                    mainArea.appendChild(title);
+                    mainArea.appendChild(description);
+                    
+                    // New Tab Button Container
+                    const newTabContainer = document.createElement('div');
+                    newTabContainer.className = 'w-full p-3 border-t border-gray-200 bg-gray-50 rounded-b-xl';
+
+                    const newTabButton = document.createElement('a');
+                    newTabButton.className = 'w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-150';
+                    newTabButton.href = site.url;
+                    newTabButton.target = '_blank'; // Opens in a new tab
+                    newTabButton.textContent = 'Open in New Tab (Full Screen)';
+                    
+                    newTabContainer.appendChild(newTabButton);
+
+                    card.appendChild(mainArea);
+                    card.appendChild(newTabContainer);
+
+                    gridContainer.appendChild(card);
+                });
+
+                categorySection.appendChild(gridContainer);
+                urlList.appendChild(categorySection);
+            });
+
+        } catch (error) {
+            console.error("Error creating dashboard:", error);
+            urlList.innerHTML = `<p class="text-red-600 text-center font-bold">Failed to load dashboard. Check the console for errors.</p>`;
+        }
+    }
+
+    // Modal control logic
+    closeBtn.onclick = function() {
+        urlModal.style.display = 'none';
+        urlIframe.src = ''; 
+    }
+
+    // Close modal when clicking outside of it
+    window.onclick = function(event) {
+        if (event.target == urlModal) {
+            urlModal.style.display = 'none';
+            urlIframe.src = ''; 
+        }
+    }
+
+    // Initialize the categorized dashboard
+    createCategorizedDashboard();
+
+</script>
+
+</body>
+</html>
