@@ -7,8 +7,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        /* --- CUSTOM FONT IMPLEMENTATION --- */
+        @font-face {
+            font-family: 'Sassoon Infant';
+            src: url('https://raw.githubusercontent.com/boobalootoo/things/main/EYFONTS/SassoonInfantStd.otf') format('opentype');
+            font-weight: normal;
+            font-style: normal;
+        }
+        
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Sassoon Infant', sans-serif; /* Apply new font */
             touch-action: manipulation;
         }
         /* Styling for draggable items */
@@ -16,6 +24,9 @@
             cursor: grab;
             transition: transform 0.1s;
             user-select: none;
+            /* Apply new font and lowercase transformation */
+            font-family: 'Sassoon Infant', sans-serif;
+            text-transform: lowercase; 
         }
         .draggable:active {
             transform: scale(1.05);
@@ -39,6 +50,9 @@
             cursor: pointer;
             transition: all 0.15s;
             border-radius: 0.5rem; 
+            /* Apply new font and lowercase transformation */
+            font-family: 'Sassoon Infant', sans-serif;
+            text-transform: lowercase; 
         }
 
         /* Override for the overall grid container to properly handle the rounded cells */
@@ -48,7 +62,7 @@
             gap: 2px; 
             grid-template-columns: repeat(10, 1fr);
             border-radius: 0.75rem; 
-            background-color: transparent; /* Changed to transparent for a cleaner look */
+            background-color: transparent; 
             padding: 0;
         }
 
@@ -100,7 +114,8 @@
 
     <script>
         // --- Configuration ---
-        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        // CHANGED: Alphabet is now lowercase
+        const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split(''); 
         const baseUrl = 'https://raw.githubusercontent.com/boobalootoo/things/main/abc/';
         const PAUSE_SYMBOL = '||'; 
         const PAUSE_DURATION_SECONDS = 0.35; 
@@ -108,7 +123,7 @@
         // --- DOM Elements ---
         const sequenceGrid = document.getElementById('sequence-grid');
         const letterSourceGrid = document.getElementById('letter-source-grid');
-        const messageBox = document.getElementById('messageBox'); // Kept for silent logging/debugging
+        const messageBox = document.getElementById('messageBox'); 
         let playBtn; 
 
         // --- State ---
@@ -121,7 +136,6 @@
         // --- Utility Functions ---
 
         function showMessage(text, color = 'text-gray-600') {
-            // Silence messages as requested, but log for debugging
             console.log(`[STATUS] ${text}`);
         }
 
@@ -215,7 +229,7 @@
         function setupSourceGrid() {
             letterSourceGrid.innerHTML = '';
             
-            // 1. Letters A-Z
+            // 1. Letters a-z (already lowercase)
             alphabet.forEach(letter => {
                 const letterDiv = document.createElement('div');
                 letterDiv.textContent = letter;
@@ -286,7 +300,8 @@
                 return audioCache[letter];
             }
             
-            const audioUrl = `${baseUrl}${letter.toLowerCase()}.wav`;
+            // MODIFIED: Since alphabet is now lowercase, we use 'letter' directly
+            const audioUrl = `${baseUrl}${letter}.wav`; 
             try {
                 const response = await fetch(audioUrl);
                 if (!response.ok) throw new Error(`Failed to load: ${audioUrl}`);
