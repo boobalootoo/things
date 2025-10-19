@@ -46,7 +46,7 @@
             justify-content: center;
             border: 1px solid #9ca3af; 
             background-color: #ffffff;
-            font-size: 1.5rem;
+            /* font-size controlled by Tailwind classes now */
             cursor: pointer;
             transition: all 0.15s;
             border-radius: 0.5rem; 
@@ -92,10 +92,10 @@
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
 
-    <div class="bg-white p-4 sm:p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-4xl space-y-6">
+    <div class="bg-white p-2 sm:p-4 md:p-8 rounded-xl shadow-2xl w-full max-w-4xl space-y-6">
         
         <!-- Sequence Grid Area (Fixed 10x2) -->
-        <div class="space-y-3">
+        <div class="space-y-3 p-1 sm:p-0">
             <div id="sequence-grid" class="grid">
                 <!-- 20 Cells will be dynamically inserted here -->
             </div>
@@ -105,7 +105,8 @@
 
         <!-- Draggable Source Elements (A-Z and Play/Pause Button) -->
         <div class="space-y-3 pt-2">
-            <div id="letter-source-grid" class="grid grid-cols-9 gap-2 p-3 bg-white border-none">
+            <!-- UPDATED: grid-cols-7 for mobile, expands to md:grid-cols-9 -->
+            <div id="letter-source-grid" class="grid grid-cols-7 md:grid-cols-9 gap-2 p-3 bg-white border-none">
                 <!-- Draggable letters (A-Z) and Play/Pause button will be dynamically inserted here -->
             </div>
         </div>
@@ -114,7 +115,6 @@
 
     <script>
         // --- Configuration ---
-        // CHANGED: Alphabet is now lowercase
         const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split(''); 
         const baseUrl = 'https://raw.githubusercontent.com/boobalootoo/things/main/abc/';
         const PAUSE_SYMBOL = '||'; 
@@ -194,7 +194,8 @@
             // Base style
             cell.textContent = ''; 
             cell.classList.remove('pause-cell', 'cell-filled');
-            cell.classList.add('bg-white', 'hover:bg-gray-100', 'text-black', 'text-2xl');
+            // UPDATED: Use responsive font size
+            cell.classList.add('bg-white', 'hover:bg-gray-100', 'text-black', 'text-xl', 'sm:text-2xl');
 
             // Set text content and apply styling based on value
             if (value === PAUSE_SYMBOL) {
@@ -236,7 +237,8 @@
                 letterDiv.dataset.value = letter;
                 letterDiv.draggable = true;
                 letterDiv.classList.add(
-                    'draggable', 'text-2xl', 'font-bold', 'rounded-lg', 
+                    // UPDATED: Use responsive font size
+                    'draggable', 'text-xl', 'sm:text-2xl', 'font-bold', 'rounded-lg', 
                     'bg-indigo-600', 'text-white', 'shadow-md', 
                     'hover:bg-indigo-700', 'focus:outline-none', 
                     'flex', 'items-center', 'justify-center', 'p-3'
@@ -359,6 +361,7 @@
                 currentTime += 0.05; 
                 
                 // Wait for the sound/pause time to pass before moving
+                // This promise ensures the main loop waits for the audio to play before proceeding
                 await new Promise(resolve => setTimeout(resolve, (currentTime - audioContext.currentTime) * 1000));
                 
                 // --- Highlight Reset ---
