@@ -343,6 +343,7 @@
 
             const redrawCanvas = (save = true) => {
                 if(save) saveState();
+                ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
                 ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
                 
                 const charData = glyphData[activeChar];
@@ -517,4 +518,5 @@
     </script>
 </body>
 </html>
+
 
