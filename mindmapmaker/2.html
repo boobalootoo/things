@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mind Map Creator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Use Inter font -->
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none; /* Prevents pull-to-refresh */
+        }
+        
+        /* The main canvas (viewport) */
+        #canvas {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* This is crucial */
+            background-color: #f3f4f6; /* bg-gray-100 */
+            /* A subtle grid background */
+            background-image:
+                linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+                linear-gradient(to bottom, #e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+            cursor: grab;
+        }
+
+        #canvas.panning {
+            cursor: grabbing;
+        }
+
+        /* The zoomable/pannable wrapper */
+        #canvas-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform-origin: 0 0;
+            transition: transform 0.1s linear; /* Smooths programmatic zoom */
+        }
+        
+        /* SVG container for lines */
+        #line-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none; /* Allows clicking through */
+        }
+
+        /* Connecting lines */
+        .line {
+            stroke: #6b7280; /* gray-500 */
+            stroke-width: 3;
+            transition: all 0.1s ease-in-out;
+        }
+
+        /* Mind map nodes */
+        .node {
+            position: absolute;
+            z-index: 10;
+            background-color: white;
+            padding: 0.75rem 1rem; /* p-3 p-4 */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-md */
+            border: 2px solid transparent;
+            cursor: move;
+            transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out; /* Only transition these */
+            user-select: none; /* Don't select text when dragging */
+        }
+        
+        /* Shape styles */
+        .node.shape-rectangle {
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        .node.shape-ellipse {
+            border-radius: 9999px; /* rounded-full */
+        }
+
+        .node:hover {
+             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-lg */
+        }
+
+        /* Selected node style */
+        .node.selected {
+            border-color: #3b82f6; /* blue-500 */
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3), 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Make the text editable */
+        .node-text {
+            outline: none;
+            user-select: text; /* Allow selecting text for editing */
+            cursor: text;
+            min-height: 1.5rem; /* Ensure it's clickable */
+            text-align: center;
+        }
+        
+        /* Resize Handles */
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #3b82f6; /* blue-500 */
+            border: 2px solid white;
+            border-radius: 3px;
+            z-index: 20;
+            display: none; /* Hide by default */
+        }
+
+        .node.selected .resize-handle {
+            display: block; /* Show on selected node */
+        }
+
+        .resize-handle.br { /* bottom-right */
+            bottom: -6px;
+            right: -6px;
+            cursor: se-resize;
+        }
+        .resize-handle.bl { /* bottom-left */
+            bottom: -6px;
+            left: -6px;
+            cursor: sw-resize;
+        }
+        .resize-handle.tr { /* top-right */
+            top: -6px;
+            right: -6px;
+            cursor: ne-resize;
+        }
+        .resize-handle.tl { /* top-left */
+            top: -6px;
+            left: -6px;
+            cursor: nw-resize;
+        }
+        
+        /* Simple modal for instructions */
+        #instructions {
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        /* Hide the default file input */
+        #import-input {
+            display: none;
+        }
+
+        /* Style for disabled styling buttons */
+        button:disabled.style-btn {
+            background-color: #e5e7eb; /* bg-gray-200 */
+            color: #9ca3af; /* text-gray-400 */
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+    <!-- Toolbar -->
+    <header class="bg-white shadow-md z-30 p-2 flex flex-wrap items-center space-x-2">
+        <h1 class="text-xl font-bold text-gray-800 px-2 hidden sm:block">Mind Map</h1>
+        
+        <!-- Action Buttons -->
+        <button id="add-node-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Add Node
+        </button>
+        <button id="delete-node-btn" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150" disabled>
+            Delete Node
+        </button>
+        
+        <!-- Separator -->
+        <div class="h-6 w-px bg-gray-300 mx-2"></div> 
+
+        <!-- Connection Buttons -->
+        <button id="add-connection-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Add Connection
+        </button>
+        <button id="delete-connection-btn" class="bg-pink-500 hover:bg-pink-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Delete Connection
+        </button>
+        
+        <!-- Separator -->
+        <div class="h-6 w-px bg-gray-300 mx-2"></div> 
+        
+        <!-- Zoom Buttons -->
+        <button id="zoom-in-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">Zoom In</button>
+        <button id="zoom-out-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">Zoom Out</button>
+        <button id="zoom-fit-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">Show All</button>
+
+        <!-- Separator -->
+        <div class="h-6 w-px bg-gray-300 mx-2"></div>
+
+        <!-- Style Buttons -->
+        <button id="toggle-shape-btn" class="style-btn bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150" disabled>Toggle Shape</button>
+
+        <div class="flex-grow"></div> <!-- Spacer -->
+        
+        <!-- Import/Export Buttons -->
+        <button id="export-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Export
+        </button>
+        <button id="import-btn" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Import
+        </button>
+        <input type="file" id="import-input" accept=".json">
+
+        <!-- Help Button -->
+        <button id="help-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold p-2 rounded-full w-10 h-10 shadow transition duration-150">
+            ?
+        </button>
+    </header>
+
+    <!-- Main Canvas Area -->
+    <main id="canvas" class="flex-grow">
+        <!-- Zoomable/Pannable Wrapper -->
+        <div id="canvas-wrapper">
+            <!-- SVG layer for drawing lines -->
+            <svg id="line-svg"></svg>
+            
+            <!-- Nodes will be added here dynamically by JS -->
+        </div>
+    </main>
+
+    <!-- Instructions Modal -->
+    <div id="instructions" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity opacity-0 pointer-events-none">
+        <div class="bg-white p-6 rounded-lg shadow-2xl max-w-lg w-full m-4">
+            <h2 class="text-2xl font-bold mb-4">How to Use</h2>
+            <ul class="list-disc list-inside space-y-2 text-gray-700">
+                <li><strong class="font-semibold">Pan Canvas:</strong> Hold <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> and drag.</li>
+                <li><strong class="font-semibold">Zoom Canvas:</strong> Use the mouse wheel or "Zoom In" / "Zoom Out" buttons.</li>
+                <li><strong class="font-semibold">Fit Canvas:</strong> Click "Show All" to fit all nodes in view.</li>
+                <li><strong class="font-semibold">Add Node:</strong> Click 'Add Node'. If a node is selected, it branches off.</li>
+                <li><strong class="font-semibold">Move Node:</strong> Click and drag a node (only in Select mode).</li>
+                <li><strong class="font-semibold">Resize Node:</strong> Select a node, then drag one of its corners.</li>
+                <li><strong class="font-semibold">Select Node:</strong> Click a node (not on its text).</li>
+                <li><strong class="font-semibold">Delete Node:</strong> Select a node and press 'Delete' or click 'Delete Node'.</li>
+                <li><strong class="font-semibold">Edit Text:</strong> Click the text inside a node.</li>
+                <li><strong class="font-semibold">Add Connection:</strong> Click 'Add Connection', then click two nodes.</li>
+                <li><strong class="font-semibold">Delete Connection:</strong> Click 'Delete Connection', then click the two connected nodes.</li>
+                <li><strong class="font-semibold">Style Node:</strong> Select a node, then use "Toggle Shape".</li>
+                <li><strong class="font-semibold">Deselect/Cancel Mode:</strong> Click on the blank canvas.</li>
+            </ul>
+            <button id="close-help-btn" class="mt-6 w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+                Got it!
+            </button>
+        </div>
+    </div>
+    
+    <!-- JavaScript Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('canvas');
+            const canvasWrapper = document.getElementById('canvas-wrapper');
+            const svg = document.getElementById('line-svg');
+            
+            // Buttons
+            const addNodeBtn = document.getElementById('add-node-btn');
+            const deleteNodeBtn = document.getElementById('delete-node-btn');
+            const addConnectionBtn = document.getElementById('add-connection-btn');
+            const deleteConnectionBtn = document.getElementById('delete-connection-btn');
+            const exportBtn = document.getElementById('export-btn');
+            const importBtn = document.getElementById('import-btn');
+            const importInput = document.getElementById('import-input');
+            const helpBtn = document.getElementById('help-btn');
+            const closeHelpBtn = document.getElementById('close-help-btn');
+            const instructionsModal = document.getElementById('instructions');
+            const zoomInBtn = document.getElementById('zoom-in-btn');
+            const zoomOutBtn = document.getElementById('zoom-out-btn');
+            const zoomFitBtn = document.getElementById('zoom-fit-btn');
+            const toggleShapeBtn = document.getElementById('toggle-shape-btn');
+            const styleBtns = [toggleShapeBtn]; // Removed size buttons
+
+            // State
+            let nodes = [];
+            let links = [];
+            let selectedNodeId = null;
+            let draggingNode = null;
+            let dragOffset = { x: 0, y: 0 };
+            
+            // Interaction State
+            let interactionMode = 'select'; // 'select', 'addConnection', 'deleteConnection'
+            let connectionNode1 = null;
+
+            // Pan & Zoom State
+            let scale = 1;
+            let translateX = 0;
+            let translateY = 0;
+            let isPanning = false;
+            let panStart = { x: 0, y: 0 };
+
+            // Resize State
+            let resizingNode = null;
+            let resizeHandle = null;
+            let resizeStart = { x: 0, y: 0, width: 0, height: 0, nodeX: 0, nodeY: 0 };
+            const minNodeWidth = 80;
+            const minNodeHeight = 40;
+
+            /**
+             * Applies the current transform state to the canvas wrapper.
+             */
+            function applyTransform(smooth = false) {
+                canvasWrapper.style.transition = smooth ? 'transform 0.3s ease-out' : 'none';
+                canvasWrapper.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            }
+
+            /**
+             * Sets the current interaction mode and updates UI.
+             */
+            function setInteractionMode(mode) {
+                interactionMode = mode;
+                connectionNode1 = null;
+                
+                // Reset button styles
+                addConnectionBtn.classList.remove('ring-4', 'ring-purple-300');
+                deleteConnectionBtn.classList.remove('ring-4', 'ring-pink-300');
+                
+                // Disable/Enable node-specific buttons
+                addNodeBtn.disabled = (mode !== 'select');
+                
+                if (mode === 'addConnection') {
+                    addConnectionBtn.classList.add('ring-4', 'ring-purple-300');
+                    selectNode(null); // Deselect nodes when entering this mode
+                } else if (mode === 'deleteConnection') {
+                    deleteConnectionBtn.classList.add('ring-4', 'ring-pink-300');
+                    selectNode(null);
+                } else {
+                    // 'select' mode
+                    // Re-enable delete button if a node is selected
+                    deleteNodeBtn.disabled = (selectedNodeId === null);
+                }
+            }
+            
+            /**
+             * Renders all connecting lines based on the current state.
+             */
+            function renderLinks() {
+                // Clear existing lines
+                svg.innerHTML = '';
+                
+                links.forEach(link => {
+                    const fromNode = nodes.find(n => n.id === link.from);
+                    const toNode = nodes.find(n => n.id === link.to);
+                    
+                    if (!fromNode || !toNode || !fromNode.element || !toNode.element) return;
+                    
+                    // Calculate center points
+                    const x1 = fromNode.x + fromNode.element.offsetWidth / 2;
+                    const y1 = fromNode.y + fromNode.element.offsetHeight / 2;
+                    const x2 = toNode.x + toNode.element.offsetWidth / 2;
+                    const y2 = toNode.y + toNode.element.offsetHeight / 2;
+                    
+                    // Create SVG line
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', x1);
+                    line.setAttribute('y1', y1);
+                    line.setAttribute('x2', x2);
+                    line.setAttribute('y2', y2);
+                    line.setAttribute('class', 'line');
+                    svg.appendChild(line);
+                });
+            }
+
+            /**
+             * Selects a node.
+             */
+            function selectNode(id) {
+                // Deselect previous
+                if (selectedNodeId) {
+                    const oldNode = nodes.find(n => n.id === selectedNodeId);
+                    if (oldNode) {
+                        oldNode.element.classList.remove('selected');
+                    }
+                }
+                
+                // Select new
+                selectedNodeId = id;
+                if (selectedNodeId) {
+                    const newNode = nodes.find(n => n.id === selectedNodeId);
+                    if (newNode) {
+                        newNode.element.classList.add('selected');
+                         // Update delete button *only if in select mode*
+                        if (interactionMode === 'select') {
+                            deleteNodeBtn.disabled = false;
+                        }
+                    }
+                } else {
+                    deleteNodeBtn.disabled = true;
+                }
+                
+                // Enable/disable style buttons
+                styleBtns.forEach(btn => btn.disabled = (selectedNodeId === null));
+            }
+
+            /**
+             * Creates a new node element and adds it to the state.
+             */
+            function createNode(data) {
+                const { text, x, y, id, width, height, shape } = data;
+                const nodeId = id || `node_${new Date().getTime()}_${Math.random()}`;
+                
+                const nodeDiv = document.createElement('div');
+                nodeDiv.id = nodeId;
+                nodeDiv.className = 'node';
+                nodeDiv.style.left = `${x}px`;
+                nodeDiv.style.top = `${y}px`;
+                
+                const nodeWidth = width || 150;
+                const nodeHeight = height || 'auto';
+                
+                nodeDiv.style.minWidth = `${nodeWidth}px`;
+                if (nodeHeight !== 'auto') {
+                    nodeDiv.style.minHeight = `${nodeHeight}px`;
+                }
+
+                const nodeShape = shape || 'rectangle';
+                nodeDiv.classList.add(`shape-${nodeShape}`);
+                
+                const textEl = document.createElement('div');
+                textEl.className = 'node-text';
+                textEl.innerText = text;
+                textEl.contentEditable = true;
+                
+                nodeDiv.appendChild(textEl);
+                
+                const node = {
+                    id: nodeId,
+                    text: text,
+                    x: x,
+                    y: y,
+                    width: nodeWidth,
+                    height: nodeHeight,
+                    shape: nodeShape,
+                    element: nodeDiv
+                };
+                
+                // --- Add Resize Handles ---
+                const handles = ['tl', 'tr', 'bl', 'br'];
+                handles.forEach(handleType => {
+                    const handleDiv = document.createElement('div');
+                    handleDiv.className = `resize-handle ${handleType}`;
+                    handleDiv.addEventListener('mousedown', (e) => onResizeStart(e, node, handleType));
+                    nodeDiv.appendChild(handleDiv);
+                });
+                
+                canvasWrapper.appendChild(nodeDiv);
+                
+                // --- Event Listeners for the Node ---
+
+                // 1. Click Handler (handles selection and connection logic)
+                nodeDiv.addEventListener('click', (e) => {
+                    if (interactionMode === 'select') {
+                        // Normal selection
+                        if (e.target !== textEl && !e.target.classList.contains('resize-handle')) {
+                            e.stopPropagation();
+                            selectNode(node.id);
+                        }
+                    } else if (interactionMode === 'addConnection') {
+                        e.stopPropagation();
+                        if (connectionNode1 === null) {
+                            // This is the first node
+                            connectionNode1 = node.id;
+                            selectNode(node.id); // Use selection for visual feedback
+                        } else {
+                            // This is the second node
+                            const node2 = node.id;
+                            if (connectionNode1 !== node2) {
+                                const exists = links.find(l => (l.from === connectionNode1 && l.to === node2) || (l.from === node2 && l.to === connectionNode1));
+                                if (!exists) {
+                                    links.push({ from: connectionNode1, to: node2 });
+                                    renderLinks();
+                                }
+                            }
+                            // Reset mode
+                            setInteractionMode('select');
+                        }
+                    } else if (interactionMode === 'deleteConnection') {
+                        e.stopPropagation();
+                        if (connectionNode1 === null) {
+                            // This is the first node
+                            connectionNode1 = node.id;
+                            selectNode(node.id); // Use selection for visual feedback
+                        } else {
+                            // This is the second node
+                            const node2 = node.id;
+                            if (connectionNode1 !== node2) {
+                                // Filter out the link
+                                links = links.filter(l => !((l.from === connectionNode1 && l.to === node2) || (l.from === node2 && l.to === connectionNode1)));
+                                renderLinks();
+                            }
+                            // Reset mode
+                            setInteractionMode('select');
+                        }
+                    }
+                });
+
+                // 2. Mousedown to start dragging
+                nodeDiv.addEventListener('mousedown', (e) => {
+                    // Only allow dragging in select mode
+                    if (interactionMode !== 'select') return;
+                    
+                    // Don't drag if clicking on text or a resize handle
+                    if (e.target === textEl || e.target.classList.contains('resize-handle')) return;
+                    
+                    e.stopPropagation();
+                    draggingNode = node;
+                    
+                    // Calculate drag offset relative to the node's origin
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const mouseX = (e.clientX - canvasRect.left - translateX) / scale;
+                    const mouseY = (e.clientY - canvasRect.top - translateY) / scale;
+
+                    dragOffset.x = mouseX - node.x;
+                    dragOffset.y = mouseY - node.y;
+                    
+                    // Add global listeners to handle dragging outside the node
+                    document.addEventListener('mousemove', onDrag);
+                    document.addEventListener('mouseup', stopDrag);
+                });
+
+                // 3. Update text in state
+                textEl.addEventListener('input', (e) => {
+                    node.text = e.target.innerText;
+                    // Auto-set height while typing
+                    node.height = 'auto';
+                    node.element.style.minHeight = 'auto'; 
+                    renderLinks();
+                });
+                
+                // 4. Re-render links after text editing is done
+                textEl.addEventListener('blur', () => {
+                    // Fix the height
+                    node.height = node.element.offsetHeight;
+                    node.element.style.minHeight = `${node.height}px`;
+                    renderLinks();
+                });
+
+                nodes.push(node);
+                // Fix height after creation
+                if(node.height === 'auto') {
+                    node.height = node.element.offsetHeight;
+                    node.element.style.minHeight = `${node.height}px`;
+                }
+                return node;
+            }
+
+            // --- Global Drag Handlers ---
+            
+            function onDrag(e) {
+                if (!draggingNode) return;
+                
+                e.preventDefault(); // Prevent text selection
+                
+                const canvasRect = canvas.getBoundingClientRect();
+                let newX = (e.clientX - canvasRect.left - translateX) / scale - dragOffset.x;
+                let newY = (e.clientY - canvasRect.top - translateY) / scale - dragOffset.y;
+
+                draggingNode.x = newX;
+                draggingNode.y = newY;
+                draggingNode.element.style.left = `${newX}px`;
+                draggingNode.element.style.top = `${newY}px`;
+                
+                // Update lines in real-time
+                renderLinks();
+            }
+
+            function stopDrag() {
+                draggingNode = null;
+                document.removeEventListener('mousemove', onDrag);
+                document.removeEventListener('mouseup', stopDrag);
+            }
+
+            // --- Resize Handlers ---
+            
+            function onResizeStart(e, node, handleType) {
+                e.stopPropagation(); // Stop node drag/pan
+                e.preventDefault(); // Stop text selection
+
+                resizingNode = node;
+                resizeHandle = handleType;
+
+                const canvasRect = canvas.getBoundingClientRect();
+                resizeStart.x = (e.clientX - canvasRect.left - translateX) / scale;
+                resizeStart.y = (e.clientY - canvasRect.top - translateY) / scale;
+                
+                resizeStart.width = node.element.offsetWidth;
+                resizeStart.height = node.element.offsetHeight;
+                resizeStart.nodeX = node.x;
+                resizeStart.nodeY = node.y;
+
+                document.addEventListener('mousemove', onResize);
+                document.addEventListener('mouseup', stopResize);
+            }
+
+            function onResize(e) {
+                if (!resizingNode) return;
+                
+                e.preventDefault();
+
+                const canvasRect = canvas.getBoundingClientRect();
+                const mouseX = (e.clientX - canvasRect.left - translateX) / scale;
+                const mouseY = (e.clientY - canvasRect.top - translateY) / scale;
+
+                const dx = mouseX - resizeStart.x;
+                const dy = mouseY - resizeStart.y;
+                
+                const node = resizingNode;
+
+                if (resizeHandle.includes('r')) { // Right handles
+                    let newWidth = resizeStart.width + dx;
+                    if (newWidth >= minNodeWidth) {
+                        node.element.style.minWidth = `${newWidth}px`;
+                        node.width = newWidth;
+                    }
+                }
+                if (resizeHandle.includes('l')) { // Left handles
+                    let newWidth = resizeStart.width - dx;
+                    if (newWidth >= minNodeWidth) {
+                        node.element.style.minWidth = `${newWidth}px`;
+                        node.width = newWidth;
+                        node.x = resizeStart.nodeX + dx;
+                        node.element.style.left = `${node.x}px`;
+                    }
+                }
+                if (resizeHandle.includes('b')) { // Bottom handles
+                    let newHeight = resizeStart.height + dy;
+                    if (newHeight >= minNodeHeight) {
+                        node.element.style.minHeight = `${newHeight}px`;
+                        node.height = newHeight;
+                    }
+                }
+                if (resizeHandle.includes('t')) { // Top handles
+                    let newHeight = resizeStart.height - dy;
+                    if (newHeight >= minNodeHeight) {
+                        node.element.style.minHeight = `${newHeight}px`;
+                        node.height = newHeight;
+                        node.y = resizeStart.nodeY + dy;
+                        node.element.style.top = `${node.y}px`;
+                    }
+                }
+
+                renderLinks();
+            }
+
+            function stopResize() {
+                if (resizingNode) {
+                    // Snap final dimensions
+                    resizingNode.width = resizingNode.element.offsetWidth;
+                    resizingNode.height = resizingNode.element.offsetHeight;
+                }
+                resizingNode = null;
+                resizeHandle = null;
+                document.removeEventListener('mousemove', onResize);
+                document.removeEventListener('mouseup', stopResize);
+            }
+
+
+            // --- Button Actions ---
+
+            function handleAddNode() {
+                if (interactionMode !== 'select') return;
+                
+                let x, y;
+                const parentNode = nodes.find(n => n.id === selectedNodeId);
+                
+                if (parentNode) {
+                    // Offset from parent
+                    x = parentNode.x + parentNode.element.offsetWidth + 50;
+                    y = parentNode.y;
+                } else {
+                    // Place in center of viewport
+                    const canvasRect = canvas.getBoundingClientRect();
+                    x = (canvasRect.width / 2 - translateX) / scale - 75; // 75 = half node width
+                    y = (canvasRect.height / 3 - translateY) / scale - 30;
+                }
+                
+                const newNode = createNode({ text: 'New Idea', x, y });
+                
+                if (parentNode) {
+                    links.push({ from: parentNode.id, to: newNode.id });
+                }
+                
+                selectNode(newNode.id);
+                renderLinks();
+                
+                // Focus the new node's text
+                const textEl = newNode.element.querySelector('.node-text');
+                textEl.focus();
+                document.execCommand('selectAll', false, null);
+            }
+
+            function handleDeleteNode() {
+                if (interactionMode !== 'select' || !selectedNodeId) return;
+                
+                // Remove node from state
+                const nodeIndex = nodes.findIndex(n => n.id === selectedNodeId);
+                if (nodeIndex > -1) {
+                    nodes[nodeIndex].element.remove(); // Remove from DOM
+                    nodes.splice(nodeIndex, 1); // Remove from array
+                }
+                
+                // Remove associated links
+                links = links.filter(link => link.from !== selectedNodeId && link.to !== selectedNodeId);
+                
+                selectNode(null); // Deselect
+                renderLinks();
+            }
+
+            function handleExport() {
+                // Save a clean version without DOM elements
+                const cleanNodes = nodes.map(n => ({
+                    id: n.id,
+                    text: n.text,
+                    x: n.x,
+                    y: n.y,
+                    width: n.width,
+                    height: n.height,
+                    shape: n.shape
+                }));
+                
+                const viewState = { scale, translateX, translateY };
+                
+                const data = {
+                    nodes: cleanNodes,
+                    links: links,
+                    viewState: viewState
+                };
+                
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+                const downloadAnchor = document.createElement('a');
+                downloadAnchor.setAttribute("href", dataStr);
+                downloadAnchor.setAttribute("download", "mindmap.json");
+                document.body.appendChild(downloadAnchor);
+                downloadAnchor.click();
+                downloadAnchor.remove();
+            }
+
+            function handleImport() {
+                importInput.click(); // Trigger hidden file input
+            }
+            
+            importInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        if (data && data.nodes && data.links) {
+                            // Clear existing map
+                            nodes.forEach(n => n.element.remove());
+                            nodes = [];
+                            links = [];
+                            svg.innerHTML = '';
+                            
+                            // Recreate map
+                            data.nodes.forEach(nodeData => {
+                                createNode(nodeData); // Pass the whole node data object
+                            });
+                            links = data.links;
+
+                            // Restore view state
+                            if (data.viewState) {
+                                scale = data.viewState.scale;
+                                translateX = data.viewState.translateX;
+                                translateY = data.viewState.translateY;
+                                applyTransform();
+                            }
+                            
+                            renderLinks();
+                            setInteractionMode('select'); // Reset mode
+                        }
+                    } catch (err) {
+                        console.error("Error parsing JSON file:", err);
+                        // In a real app, show a user-friendly error
+                    }
+                };
+                reader.readAsText(file);
+                
+                // Reset input value to allow importing the same file again
+                event.target.value = null;
+            });
+            
+            // --- Style Button Handlers ---
+            toggleShapeBtn.addEventListener('click', () => {
+                const node = nodes.find(n => n.id === selectedNodeId);
+                if (node) {
+                    if (node.shape === 'rectangle') {
+                        node.shape = 'ellipse';
+                        node.element.classList.remove('shape-rectangle');
+                        node.element.classList.add('shape-ellipse');
+                    } else {
+                        node.shape = 'rectangle';
+                        node.element.classList.remove('shape-ellipse');
+                        node.element.classList.add('shape-rectangle');
+                    }
+                    renderLinks();
+                }
+            });
+
+
+            // --- Pan & Zoom Handlers ---
+            
+            function handleWheelZoom(e) {
+                e.preventDefault();
+                
+                const canvasRect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - canvasRect.left; // Mouse pos in canvas/viewport
+                const mouseY = e.clientY - canvasRect.top;
+
+                // Position of mouse in "world" (wrapper)
+                const mouseOnWrapperX = (mouseX - translateX) / scale;
+                const mouseOnWrapperY = (mouseY - translateY) / scale;
+
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                const newScale = Math.max(0.1, Math.min(scale * delta, 5)); // Clamp zoom
+                
+                // New translation to keep "world" point under mouse
+                translateX = mouseX - mouseOnWrapperX * newScale;
+                translateY = mouseY - mouseOnWrapperY * newScale;
+                scale = newScale;
+
+                applyTransform();
+            }
+
+            function handlePanStart(e) {
+                // Only pan with middle mouse or space+left click
+                // Do not pan if resizing
+                if ((e.button === 1 || (e.button === 0 && isPanning)) && !resizingNode) {
+                    e.preventDefault();
+                    isPanning = true;
+                    panStart.x = e.clientX - translateX;
+                    panStart.y = e.clientY - translateY;
+                    canvas.classList.add('panning');
+                    
+                    document.addEventListener('mousemove', handlePanMove);
+                    document.addEventListener('mouseup', handlePanEnd);
+                }
+            }
+
+            function handlePanMove(e) {
+                if (!isPanning) return;
+                e.preventDefault();
+                translateX = e.clientX - panStart.x;
+                translateY = e.clientY - panStart.y;
+                applyTransform();
+            }
+
+            function handlePanEnd() {
+                isPanning = false;
+                canvas.classList.remove('panning');
+                document.removeEventListener('mousemove', handlePanMove);
+                document.removeEventListener('mouseup', handlePanEnd);
+            }
+
+            function handleKeyDown(e) {
+                if (e.key === ' ' && !isPanning && !resizingNode) {
+                    // Don't activate if we're editing text
+                    if (document.activeElement.classList.contains('node-text')) {
+                        return;
+                    }
+                    e.preventDefault();
+                    isPanning = true;
+                    canvas.style.cursor = 'grabbing';
+                }
+            }
+
+            function handleKeyUp(e) {
+                if (e.key === ' ') {
+                    isPanning = false;
+                    canvas.style.cursor = 'grab';
+                }
+            }
+
+            function handleZoomToFit() {
+                if (nodes.length === 0) {
+                    scale = 1;
+                    translateX = 0;
+                    translateY = 0;
+                    applyTransform(true);
+                    return;
+                }
+
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                
+                nodes.forEach(node => {
+                    const nodeWidth = node.element.offsetWidth;
+                    const nodeHeight = node.element.offsetHeight;
+                    minX = Math.min(minX, node.x);
+                    minY = Math.min(minY, node.y);
+                    maxX = Math.max(maxX, node.x + nodeWidth);
+                    maxY = Math.max(maxY, node.y + nodeHeight);
+                });
+                
+                const bbWidth = maxX - minX;
+                const bbHeight = maxY - minY;
+                
+                const canvasRect = canvas.getBoundingClientRect();
+                const vWidth = canvasRect.width;
+                const vHeight = canvasRect.height;
+                
+                if (bbWidth === 0 || bbHeight === 0) {
+                     setTimeout(handleZoomToFit, 100); // Retry after element renders
+                     return;
+                }
+
+                const padding = 50; // 50px padding
+                
+                const newScale = Math.min(
+                    (vWidth - padding * 2) / bbWidth,
+                    (vHeight - padding * 2) / bbHeight
+                );
+                
+                scale = Math.min(newScale, 1); // Don't zoom in past 1:1
+
+                const bbCenterX = (minX + maxX) / 2;
+                const bbCenterY = (minY + maxY) / 2;
+                
+                translateX = (vWidth / 2) - (bbCenterX * scale);
+                translateY = (vHeight / 2) - (bbCenterY * scale);
+                
+                applyTransform(true); // Apply with smooth transition
+            }
+
+
+            // --- Global Listeners ---
+
+            // Click on canvas to deselect or cancel mode
+            canvas.addEventListener('click', (e) => {
+                if (e.target === canvas || e.target === canvasWrapper) {
+                    selectNode(null);
+                    setInteractionMode('select'); // Always reset to select mode
+                }
+            });
+
+            // Keyboard listener for Delete key
+            window.addEventListener('keydown', (e) => {
+                if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId && interactionMode === 'select') {
+                    // Don't delete if user is editing text
+                    if (document.activeElement.classList.contains('node-text')) {
+                        return;
+                    }
+                    e.preventDefault();
+                    handleDeleteNode();
+                }
+            });
+            
+            // Re-render links on window resize (as node offsets might change)
+            window.addEventListener('resize', () => {
+                handleZoomToFit(); // Refit on resize
+            });
+            
+            // Pan & Zoom listeners
+            canvas.addEventListener('wheel', handleWheelZoom);
+            canvas.addEventListener('mousedown', handlePanStart);
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+            
+            // Zoom button listeners
+            zoomInBtn.addEventListener('click', () => {
+                const canvasRect = canvas.getBoundingClientRect();
+                const centerScreenX = canvasRect.width / 2;
+                const centerScreenY = canvasRect.height / 2;
+                const mouseOnWrapperX = (centerScreenX - translateX) / scale;
+                const mouseOnWrapperY = (centerScreenY - translateY) / scale;
+                const newScale = Math.min(scale * 1.2, 5);
+                translateX = centerScreenX - mouseOnWrapperX * newScale;
+                translateY = centerScreenY - mouseOnWrapperY * newScale;
+                scale = newScale;
+                applyTransform(true);
+            });
+            
+            zoomOutBtn.addEventListener('click', () => {
+                const canvasRect = canvas.getBoundingClientRect();
+                const centerScreenX = canvasRect.width / 2;
+                const centerScreenY = canvasRect.height / 2;
+                const mouseOnWrapperX = (centerScreenX - translateX) / scale;
+                const mouseOnWrapperY = (centerScreenY - translateY) / scale;
+                const newScale = Math.max(0.1, scale * 0.8);
+                translateX = centerScreenX - mouseOnWrapperX * newScale;
+                translateY = centerScreenY - mouseOnWrapperY * newScale;
+                scale = newScale;
+                applyTransform(true);
+            });
+            
+            zoomFitBtn.addEventListener('click', handleZoomToFit);
+
+
+            // --- Help Modal Logic ---
+            helpBtn.addEventListener('click', () => {
+                instructionsModal.classList.remove('opacity-0', 'pointer-events-none');
+            });
+            closeHelpBtn.addEventListener('click', () => {
+                instructionsModal.classList.add('opacity-0', 'pointer-events-none');
+            });
+
+            // --- Initialization ---
+            function init() {
+                // Create a root node to start
+                const canvasRect = canvas.getBoundingClientRect();
+                const startX = (canvasRect.width / 2) - 75;
+                const startY = (canvasRect.height / 3) - 30;
+                
+                const rootNode = createNode({
+                    text: 'Main Idea',
+                    x: startX,
+                    y: startY
+                });
+                
+                selectNode(rootNode.id);
+                
+                // Show help on first load
+                instructionsModal.classList.remove('opacity-0', 'pointer-events-none');
+            }
+
+            // --- Button Event Listeners ---
+            addNodeBtn.addEventListener('click', handleAddNode);
+            deleteNodeBtn.addEventListener('click', handleDeleteNode);
+            
+            addConnectionBtn.addEventListener('click', () => {
+                if (interactionMode === 'addConnection') {
+                    setInteractionMode('select');
+                } else {
+                    setInteractionMode('addConnection');
+                }
+            });
+            
+            deleteConnectionBtn.addEventListener('click', () => {
+                if (interactionMode === 'deleteConnection') {
+                    setInteractionMode('select');
+                } else {
+                    setInteractionMode('deleteConnection');
+                }
+            });
+
+            exportBtn.addEventListener('click', handleExport);
+            importBtn.addEventListener('click', handleImport);
+
+            // Start the application
+            init();
+        });
+    </script>
+
+</body>
+</html>
+
+
