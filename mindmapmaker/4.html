@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mind Map Creator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Use Inter font -->
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none; /* Prevents pull-to-refresh */
+        }
+        
+        /* The main canvas (viewport) */
+        #canvas {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* This is crucial */
+            background-color: #f3f4f6; /* bg-gray-100 */
+            /* A subtle grid background */
+            background-image:
+                linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+                linear-gradient(to bottom, #e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+            cursor: default; /* Default cursor when not dragging node or panning */
+        }
+
+        #canvas.panning {
+            cursor: grabbing;
+        }
+
+        /* The zoomable/pannable wrapper */
+        #canvas-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform-origin: 0 0;
+            /* Using a faster transition for smooth drag and zoom */
+            transition: transform 0.05s linear; 
+        }
+        
+        /* SVG container for lines */
+        #line-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            /* Lines are drawn in screen coordinates relative to the zoom/pan */
+            /* We will apply the transformation to the line coordinates in JS */
+            pointer-events: none; /* Allows clicking through */
+        }
+
+        /* Connecting lines */
+        .line {
+            stroke: #6b7280; /* gray-500 */
+            stroke-width: 3;
+            transition: all 0.1s ease-in-out;
+        }
+
+        /* Mind map nodes */
+        .node {
+            position: absolute;
+            z-index: 10;
+            background-color: white;
+            padding: 0; 
+            display: flex; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); 
+            border: 2px solid transparent;
+            cursor: move;
+            transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out; 
+            user-select: none; 
+        }
+        
+        /* Shape styles */
+        .node.shape-rectangle {
+            border-radius: 0.5rem; 
+        }
+        .node.shape-ellipse {
+            border-radius: 9999px; 
+        }
+
+        .node:hover {
+             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); 
+        }
+
+        /* Selected node style */
+        .node.selected {
+            border-color: #3b82f6; 
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3), 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Make the text editable */
+        .node-text {
+            outline: none;
+            user-select: text; 
+            cursor: text;
+            min-height: 1.5rem; 
+            text-align: center;
+            overflow-wrap: break-word; 
+            width: 100%; 
+            height: 100%; 
+            box-sizing: border-box; 
+            padding: 0.75rem 1rem;
+            overflow: auto; 
+            pointer-events: none; 
+        }
+        
+        /* Resize Handles */
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #3b82f6; 
+            border: 2px solid white;
+            border-radius: 3px;
+            z-index: 20;
+            display: none; 
+        }
+
+        .node.selected .resize-handle {
+            display: block; 
+        }
+
+        .resize-handle.br { 
+            bottom: -6px;
+            right: -6px;
+            cursor: se-resize;
+        }
+        .resize-handle.bl { 
+            bottom: -6px;
+            left: -6px;
+            cursor: sw-resize;
+        }
+        .resize-handle.tr { 
+            top: -6px;
+            right: -6px;
+            cursor: ne-resize;
+        }
+        .resize-handle.tl { 
+            top: -6px;
+            left: -6px;
+            cursor: nw-resize;
+        }
+        
+        /* Simple modal for instructions */
+        #instructions {
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        /* Hide the default file input */
+        #import-input {
+            display: none;
+        }
+
+        /* Style for disabled styling buttons */
+        button:disabled.style-btn {
+            background-color: #e5e7eb; 
+            color: #9ca3af; 
+            cursor: not-allowed;
+        }
+        
+        /* Ensure text in contenteditable div remains centered on print */
+        @media print {
+            .node-text {
+                text-align: center !important;
+            }
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+    <!-- Toolbar -->
+    <header class="bg-white shadow-md z-30 p-2 flex flex-wrap items-center space-x-2">
+        <h1 class="text-xl font-bold text-gray-800 px-2 hidden sm:block">Mind Map</h1>
+        
+        <!-- Action Buttons -->
+        <button id="add-node-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Add Node
+        </button>
+        <button id="delete-node-btn" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150" disabled>
+            Delete Node
+        </button>
+        
+        <!-- Separator -->
+        <div class="h-6 w-px bg-gray-300 mx-2"></div> 
+
+        <!-- Connection Buttons -->
+        <button id="add-connection-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Add Connection
+        </button>
+        <button id="delete-connection-btn" class="bg-pink-500 hover:bg-pink-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Delete Connection
+        </button>
+        
+        <!-- Separator -->
+        <div class="h-6 w-px bg-gray-300 mx-2"></div> 
+        
+        <!-- Zoom Buttons -->
+        <button id="zoom-in-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">Zoom In</button>
+        <button id="zoom-out-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">Zoom Out</button>
+        <button id="zoom-fit-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">Show All</button>
+        
+        <!-- Pan/Move Toggle -->
+        <button id="pan-toggle-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">
+            Toggle Pan
+        </button>
+
+        <!-- Separator -->
+        <div class="h-6 w-px bg-gray-300 mx-2"></div>
+
+        <!-- Style Buttons -->
+        <button id="toggle-shape-btn" class="style-btn bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150" disabled>Toggle Shape</button>
+
+        <div class="flex-grow"></div> <!-- Spacer -->
+        
+        <!-- Import/Export Buttons -->
+        <button id="export-svg-btn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Export SVG
+        </button>
+        <button id="export-json-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Export JSON
+        </button>
+        <button id="import-btn" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+            Import
+        </button>
+        <input type="file" id="import-input" accept=".json">
+
+        <!-- Help Button -->
+        <button id="help-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold p-2 rounded-full w-10 h-10 shadow transition duration-150">
+            ?
+        </button>
+    </header>
+
+    <!-- Main Canvas Area -->
+    <main id="canvas" class="flex-grow">
+        <!-- Zoomable/Pannable Wrapper -->
+        <div id="canvas-wrapper">
+            <!-- Nodes will be added here dynamically by JS -->
+        </div>
+        <!-- SVG layer for drawing lines - Moved outside canvas-wrapper for easier coordinate management -->
+        <!-- Note: Lines are still drawn relative to viewport, but updated on zoom -->
+        <svg id="line-svg" style="position: absolute; top: 0; left: 0; pointer-events: none;"></svg>
+    </main>
+    
+    <!-- Hidden Canvas for PNG Export - Retained for backward compatibility/flexibility -->
+    <canvas id="export-canvas" style="display: none;"></canvas>
+
+    <!-- Instructions Modal -->
+    <div id="instructions" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity opacity-0 pointer-events-none">
+        <div class="bg-white p-6 rounded-lg shadow-2xl max-w-lg w-full m-4 relative">
+            
+            <!-- NEW: Close Button -->
+            <button id="close-instructions-btn" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 p-2 rounded-full transition duration-150">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            
+            <h2 class="text-2xl font-bold mb-4">How to Use</h2>
+            <ul class="list-disc list-inside space-y-2 text-gray-700">
+                <li><strong class="font-semibold">Pan Canvas:</strong> Click the 'Toggle Pan' button, then click and drag the canvas background.</li>
+                <li><strong class="font-semibold">Zoom Canvas:</strong> Use the mouse wheel or "Zoom In" / "Zoom Out" buttons.</li>
+                <li><strong class="font-semibold">Fit Canvas:</strong> Click "Show All" to fit all nodes in view.</li>
+                <li><strong class="font-semibold">Add Node:</strong> Click 'Add Node'. If a node is selected, it branches off.</li>
+                <li><strong class="font-semibold">Move Node:</strong> Click and drag a node.</li>
+                <li><strong class="font-semibold">Resize Node:</strong> Select a node, then drag one of its corners.</li>
+                <li><strong class="font-semibold">Select Node:</strong> Click a node.</li>
+                <li><strong class="font-semibold">Delete Node:</strong> Select a node and press 'Delete' or click 'Delete Node'.</li>
+                <li><strong class="font-semibold">Edit Text:</strong> **Double-click** the text inside a node.</li>
+                <li><strong class="font-semibold">Add Connection:</strong> Click 'Add Connection', then click two nodes.</li>
+                <li><strong class="font-semibold">Delete Connection:</strong> Click 'Delete Connection', then click the two connected nodes.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvasWrapper = document.getElementById('canvas-wrapper');
+            const canvas = document.getElementById('canvas');
+            const lineSvg = document.getElementById('line-svg');
+            const exportCanvas = document.getElementById('export-canvas'); // Reference to the hidden canvas
+            const instructionsModal = document.getElementById('instructions');
+            const deleteNodeBtn = document.getElementById('delete-node-btn');
+            const toggleShapeBtn = document.getElementById('toggle-shape-btn');
+            const addConnectionBtn = document.getElementById('add-connection-btn');
+            const deleteConnectionBtn = document.getElementById('delete-connection-btn');
+            const addNodeBtn = document.getElementById('add-node-btn');
+            const panToggleBtn = document.getElementById('pan-toggle-btn'); 
+
+            let nodes = [];
+            let connections = [];
+            let nextNodeId = 1;
+            let selectedNodeId = null;
+            let draggingNode = null;
+            let resizeHandle = null;
+            let resizeStart = { x: 0, y: 0, width: 0, height: 0, nodeX: 0, nodeY: 0 };
+            
+            // Zoom/Pan State
+            let scale = 1.0;
+            let translateX = 0;
+            let translateY = 0;
+            let isPanning = false;
+            let panMode = false; 
+            let panStart = { x: 0, y: 0, tX: 0, tY: 0 };
+            
+            // Connection Mode State
+            let interactionMode = 'select'; // 'select', 'addConnection', 'deleteConnection'
+            let connectionTargetNodes = []; // Stores up to two nodes for connecting/disconnecting
+            
+            // Constants
+            const zoomSpeed = 0.001;
+            const minScale = 0.1;
+            const maxScale = 5.0;
+            const minNodeWidth = 50;
+            const minNodeHeight = 30;
+
+            // Text rendering constants for export (in pixels at 1.0 scale)
+            const exportFontSize = 14;
+            const exportLineHeight = 1.2 * exportFontSize;
+            const exportPaddingX = 16; // 1rem
+            
+            /** UI Management **/
+
+            function updateTransform() {
+                // Apply transform ONLY to the node container
+                canvasWrapper.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+                // Re-render links immediately after transform update - FIX for lines disconnecting on zoom
+                renderLinks(); 
+            }
+
+            function updateToolbar() {
+                const isSelected = selectedNodeId !== null;
+                deleteNodeBtn.disabled = !isSelected || interactionMode !== 'select';
+                toggleShapeBtn.disabled = !isSelected || interactionMode !== 'select';
+                
+                // Connection mode styling
+                addConnectionBtn.classList.toggle('ring-4', interactionMode === 'addConnection');
+                addConnectionBtn.classList.toggle('ring-purple-300', interactionMode === 'addConnection');
+                deleteConnectionBtn.classList.toggle('ring-4', interactionMode === 'deleteConnection');
+                deleteConnectionBtn.classList.toggle('ring-pink-300', interactionMode === 'deleteConnection');
+                
+                // Pan toggle styling
+                panToggleBtn.classList.toggle('ring-4', panMode);
+                panToggleBtn.classList.toggle('ring-yellow-500', panMode);
+
+                // Disable Add/Delete node buttons during connection modes
+                addNodeBtn.disabled = interactionMode !== 'select';
+                deleteNodeBtn.disabled = !isSelected || interactionMode !== 'select';
+            }
+
+            function setMode(mode) {
+                if (interactionMode === mode) {
+                    interactionMode = 'select'; // Toggle off
+                } else {
+                    interactionMode = mode;
+                }
+                connectionTargetNodes = [];
+                updateToolbar();
+                // Show message box if needed
+                if (interactionMode === 'addConnection') {
+                    showMessage('Click two nodes to create a connection.', 'purple');
+                } else if (interactionMode === 'deleteConnection') {
+                    showMessage('Click two connected nodes to delete the connection.', 'pink');
+                } else {
+                    hideMessage();
+                }
+            }
+
+            /** Node Management **/
+
+            function createNode(data) {
+                const { text, x, y, id, width, height, shape } = data;
+                const nodeId = id || nextNodeId++;
+
+                const nodeDiv = document.createElement('div');
+                nodeDiv.id = `node-${nodeId}`;
+                nodeDiv.className = `node shape-${shape || 'rectangle'}`;
+                
+                // Text element
+                const textEl = document.createElement('div');
+                textEl.setAttribute('contenteditable', 'true');
+                textEl.classList.add('node-text');
+                textEl.innerText = text;
+
+                // Resize handles
+                const handles = ['tl', 'tr', 'bl', 'br'];
+                handles.forEach(pos => {
+                    const handle = document.createElement('div');
+                    handle.classList.add('resize-handle', pos);
+                    handle.addEventListener('mousedown', (e) => startResize(e, node, pos));
+                    nodeDiv.appendChild(handle);
+                });
+
+                nodeDiv.appendChild(textEl);
+                canvasWrapper.appendChild(nodeDiv);
+
+                nodeDiv.style.left = `${x}px`;
+                nodeDiv.style.top = `${y}px`;
+                
+                const nodeWidth = width || 150;
+                const nodeHeight = height || 80;
+                
+                nodeDiv.style.width = `${nodeWidth}px`;
+                nodeDiv.style.height = `${nodeHeight}px`;
+
+                const nodeShape = shape || 'rectangle';
+
+                if (nodeShape === 'ellipse') {
+                    nodeDiv.classList.add('shape-ellipse');
+                    nodeDiv.classList.remove('shape-rectangle');
+                } else {
+                    nodeDiv.classList.add('shape-rectangle');
+                    nodeDiv.classList.remove('shape-ellipse');
+                }
+
+                const node = {
+                    id: nodeId,
+                    text: text,
+                    x: x,
+                    y: y,
+                    width: nodeWidth,
+                    height: nodeHeight,
+                    shape: nodeShape,
+                    element: nodeDiv
+                };
+
+                // --- Event Listeners for the Node ---
+
+                // 1. Click Handler (handles selection and connection logic)
+                nodeDiv.addEventListener('click', (e) => {
+                    
+                    // Don't do anything if we clicked a resize handle
+                    if (e.target.classList.contains('resize-handle')) {
+                        return;
+                    }
+
+                    if (interactionMode === 'select') {
+                        // Normal selection
+                        e.stopPropagation();
+                        selectNode(node.id);
+                    } else if (interactionMode === 'addConnection') {
+                        e.stopPropagation();
+                        handleConnectionClick(node.id, 'add');
+                    } else if (interactionMode === 'deleteConnection') {
+                        e.stopPropagation();
+                        handleConnectionClick(node.id, 'delete');
+                    }
+                });
+
+                // 2. Mousedown to start dragging
+                nodeDiv.addEventListener('mousedown', (e) => {
+                    // Only allow dragging in select mode
+                    if (interactionMode !== 'select') return;
+                    
+                    // Don't drag if clicking a resize handle
+                    if (e.target.classList.contains('resize-handle')) return;
+                    
+                    e.stopPropagation();
+                    draggingNode = node;
+                    selectNode(node.id); // Select the node on mousedown
+                    
+                    // FIX: Changed 'const' to 'let' to allow reassignment in the drag function
+                    let startX = e.clientX / scale - translateX / scale; 
+                    let startY = e.clientY / scale - translateY / scale;
+
+                    const drag = (e) => {
+                        if (!draggingNode) return;
+                        
+                        const currentX = e.clientX / scale - translateX / scale;
+                        const currentY = e.clientY / scale - translateY / scale;
+
+                        const dx = currentX - startX;
+                        const dy = currentY - startY;
+
+                        node.x += dx;
+                        node.y += dy;
+
+                        node.element.style.left = `${node.x}px`;
+                        node.element.style.top = `${node.y}px`;
+
+                        // Update start positions for continuous dragging
+                        startX = currentX;
+                        startY = currentY;
+
+                        // Only render links during drag for performance
+                        renderLinks();
+                    };
+
+                    const stopDrag = () => {
+                        document.removeEventListener('mousemove', drag);
+                        document.removeEventListener('mouseup', stopDrag);
+                        draggingNode = null;
+                        // Final link render and save
+                        renderLinks();
+                        saveMap();
+                    };
+
+                    document.addEventListener('mousemove', drag);
+                    document.addEventListener('mouseup', stopDrag);
+                });
+
+                // 3. Double-click to edit text
+                nodeDiv.addEventListener('dblclick', (e) => {
+                    // Don't edit if clicking a resize handle
+                    if (e.target.classList.contains('resize-handle')) return;
+
+                    // Enable text editing
+                    textEl.style.pointerEvents = 'auto';
+                    textEl.focus();
+                    document.execCommand('selectAll', false, null);
+                });
+
+
+                // 4. Update text in state
+                textEl.addEventListener('input', (e) => {
+                    node.text = e.target.innerText;
+                    renderLinks();
+                });
+                
+                // 5. Re-render links and disable text editing on blur
+                textEl.addEventListener('blur', () => {
+                    renderLinks();
+                    saveMap();
+                    // Disable pointer events again so node can be clicked/dragged
+                    textEl.style.pointerEvents = 'none';
+                });
+
+                nodes.push(node);
+                return node;
+            }
+
+            function selectNode(id) {
+                if (selectedNodeId === id) return;
+
+                // Deselect previous
+                if (selectedNodeId) {
+                    const prevNode = nodes.find(n => n.id === selectedNodeId);
+                    if (prevNode) {
+                        prevNode.element.classList.remove('selected');
+                    }
+                }
+                
+                // Select new node
+                selectedNodeId = id;
+                const newNode = nodes.find(n => n.id === selectedNodeId);
+                if (newNode) {
+                    newNode.element.classList.add('selected');
+                }
+                
+                updateToolbar();
+            }
+
+            function deselectNode() {
+                if (selectedNodeId) {
+                    const node = nodes.find(n => n.id === selectedNodeId);
+                    if (node) {
+                        node.element.classList.remove('selected');
+                    }
+                }
+                selectedNodeId = null;
+                updateToolbar();
+            }
+
+            function deleteNode(id) {
+                const index = nodes.findIndex(n => n.id === id);
+                if (index !== -1) {
+                    const node = nodes[index];
+                    
+                    // Remove connections involving this node
+                    connections = connections.filter(c => c.source !== id && c.target !== id);
+                    
+                    // Remove from DOM and array
+                    node.element.remove();
+                    nodes.splice(index, 1);
+                    
+                    selectedNodeId = null;
+                    renderLinks();
+                    saveMap();
+                    updateToolbar();
+                }
+            }
+            
+            function handleAddNode() {
+                const parentNode = nodes.find(n => n.id === selectedNodeId);
+                let x = canvas.offsetWidth / 2 - 75; // Default center
+                let y = canvas.offsetHeight / 2 - 40; // Default center
+                
+                if (parentNode) {
+                    // Spawn new node near selected node (with offset from scale/pan)
+                    x = parentNode.x + parentNode.width + 50;
+                    y = parentNode.y;
+                } else {
+                    // Spawn near center, adjusted for pan/scale
+                    x = (canvas.offsetWidth / 2 - 75 - translateX) / scale;
+                    y = (canvas.offsetHeight / 2 - 40 - translateY) / scale;
+                }
+                
+                const newNode = createNode({
+                    text: 'New Idea', 
+                    x: x, 
+                    y: y,
+                    width: 150,
+                    height: 80,
+                    shape: parentNode ? parentNode.shape : 'rectangle'
+                });
+                
+                // If a parent was selected, connect the new node
+                if (parentNode) {
+                    addConnection(parentNode.id, newNode.id);
+                }
+                
+                selectNode(newNode.id);
+                saveMap();
+            }
+
+            function handleToggleShape() {
+                const node = nodes.find(n => n.id === selectedNodeId);
+                if (node) {
+                    if (node.shape === 'rectangle') {
+                        node.shape = 'ellipse';
+                        node.element.classList.remove('shape-rectangle');
+                        node.element.classList.add('shape-ellipse');
+                    } else {
+                        node.shape = 'rectangle';
+                        node.element.classList.remove('shape-ellipse');
+                        node.element.classList.add('shape-rectangle');
+                    }
+                    saveMap();
+                }
+            }
+
+            /** Connection Management **/
+
+            function addConnection(sourceId, targetId) {
+                // Prevent self-connection and duplicate connection
+                if (sourceId === targetId) return;
+                if (connections.some(c => (c.source === sourceId && c.target === targetId) || (c.source === targetId && c.target === sourceId))) return;
+
+                connections.push({ source: sourceId, target: targetId });
+                renderLinks();
+                saveMap();
+            }
+
+            function deleteConnection(sourceId, targetId) {
+                const initialLength = connections.length;
+                connections = connections.filter(c => !((c.source === sourceId && c.target === targetId) || (c.source === targetId && c.target === sourceId)));
+                
+                if (connections.length < initialLength) {
+                    renderLinks();
+                    saveMap();
+                    return true;
+                }
+                return false;
+            }
+
+            function handleConnectionClick(nodeId, action) {
+                selectNode(nodeId);
+                const node = nodes.find(n => n.id === nodeId);
+                
+                // Highlight the selected node for connection purpose
+                node.element.classList.add(action === 'add' ? 'border-purple-500' : 'border-pink-500');
+
+                connectionTargetNodes.push(nodeId);
+                
+                if (connectionTargetNodes.length === 2) {
+                    const [source, target] = connectionTargetNodes;
+                    let success = false;
+
+                    if (action === 'add') {
+                        addConnection(source, target);
+                        success = true;
+                    } else if (action === 'delete') {
+                        success = deleteConnection(source, target);
+                    }
+
+                    // Reset styling on both nodes
+                    nodes.forEach(n => {
+                        n.element.classList.remove('border-purple-500', 'border-pink-500');
+                    });
+                    
+                    // Show confirmation
+                    if (success) {
+                        showMessage(`${action === 'add' ? 'Connected' : 'Disconnected'} nodes ${source} and ${target}.`, action === 'add' ? 'green' : 'red');
+                    } else {
+                        showMessage(`No connection ${action === 'add' ? 'created' : 'found'} between nodes ${source} and ${target}.`, 'yellow');
+                    }
+                    
+                    // Reset mode
+                    interactionMode = 'select';
+                    connectionTargetNodes = [];
+                    updateToolbar();
+                }
+            }
+
+
+            /** Line Rendering **/
+
+            // Helper to get bounding box for connector
+            function getNodeBounds(node) {
+                return {
+                    x: node.x,
+                    y: node.y,
+                    width: node.width,
+                    height: node.height
+                };
+            }
+
+            // Function to find the intersection point on the node perimeter
+            function getIntersectionPoint(source, target) {
+                const s = getNodeBounds(source);
+                const t = getNodeBounds(target);
+                
+                const s_center = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
+                const t_center = { x: t.x + t.width / 2, y: t.y + t.height / 2 };
+
+                const dx = t_center.x - s_center.x;
+                const dy = t_center.y - s_center.y;
+
+                // Simple rectangular intersection for now
+                
+                const getRectIntersection = (rect, center, angle) => {
+                    const w = rect.width / 2;
+                    const h = rect.height / 2;
+                    const cosA = Math.cos(angle);
+                    const sinA = Math.sin(angle);
+                    
+                    let targetX, targetY;
+
+                    if (Math.abs(cosA * h) < Math.abs(sinA * w)) {
+                        // Intersection on top or bottom edge
+                        targetY = sinA > 0 ? h : -h;
+                        targetX = targetY / sinA * cosA;
+                    } else {
+                        // Intersection on left or right edge
+                        targetX = cosA > 0 ? w : -w;
+                        targetY = targetX / cosA * sinA;
+                    }
+                    
+                    return { x: center.x + targetX, y: center.y + targetY };
+                }
+
+                // Calculate angle from source center to target center
+                const angle = Math.atan2(dy, dx);
+                
+                // Get intersection points for both source and target
+                const sourcePoint = getRectIntersection(s, s_center, angle);
+                const targetPoint = getRectIntersection(t, t_center, angle + Math.PI); // Opposite angle
+
+                return { source: sourcePoint, target: targetPoint };
+            }
+
+            function renderLinks() {
+                lineSvg.innerHTML = ''; // Clear previous lines
+                
+                // Set the SVG size to cover the whole viewport
+                lineSvg.setAttribute('width', canvas.offsetWidth);
+                lineSvg.setAttribute('height', canvas.offsetHeight);
+
+
+                connections.forEach(conn => {
+                    const sourceNode = nodes.find(n => n.id === conn.source);
+                    const targetNode = nodes.find(n => n.id === conn.target);
+
+                    if (sourceNode && targetNode) {
+                        const { source: p1, target: p2 } = getIntersectionPoint(sourceNode, targetNode);
+                        
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        
+                        // FIX: Apply the scale and translation to the coordinates here, 
+                        // ensuring the line is drawn in screen space based on node positions.
+                        line.setAttribute('x1', p1.x * scale + translateX);
+                        line.setAttribute('y1', p1.y * scale + translateY);
+                        line.setAttribute('x2', p2.x * scale + translateX);
+                        line.setAttribute('y2', p2.y * scale + translateY);
+                        line.classList.add('line');
+                        
+                        lineSvg.appendChild(line);
+                    }
+                });
+            }
+
+            /** Resize Logic **/
+            function startResize(e, node, handlePos) {
+                e.stopPropagation();
+                // If not in select mode, disable resizing
+                if (interactionMode !== 'select') return;
+                
+                resizeHandle = handlePos;
+                selectNode(node.id);
+
+                resizeStart = {
+                    x: e.clientX,
+                    y: e.clientY,
+                    width: node.width,
+                    height: node.height,
+                    nodeX: node.x,
+                    nodeY: node.y
+                };
+
+                document.addEventListener('mousemove', onResize);
+                document.addEventListener('mouseup', stopResize);
+            }
+
+            function onResize(e) {
+                if (!resizeHandle) return;
+                
+                const node = nodes.find(n => n.id === selectedNodeId);
+                if (!node) return;
+
+                e.preventDefault(); 
+
+                // Calculate mouse movement in unscaled canvas coordinates
+                const dx = (e.clientX - resizeStart.x) / scale;
+                const dy = (e.clientY - resizeStart.y) / scale;
+
+                if (resizeHandle.includes('r')) { // Right handles
+                    let newWidth = resizeStart.width + dx;
+                    if (newWidth >= minNodeWidth) {
+                        node.element.style.width = `${newWidth}px`;
+                        node.width = newWidth;
+                    }
+                }
+                if (resizeHandle.includes('l')) { // Left handles
+                    let newWidth = resizeStart.width - dx;
+                    if (newWidth >= minNodeWidth) {
+                        node.element.style.width = `${newWidth}px`;
+                        node.width = newWidth;
+                        node.x = resizeStart.nodeX + dx;
+                        node.element.style.left = `${node.x}px`;
+                    }
+                }
+                if (resizeHandle.includes('b')) { // Bottom handles
+                    let newHeight = resizeStart.height + dy;
+                    if (newHeight >= minNodeHeight) {
+                        node.element.style.height = `${newHeight}px`;
+                        node.height = newHeight;
+                    }
+                }
+                if (resizeHandle.includes('t')) { // Top handles
+                    let newHeight = resizeStart.height - dy;
+                    if (newHeight >= minNodeHeight) {
+                        node.element.style.height = `${newHeight}px`;
+                        node.height = newHeight;
+                        node.y = resizeStart.nodeY + dy;
+                        node.element.style.top = `${node.y}px`;
+                    }
+                }
+
+                // Only render links during resize for performance
+                renderLinks();
+            }
+
+            function stopResize() {
+                resizeHandle = null;
+                document.removeEventListener('mousemove', onResize);
+                document.removeEventListener('mouseup', stopResize);
+                saveMap();
+                renderLinks();
+            }
+
+            /** Zoom & Pan **/
+            
+            function togglePanMode() { 
+                panMode = !panMode;
+                updateToolbar();
+                if (panMode) {
+                    showMessage('Pan Mode ON. Click and drag the background to move the view.', 'blue');
+                    canvas.style.cursor = 'grab';
+                } else {
+                    showMessage('Pan Mode OFF. Click and drag nodes to move them.', 'blue');
+                    canvas.style.cursor = 'default';
+                }
+            }
+
+
+            function handleZoom(factor, clientX, clientY) {
+                const oldScale = scale;
+                scale = Math.max(minScale, Math.min(maxScale, scale * factor));
+
+                // Calculate point under mouse in canvas coordinates
+                const x = clientX !== undefined ? (clientX - translateX) / oldScale : canvas.offsetWidth / 2;
+                const y = clientY !== undefined ? (clientY - translateY) / oldScale : canvas.offsetHeight / 2;
+
+                // Adjust translation to keep the point centered after zoom
+                translateX = translateX - (x * (scale - oldScale));
+                translateY = translateY - (y * (scale - oldScale));
+                
+                updateTransform();
+                saveMap();
+            }
+
+            function handleZoomToFit() {
+                if (nodes.length === 0) {
+                    // Reset to center
+                    scale = 1.0;
+                    translateX = 0;
+                    translateY = 0;
+                    updateTransform();
+                    return;
+                }
+
+                // 1. Calculate bounding box of all nodes
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                nodes.forEach(node => {
+                    minX = Math.min(minX, node.x);
+                    minY = Math.min(minY, node.y);
+                    maxX = Math.max(maxX, node.x + node.width);
+                    maxY = Math.max(maxY, node.y + node.height);
+                });
+                
+                const mapWidth = maxX - minX;
+                const mapHeight = maxY - minY;
+
+                const padding = 100; // Add some padding around the map
+                const viewportWidth = canvas.offsetWidth;
+                const viewportHeight = canvas.offsetHeight;
+
+                // 2. Calculate new scale
+                const scaleX = (viewportWidth - padding) / mapWidth;
+                const scaleY = (viewportHeight - padding) / mapHeight;
+                
+                // Choose the smaller scale to ensure everything fits
+                let newScale = Math.min(scaleX, scaleY);
+                newScale = Math.max(minScale, Math.min(maxScale, newScale)); // Clamp scale
+
+                // 3. Calculate new translation (to center the bounding box)
+                const centerMapX = minX + mapWidth / 2;
+                const centerMapY = minY + mapHeight / 2;
+
+                const centerViewportX = viewportWidth / 2;
+                const centerViewportY = viewportHeight / 2;
+                
+                let newTranslateX = centerViewportX - (centerMapX * newScale);
+                let newTranslateY = centerViewportY - (centerMapY * newScale);
+
+                // 4. Apply new state
+                scale = newScale;
+                translateX = newTranslateX;
+                translateY = newTranslateY;
+                
+                updateTransform();
+                saveMap();
+            }
+
+            function startPan(e) {
+                // Only allow pan if Pan Mode is active AND we click the canvas background (e.target.id === 'canvas')
+                if (panMode && e.target.id === 'canvas') { 
+                    e.preventDefault();
+                    
+                    isPanning = true;
+                    canvas.classList.add('panning');
+                    panStart = {
+                        x: e.clientX,
+                        y: e.clientY,
+                        tX: translateX,
+                        tY: translateY
+                    };
+
+                    document.addEventListener('mousemove', onPan);
+                    document.addEventListener('mouseup', stopPan);
+                }
+            }
+
+            function onPan(e) {
+                if (!isPanning) return;
+                
+                const dx = e.clientX - panStart.x;
+                const dy = e.clientY - panStart.y;
+                
+                translateX = panStart.tX + dx;
+                translateY = panStart.tY + dy;
+                
+                updateTransform();
+            }
+
+            function stopPan() {
+                isPanning = false;
+                canvas.classList.remove('panning');
+                if (panMode) {
+                    canvas.style.cursor = 'grab';
+                }
+                document.removeEventListener('mousemove', onPan);
+                document.removeEventListener('mouseup', stopPan);
+                saveMap();
+            }
+
+            // Keyboard Events
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Delete' && selectedNodeId) {
+                    deleteNode(selectedNodeId);
+                } 
+            });
+
+            // Handle middle/right click drag for panning
+            canvas.addEventListener('mousedown', (e) => {
+                // If panMode is active and we click the canvas background
+                if (e.button === 0 && panMode && e.target.id === 'canvas') { 
+                    startPan(e);
+                }
+                // If panMode is NOT active and we click the canvas background, deselect
+                if (e.button === 0 && !panMode && e.target.id === 'canvas') {
+                    deselectNode();
+                    setMode('select'); // Reset interaction mode
+                }
+            });
+            
+            // Mouse wheel zoom
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const factor = 1 + e.deltaY * -zoomSpeed;
+                handleZoom(factor, e.clientX, e.clientY);
+            });
+            
+            // Click outside (on the canvas) to deselect and reset mode
+            canvas.addEventListener('click', (e) => {
+                // If click is on the background, reset connection modes
+                if (e.target.id === 'canvas') {
+                     // If we are in a connection mode, reset it
+                    if (interactionMode !== 'select') {
+                        setMode('select');
+                    }
+                    
+                    // Reset highlighting on nodes if connections were attempted
+                    nodes.forEach(n => {
+                        n.element.classList.remove('border-purple-500', 'border-pink-500');
+                    });
+                }
+            });
+
+            /** Instructions Modal **/
+            function toggleInstructions(show) {
+                if (show) {
+                    instructionsModal.classList.remove('opacity-0', 'pointer-events-none');
+                } else {
+                    instructionsModal.classList.add('opacity-0', 'pointer-events-none');
+                }
+            }
+            
+            /** Message Box (simple) **/
+            let messageTimeout;
+            const messageBox = document.createElement('div');
+            messageBox.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 p-3 rounded-lg shadow-xl text-white font-semibold transition-opacity duration-300 opacity-0 z-50';
+            document.body.appendChild(messageBox);
+
+            function showMessage(text, type = 'blue') {
+                clearTimeout(messageTimeout);
+                
+                messageBox.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 p-3 rounded-lg shadow-xl text-white font-semibold transition-opacity duration-300 z-50';
+                
+                let bgColor;
+                switch(type) {
+                    case 'green': bgColor = 'bg-green-500'; break;
+                    case 'red': bgColor = 'bg-red-500'; break;
+                    case 'purple': bgColor = 'bg-purple-500'; break;
+                    case 'pink': bgColor = 'bg-pink-500'; break;
+                    case 'yellow': bgColor = 'bg-yellow-500'; break;
+                    default: bgColor = 'bg-blue-500';
+                }
+                messageBox.classList.add(bgColor);
+                messageBox.innerText = text;
+                messageBox.classList.remove('opacity-0');
+
+                messageTimeout = setTimeout(() => {
+                    messageBox.classList.add('opacity-0');
+                }, 3000);
+            }
+
+            function hideMessage() {
+                 clearTimeout(messageTimeout);
+                 messageBox.classList.add('opacity-0');
+            }
+
+
+            /** Save/Load (Local Storage) **/
+
+            function saveMap() {
+                const data = {
+                    nodes: nodes.map(n => ({
+                        id: n.id,
+                        text: n.text,
+                        x: n.x,
+                        y: n.y,
+                        width: n.width,
+                        height: n.height,
+                        shape: n.shape
+                    })),
+                    connections: connections,
+                    nextNodeId: nextNodeId,
+                    transform: { scale, translateX, translateY }
+                };
+                localStorage.setItem('mindMapData', JSON.stringify(data));
+            }
+
+            function loadMap() {
+                const data = JSON.parse(localStorage.getItem('mindMapData'));
+                if (data) {
+                    // Clear current state
+                    nodes.forEach(n => n.element.remove());
+                    nodes = [];
+                    connections = [];
+
+                    // Load transform
+                    if (data.transform) {
+                        scale = data.transform.scale || 1.0;
+                        translateX = data.transform.translateX || 0;
+                        translateY = data.transform.translateY || 0;
+                        updateTransform();
+                    } else {
+                        updateTransform();
+                    }
+
+                    // Load nodes
+                    data.nodes.forEach(n => createNode(n));
+                    
+                    // Load connections
+                    connections = data.connections || [];
+                    
+                    // Update counter
+                    nextNodeId = data.nextNodeId || nextNodeId;
+
+                    renderLinks();
+                } else {
+                    // Create a central node if no data exists
+                    createNode({ text: 'Main Idea', x: 200, y: 200, width: 150, height: 80, shape: 'rectangle' });
+                    updateTransform();
+                    saveMap();
+                }
+            }
+            
+            function handleExportJson() {
+                const data = JSON.parse(localStorage.getItem('mindMapData'));
+                if (!data || data.nodes.length === 0) {
+                    showMessage('Map is empty, nothing to export.', 'yellow');
+                    return;
+                }
+                const jsonString = JSON.stringify(data, null, 2);
+                const blob = new Blob([jsonString], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'mindmap_export.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showMessage('Map (JSON) exported successfully!', 'green');
+            }
+            
+            /** Text Wrapping Helper for Export **/
+            function getWrappedText(text, maxWidth, ctx, font) {
+                const words = text.split(' ');
+                let lines = [];
+                let currentLine = words[0] || '';
+
+                ctx.font = font;
+
+                for (let i = 1; i < words.length; i++) {
+                    const word = words[i];
+                    const testLine = currentLine + ' ' + word;
+                    const testWidth = ctx.measureText(testLine).width;
+
+                    if (testWidth > maxWidth) {
+                        lines.push(currentLine);
+                        currentLine = word;
+                    } else {
+                        currentLine = testLine;
+                    }
+                }
+                lines.push(currentLine);
+                return lines;
+            }
+
+            /** PNG Export Logic (Fixed Text Wrapping) **/
+            function handleExportPng() {
+                if (nodes.length === 0) {
+                    showMessage('Map is empty, nothing to export.', 'yellow');
+                    return;
+                }
+
+                // 1. Calculate the bounding box of the entire map (in unscaled coordinates)
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                nodes.forEach(node => {
+                    minX = Math.min(minX, node.x);
+                    minY = Math.min(minY, node.y);
+                    maxX = Math.max(maxX, node.x + node.width);
+                    maxY = Math.max(maxY, node.y + node.height);
+                });
+
+                const padding = 50;
+                const mapWidth = maxX - minX;
+                const mapHeight = maxY - minY;
+
+                // 2. Set canvas dimensions
+                const totalWidth = mapWidth * scale + 2 * padding;
+                const totalHeight = mapHeight * scale + 2 * padding;
+                
+                exportCanvas.width = totalWidth;
+                exportCanvas.height = totalHeight;
+                const ctx = exportCanvas.getContext('2d');
+                
+                // 3. Clear canvas and set background color
+                ctx.fillStyle = '#f3f4f6'; // Match canvas background
+                ctx.fillRect(0, 0, totalWidth, totalHeight);
+                
+                // 4. Calculate a translation/scale factor for the export canvas
+                const exportScale = scale;
+                const exportTranslateX = padding - minX * scale;
+                const exportTranslateY = padding - minY * scale;
+                
+                const exportFont = `${exportFontSize * exportScale}px Inter, sans-serif`;
+                ctx.font = exportFont;
+
+                // 5. Draw connections (Lines)
+                connections.forEach(conn => {
+                    const sourceNode = nodes.find(n => n.id === conn.source);
+                    const targetNode = nodes.find(n => n.id === conn.target);
+
+                    if (sourceNode && targetNode) {
+                        const { source: p1, target: p2 } = getIntersectionPoint(sourceNode, targetNode);
+                        
+                        // Apply the export transformation to line coordinates
+                        const x1 = p1.x * exportScale + exportTranslateX;
+                        const y1 = p1.y * exportScale + exportTranslateY;
+                        const x2 = p2.x * exportScale + exportTranslateX;
+                        const y2 = p2.y * exportScale + exportTranslateY;
+
+                        ctx.strokeStyle = '#6b7280'; // gray-500
+                        ctx.lineWidth = 3 * exportScale;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                });
+
+                // 6. Draw Nodes (with fixed text wrapping)
+                nodes.forEach(node => {
+                    const textContent = node.text;
+                    const isEllipse = node.shape === 'ellipse';
+
+                    // Node position and dimensions on the export canvas
+                    const nodeX = node.x * exportScale + exportTranslateX;
+                    const nodeY = node.y * exportScale + exportTranslateY;
+                    const nodeW = node.width * exportScale;
+                    const nodeH = node.height * exportScale;
+
+                    // Draw shape
+                    ctx.fillStyle = '#ffffff'; // Node background: white
+                    ctx.strokeStyle = '#e5e7eb'; // Node border: light gray
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    
+                    if (isEllipse) {
+                        ctx.ellipse(nodeX + nodeW / 2, nodeY + nodeH / 2, nodeW / 2, nodeH / 2, 0, 0, 2 * Math.PI);
+                    } else {
+                        // Rounded rectangle
+                        const radius = 8; 
+                        ctx.moveTo(nodeX + radius, nodeY);
+                        ctx.lineTo(nodeX + nodeW - radius, nodeY);
+                        ctx.arcTo(nodeX + nodeW, nodeY, nodeX + nodeW, nodeY + radius, radius);
+                        ctx.lineTo(nodeX + nodeW, nodeY + nodeH - radius);
+                        ctx.arcTo(nodeX + nodeW, nodeY + nodeH, nodeX + nodeW - radius, nodeY + nodeH, radius);
+                        ctx.lineTo(nodeX + radius, nodeY + nodeH);
+                        ctx.arcTo(nodeX, nodeY + nodeH, nodeX, nodeY + nodeH - radius, radius);
+                        ctx.lineTo(nodeX, nodeY + radius);
+                        ctx.arcTo(nodeX, nodeY, nodeX + radius, nodeY, radius);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Draw text content
+                    ctx.fillStyle = '#1f2937'; // Text color: gray-800
+                    ctx.font = exportFont;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    
+                    // Manual Text Wrapping FIX
+                    const innerWidth = nodeW - (2 * exportPaddingX * exportScale);
+                    const lines = getWrappedText(textContent, innerWidth, ctx, exportFont);
+                    
+                    const lineHeight = exportLineHeight * exportScale;
+                    const totalTextHeight = lines.length * lineHeight;
+                    const startY = nodeY + nodeH / 2 - (totalTextHeight / 2) + (lineHeight / 2);
+                    
+                    lines.forEach((line, index) => {
+                        ctx.fillText(line, nodeX + nodeW / 2, startY + index * lineHeight);
+                    });
+                });
+
+                // 7. Trigger Download
+                const dataURL = exportCanvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = dataURL;
+                a.download = 'mindmap_visual_export.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                showMessage('Map exported to PNG successfully!', 'green');
+            }
+            
+            /** SVG Export Logic (NEW) **/
+            function handleExportSvg() {
+                if (nodes.length === 0) {
+                    showMessage('Map is empty, nothing to export.', 'yellow');
+                    return;
+                }
+                
+                // 1. Calculate bounding box
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                nodes.forEach(node => {
+                    minX = Math.min(minX, node.x);
+                    minY = Math.min(minY, node.y);
+                    maxX = Math.max(maxX, node.x + node.width);
+                    maxY = Math.max(maxY, node.y + node.height);
+                });
+                
+                const padding = 50; // Padding for the final SVG canvas
+                const mapWidth = maxX - minX;
+                const mapHeight = maxY - minY;
+                
+                const viewBoxWidth = mapWidth + 2 * padding / scale;
+                const viewBoxHeight = mapHeight + 2 * padding / scale;
+                
+                // Calculate offset to move minX, minY to (padding, padding)
+                const offsetX = minX - padding / scale;
+                const offsetY = minY - padding / scale;
+                
+                let svgContent = `<svg width="${viewBoxWidth * scale}" height="${viewBoxHeight * scale}" viewBox="${offsetX} ${offsetY} ${viewBoxWidth} ${viewBoxHeight}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">`;
+                
+                // 2. Background (optional, but good practice)
+                svgContent += `<rect x="${offsetX}" y="${offsetY}" width="${viewBoxWidth}" height="${viewBoxHeight}" fill="#f3f4f6"/>`;
+
+                // 3. Draw connections (Lines)
+                connections.forEach(conn => {
+                    const sourceNode = nodes.find(n => n.id === conn.source);
+                    const targetNode = nodes.find(n => n.id === conn.target);
+
+                    if (sourceNode && targetNode) {
+                        const { source: p1, target: p2 } = getIntersectionPoint(sourceNode, targetNode);
+                        
+                        // Coordinates are already in the correct unscaled space
+                        svgContent += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#6b7280" stroke-width="3" />`;
+                    }
+                });
+                
+                // 4. Draw Nodes (Vector)
+                nodes.forEach(node => {
+                    const { x, y, width, height, shape, text } = node;
+                    const fill = "#ffffff";
+                    const stroke = "#e5e7eb";
+                    const strokeWidth = 1;
+                    const textFill = "#1f2937";
+                    
+                    svgContent += `<g transform="translate(${x}, ${y})">`;
+                    
+                    // Draw shape
+                    if (shape === 'ellipse') {
+                        svgContent += `<ellipse cx="${width / 2}" cy="${height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`;
+                    } else {
+                        // Rounded rectangle
+                        const rx = 8;
+                        svgContent += `<rect x="0" y="0" width="${width}" height="${height}" rx="${rx}" ry="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`;
+                    }
+                    
+                    // Draw text (with wrapping)
+                    const innerWidth = width - (2 * exportPaddingX);
+                    // Use a mock context to calculate wrapping for SVG text
+                    const mockCtx = exportCanvas.getContext('2d');
+                    const mockFont = `${exportFontSize}px Inter, sans-serif`;
+                    const lines = getWrappedText(text, innerWidth, mockCtx, mockFont);
+                    
+                    const lineHeight = exportLineHeight;
+                    const totalTextHeight = lines.length * lineHeight;
+                    const startY = height / 2 - (totalTextHeight / 2) + (lineHeight / 2) + exportFontSize / 10; // Slight adjustment for baseline
+                    const textX = width / 2;
+                    
+                    svgContent += `<text fill="${textFill}" font-family="Inter, sans-serif" font-size="${exportFontSize}" text-anchor="middle">`;
+                    
+                    lines.forEach((line, index) => {
+                        svgContent += `<tspan x="${textX}" y="${startY + index * lineHeight}">${line}</tspan>`;
+                    });
+                    
+                    svgContent += `</text>`;
+                    svgContent += `</g>`;
+                });
+                
+                svgContent += `</svg>`;
+
+                // 5. Trigger Download
+                const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'mindmap_visual_export.svg';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showMessage('Map exported to SVG successfully!', 'green');
+            }
+
+
+            function handleImport(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const importedData = JSON.parse(event.target.result);
+                        
+                        // Save imported data to localStorage
+                        localStorage.setItem('mindMapData', JSON.stringify(importedData));
+                        loadMap();
+                        showMessage('Map imported successfully!', 'green');
+                    } catch (error) {
+                        showMessage('Error importing file. Invalid JSON format.', 'red');
+                        console.error('Import error:', error);
+                    }
+                };
+                reader.readAsText(file);
+                // Clear the file input so the same file can be imported again
+                e.target.value = null; 
+            }
+            
+            // Event Listeners for Toolbar Buttons
+            document.getElementById('add-node-btn').addEventListener('click', handleAddNode);
+            document.getElementById('delete-node-btn').addEventListener('click', () => {
+                if (selectedNodeId) deleteNode(selectedNodeId);
+            });
+            document.getElementById('add-connection-btn').addEventListener('click', () => setMode('addConnection'));
+            document.getElementById('delete-connection-btn').addEventListener('click', () => setMode('deleteConnection'));
+            document.getElementById('zoom-in-btn').addEventListener('click', () => handleZoom(1.2));
+            document.getElementById('zoom-out-btn').addEventListener('click', () => handleZoom(1 / 1.2));
+            document.getElementById('zoom-fit-btn').addEventListener('click', handleZoomToFit);
+            
+            document.getElementById('export-json-btn').addEventListener('click', handleExportJson); 
+            document.getElementById('export-svg-btn').addEventListener('click', handleExportSvg);   // Updated to SVG
+            
+            document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-input').click());
+            document.getElementById('import-input').addEventListener('change', handleImport);
+            document.getElementById('help-btn').addEventListener('click', () => toggleInstructions(true));
+            document.getElementById('close-instructions-btn').addEventListener('click', () => toggleInstructions(false));
+            document.getElementById('toggle-shape-btn').addEventListener('click', handleToggleShape);
+            document.getElementById('pan-toggle-btn').addEventListener('click', togglePanMode); 
+
+
+            // Initial load
+            loadMap();
+        });
+    </script>
+</body>
+</html>
