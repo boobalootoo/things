@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Cropper and Slicer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        #mainCanvas {
+            border: 2px dashed #a0aec0;
+            background-color: #ffffff;
+            touch-action: none;
+            cursor: default;
+        }
+        #mainCanvas.draw-mode {
+            cursor: crosshair;
+        }
+        #mainCanvas.delete-mode {
+            /* Custom trash icon cursor for deletion */
+            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ef4444" width="24px" height="24px"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>') 12 12, pointer;
+        }
+        /* Hide the temporary canvas used for cutting and downloading */
+        #tempCanvas {
+            display: none;
+        }
+        /* Mode Toggle Styles */
+        .mode-toggle { display: none; }
+        .mode-label {
+            transition: all 0.15s ease-in-out;
+            cursor: pointer;
+        }
+        .mode-toggle:checked + .mode-label {
+            background-color: #4f46e5;
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#4f46e5',
+                        'primary-dark': '#4338ca',
+                        'secondary': '#10b981',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div class="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl p-6 md:p-10">
+        <h1 class="text-3xl font-extrabold text-gray-900 mb-2">Image Cropper & Slicer Tool</h1>
+        <p class="text-gray-600 mb-6">Choose a method: a uniform grid for tiling, or a selector to draw independent crop boxes.</p>
+
+        <!-- Mode Selector -->
+        <div class="flex bg-gray-100 p-1 rounded-lg mb-6 shadow-inner">
+            <input type="radio" id="modeGrid" name="slicerMode" value="grid" checked class="mode-toggle">
+            <label for="modeGrid" class="mode-label flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-700">Grid Slicer</label>
+
+            <input type="radio" id="modeDraw" name="slicerMode" value="crop" class="mode-toggle">
+            <label for="modeDraw" class="mode-1 label flex-1 text-center py-2 px-4 rounded-lg font-semibold text-gray-700">Crop Selector</label>
+        </div>
+
+        <!-- Image Upload and Controls -->
+        <div id="controls" class="space-y-6">
+            
+            <!-- File Input -->
+            <label class="block">
+                <span class="sr-only">Choose image file</span>
+                <input type="file" id="imageUpload" accept="image/*" class="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-full file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-primary/10 file:text-primary
+                    hover:file:bg-primary/20 cursor-pointer
+                "/>
+            </label>
+
+            <!-- Mode-Specific Controls Container -->
+            <div id="modeSpecificControls">
+                <!-- Grid Controls (Default) -->
+                <div id="gridControls" class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="rows" class="block text-sm font-medium text-gray-700 mb-1">Rows</label>
+                        <input type="number" id="rows" value="2" min="1" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition" />
+                    </div>
+                    <div>
+                        <label for="cols" class="block text-sm font-medium text-gray-700 mb-1">Columns</label>
+                        <input type="number" id="cols" value="2" min="1" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition" />
+                    </div>
+                </div>
+                
+                <!-- Crop Selector Controls (Hidden initially) -->
+                <div id="drawControls" class="hidden space-y-4">
+                    <p class="text-sm text-gray-600">Click and drag to define rectangular crop regions. Each box will be a separate downloadable piece unless Inversion is active.</p>
+                    
+                    <!-- Inversion Toggle -->
+                    <div class="flex items-center space-x-2 p-3 bg-indigo-50 rounded-lg">
+                        <input type="checkbox" id="invertOutput" class="h-4 w-4 text-primary rounded focus:ring-primary" onchange="handleInversionToggle()">
+                        <label for="invertOutput" class="text-sm font-medium text-gray-700">
+                            Invert Output (Keep Background, Remove Cut Areas)
+                        </label>
+                    </div>
+
+                    <div class="flex space-x-4">
+                        <button id="clearLinesButton" onclick="clearCropRegions()" class="flex-1 py-2 px-4 text-sm bg-red-100 text-red-700 font-semibold rounded-lg hover:bg-red-200 transition">
+                            Clear All Regions
+                        </button>
+                        <button id="toggleDeleteButton" onclick="toggleDeleteMode()" class="flex-1 py-2 px-4 text-sm bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition">
+                            Toggle Delete Mode
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <button id="cutButton" onclick="cutImage()" disabled class="w-full py-3 px-4 bg-gray-400 text-white font-bold rounded-lg shadow-md transition duration-150 ease-in-out cursor-not-allowed disabled:opacity-50">
+                Crop & Generate Downloads
+            </button>
+        </div>
+
+        <!-- Canvas Display Area -->
+        <div id="canvasContainer" class="mt-8 relative flex justify-center border border-gray-200 rounded-xl p-4 bg-gray-50">
+            <canvas id="mainCanvas" class="max-w-full h-auto rounded-lg"></canvas>
+            <p id="placeholderText" class="absolute inset-0 flex items-center justify-center text-gray-400 pointer-events-none">
+                Upload an image to start cropping.
+            </p>
+        </div>
+
+        <!-- Download Area -->
+        <div id="downloadArea" class="mt-8 hidden">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Download Pieces (<span id="pieceCount">0</span>)</h2>
+            
+            <!-- Bulk Controls -->
+            <div id="bulkControls" class="flex space-x-4 mb-4">
+                <button id="selectAllButton" onclick="toggleSelectAll(true)" class="flex-1 py-2 px-4 text-sm bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition">
+                    Select All
+                </button>
+                <button id="downloadSelectedButton" onclick="downloadSelected()" class="flex-1 py-2 px-4 text-sm bg-primary text-white font-semibold rounded-lg shadow-md hover:bg-primary-dark transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    Download Selected (0)
+                </button>
+            </div>
+
+            <div id="downloadLinks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Download buttons will be injected here -->
+            </div>
+            <div id="messageBox" class="p-3 mt-4 text-sm text-yellow-700 bg-yellow-100 rounded-lg hidden"></div>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas for processing -->
+    <canvas id="tempCanvas"></canvas>
+
+    <script>
+        // Global variables for Firebase constants (required for single-file mandate)
+        const __app_id = typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-app-id';
+        const __firebase_config = typeof window.__firebase_config !== 'undefined' ? window.__firebase_config : '{}';
+        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : undefined;
+        // End of required global variables
+
+        const imageUpload = document.getElementById('imageUpload');
+        const mainCanvas = document.getElementById('mainCanvas');
+        const tempCanvas = document.getElementById('tempCanvas');
+        const rowsInput = document.getElementById('rows');
+        const colsInput = document.getElementById('cols');
+        const cutButton = document.getElementById('cutButton');
+        const downloadLinksDiv = document.getElementById('downloadLinks');
+        const downloadArea = document.getElementById('downloadArea');
+        const gridControls = document.getElementById('gridControls');
+        const drawControls = document.getElementById('drawControls');
+        const placeholderText = document.getElementById('placeholderText');
+        const messageBox = document.getElementById('messageBox');
+        const pieceCountSpan = document.getElementById('pieceCount');
+        const modeRadios = document.querySelectorAll('input[name="slicerMode"]');
+        const toggleDeleteButton = document.getElementById('toggleDeleteButton');
+        const invertOutputCheckbox = document.getElementById('invertOutput');
+        const downloadSelectedButton = document.getElementById('downloadSelectedButton');
+        const bulkControls = document.getElementById('bulkControls');
+
+        let originalImage = null; // Stores the original Image object
+        let originalWidth = 0;
+        let originalHeight = 0;
+        const MAX_DISPLAY_WIDTH = 600; // Max width for the visible canvas
+        
+        let currentMode = 'grid'; // 'grid' or 'crop'
+
+        // State for Crop Selector mode
+        let cropRegions = []; // Array of {x, y, w, h} objects (display pixels)
+        let isDrawing = false;
+        let isDeleteMode = false;
+        let startPoint = { x: 0, y: 0 };
+        let currentRect = { x: 0, y: 0, w: 0, h: 0 };
+        const DELETE_TOLERANCE = 5; // Pixel tolerance for deletion click inside a box
+
+
+        // --- Utility Functions ---
+
+        function showMessage(msg, type = 'info') {
+            messageBox.textContent = msg;
+            messageBox.classList.remove('hidden', 'text-yellow-700', 'bg-yellow-100', 'text-red-700', 'bg-red-100');
+            
+            if (type === 'error') {
+                messageBox.classList.add('text-red-700', 'bg-red-100');
+            } else {
+                messageBox.classList.add('text-yellow-700', 'bg-yellow-100');
+            }
+
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, 5000);
+        }
+
+        /**
+         * Converts canvas display coordinates to a point on the original image.
+         */
+        function scaleToOriginalRect(region) {
+            const scaleX = originalWidth / mainCanvas.width;
+            const scaleY = originalHeight / mainCanvas.height;
+            
+            return {
+                sx: region.x * scaleX,
+                sy: region.y * scaleY,
+                sWidth: region.w * scaleX,
+                sHeight: region.h * scaleY,
+            };
+        }
+
+        // --- Mode Switching ---
+
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                currentMode = e.target.value;
+                isDeleteMode = false; 
+                invertOutputCheckbox.checked = false; // Reset inversion when changing mode
+                toggleDeleteButton.classList.remove('bg-yellow-500', 'text-white');
+                toggleDeleteButton.classList.add('bg-gray-200', 'text-gray-700');
+                switchMode(currentMode);
+            });
+        });
+
+        function switchMode(mode) {
+            if (!originalImage) return;
+
+            // Toggle visibility of mode controls
+            gridControls.classList.toggle('hidden', mode !== 'grid');
+            drawControls.classList.toggle('hidden', mode !== 'crop');
+            
+            // Toggle bulk controls visibility (Only relevant when outputting multiple pieces)
+            bulkControls.classList.toggle('hidden', mode === 'grid' || invertOutputCheckbox.checked);
+
+            // Update canvas class for cursor/interaction
+            mainCanvas.classList.remove('draw-mode', 'delete-mode');
+            if (mode === 'crop') {
+                if (isDeleteMode) {
+                    mainCanvas.classList.add('delete-mode');
+                } else {
+                    mainCanvas.classList.add('draw-mode');
+                }
+            } else {
+                isDrawing = false;
+            }
+
+            drawOverlay();
+        }
+
+        function handleInversionToggle() {
+            // When inversion is toggled, update bulk controls visibility
+            if (currentMode === 'crop') {
+                // Bulk controls are hidden if inversion is ON (only 1 output file)
+                bulkControls.classList.toggle('hidden', invertOutputCheckbox.checked);
+            }
+        }
+        
+        /**
+         * Toggles the region deletion mode on and off.
+         */
+        function toggleDeleteMode() {
+            if (currentMode !== 'crop' || !originalImage) return;
+            if (isDrawing) return; 
+
+            isDeleteMode = !isDeleteMode;
+            
+            if (isDeleteMode) {
+                toggleDeleteButton.classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+                toggleDeleteButton.classList.add('bg-yellow-500', 'text-white', 'hover:bg-yellow-600');
+                toggleDeleteButton.textContent = 'Disable Delete Mode';
+                mainCanvas.classList.remove('draw-mode');
+                mainCanvas.classList.add('delete-mode');
+                showMessage('Delete Mode Enabled. Click inside a crop box to remove it.', 'info');
+            } else {
+                toggleDeleteButton.classList.remove('bg-yellow-500', 'text-white', 'hover:bg-yellow-600');
+                toggleDeleteButton.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+                toggleDeleteButton.textContent = 'Toggle Delete Mode';
+                mainCanvas.classList.remove('delete-mode');
+                mainCanvas.classList.add('draw-mode');
+                showMessage('Draw Mode Enabled. Drag on the canvas to place a new crop box.', 'info');
+            }
+        }
+
+        // --- Canvas Initialization and Drawing ---
+
+        function initCanvasAndImage(img) {
+            originalImage = img;
+            originalWidth = img.naturalWidth;
+            originalHeight = img.naturalHeight;
+            clearCropRegions(false); 
+
+            // 1. Set display dimensions
+            let displayWidth, displayHeight;
+            if (originalWidth > MAX_DISPLAY_WIDTH) {
+                displayWidth = MAX_DISPLAY_WIDTH;
+                displayHeight = (originalHeight / originalWidth) * MAX_DISPLAY_WIDTH;
+            } else {
+                displayWidth = originalWidth;
+                displayHeight = originalHeight;
+            }
+            
+            mainCanvas.width = displayWidth;
+            mainCanvas.height = displayHeight;
+
+            // 2. Initial state updates
+            placeholderText.classList.add('hidden');
+            cutButton.disabled = false;
+            cutButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            cutButton.classList.add('bg-primary', 'hover:bg-primary-dark', 'cursor-pointer');
+            
+            // Reset controls
+            isDeleteMode = false;
+            invertOutputCheckbox.checked = false;
+            toggleDeleteButton.classList.remove('bg-yellow-500', 'text-white');
+            toggleDeleteButton.classList.add('bg-gray-200', 'text-gray-700');
+            toggleDeleteButton.textContent = 'Toggle Delete Mode';
+
+            switchMode(currentMode);
+        }
+
+        function drawOverlay() {
+            if (!originalImage) return;
+
+            const ctx = mainCanvas.getContext('2d');
+            const displayWidth = mainCanvas.width;
+            const displayHeight = mainCanvas.height;
+            
+            ctx.clearRect(0, 0, displayWidth, displayHeight);
+            ctx.drawImage(originalImage, 0, 0, displayWidth, displayHeight);
+
+            if (currentMode === 'grid') {
+                drawGridOverlay(ctx, displayWidth, displayHeight);
+            } else if (currentMode === 'crop') {
+                drawCropSelectorOverlay(ctx);
+            }
+        }
+
+        function drawGridOverlay(ctx, displayWidth, displayHeight) {
+            const R = parseInt(rowsInput.value) || 1;
+            const C = parseInt(colsInput.value) || 1;
+
+            ctx.strokeStyle = '#ef4444'; 
+            ctx.lineWidth = 2;
+
+            const tileWidth = displayWidth / C;
+            const tileHeight = displayHeight / R;
+
+            for (let c = 1; c < C; c++) {
+                ctx.beginPath();
+                ctx.moveTo(c * tileWidth, 0);
+                ctx.lineTo(c * tileWidth, displayHeight);
+                ctx.stroke();
+            }
+
+            for (let r = 1; r < R; r++) {
+                ctx.beginPath();
+                ctx.moveTo(0, r * tileHeight);
+                ctx.lineTo(displayWidth, r * tileHeight);
+                ctx.stroke();
+            }
+        }
+        
+        function drawCropSelectorOverlay(ctx) {
+            // Draw all permanent crop regions
+            cropRegions.forEach((region, index) => {
+                ctx.strokeStyle = invertOutputCheckbox.checked ? '#f97316' : '#22c55e'; // Orange if inverted, Green otherwise
+                ctx.lineWidth = 3;
+                ctx.setLineDash([]);
+                ctx.strokeRect(region.x, region.y, region.w, region.h);
+
+                // Add text label
+                ctx.fillStyle = ctx.strokeStyle;
+                ctx.font = 'bold 14px Inter, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(`P${index + 1}`, region.x + 5, region.y + 16);
+            });
+
+            // Draw the current drawing rectangle if active
+            if (isDrawing && currentRect.w !== 0 && currentRect.h !== 0) {
+                ctx.strokeStyle = '#3b82f6'; // Blue drawing line
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 5]); // Dashed line
+                ctx.strokeRect(currentRect.x, currentRect.y, currentRect.w, currentRect.h);
+            }
+            ctx.setLineDash([]); // Reset line dash for safety
+        }
+
+        // --- Crop Selector Drawing/Deletion Logic ---
+
+        function getMousePos(event) {
+            const rect = mainCanvas.getBoundingClientRect();
+            // Handle touch events
+            const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+            const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+            
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+        
+        function handleDelete(point) {
+            if (currentMode !== 'crop' || !originalImage || !isDeleteMode) return;
+            
+            for (let i = cropRegions.length - 1; i >= 0; i--) {
+                const r = cropRegions[i];
+                
+                const isInsideX = point.x >= r.x - DELETE_TOLERANCE && point.x <= r.x + r.w + DELETE_TOLERANCE;
+                const isInsideY = point.y >= r.y - DELETE_TOLERANCE && point.y <= r.y + r.h + DELETE_TOLERANCE;
+
+                if (isInsideX && isInsideY) {
+                    cropRegions.splice(i, 1);
+                    drawOverlay();
+                    showMessage('Crop region removed.', 'info');
+                    return;
+                }
+            }
+            showMessage('No crop region found near that point.', 'info');
+        }
+
+
+        function handleStart(point) {
+            if (currentMode !== 'crop' || !originalImage || isDeleteMode) return;
+            isDrawing = true;
+            startPoint = point;
+            currentRect = { x: point.x, y: point.y, w: 0, h: 0 };
+        }
+
+        function handleMove(point) {
+            if (!isDrawing) return;
+
+            const x0 = startPoint.x;
+            const y0 = startPoint.y;
+            const x1 = point.x;
+            const y1 = point.y;
+
+            currentRect = {
+                x: Math.min(x0, x1),
+                y: Math.min(y0, y1),
+                w: Math.abs(x1 - x0),
+                h: Math.abs(y1 - y0),
+            };
+
+            drawOverlay(); 
+        }
+
+        function handleEnd() {
+            if (!isDrawing || !originalImage) return;
+            isDrawing = false;
+            
+            if (currentRect.w > 5 && currentRect.h > 5) {
+                cropRegions.push(currentRect);
+                showMessage('New crop region defined.', 'info');
+            } else if (currentRect.w !== 0 || currentRect.h !== 0) {
+                 showMessage('Crop region too small; not saved.', 'info');
+            }
+
+            currentRect = { x: 0, y: 0, w: 0, h: 0 };
+            drawOverlay();
+        }
+
+        // Attach listeners
+        mainCanvas.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            if (isDeleteMode) {
+                handleDelete(pos);
+            } else {
+                handleStart(pos);
+            }
+        });
+        mainCanvas.addEventListener('mousemove', (e) => handleMove(getMousePos(e)));
+        mainCanvas.addEventListener('mouseup', handleEnd);
+        mainCanvas.addEventListener('mouseout', handleEnd); 
+        
+        mainCanvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); 
+            const pos = getMousePos(e);
+            if (isDeleteMode) {
+                handleDelete(pos);
+            } else {
+                handleStart(pos);
+            }
+        });
+        mainCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleMove(getMousePos(e));
+        });
+        mainCanvas.addEventListener('touchend', handleEnd);
+
+
+        /**
+         * Clears all manually drawn crop regions.
+         */
+        function clearCropRegions(shouldRedraw = true) {
+            cropRegions = [];
+            if (shouldRedraw && originalImage) {
+                drawOverlay();
+                showMessage('All crop regions have been cleared.', 'info');
+            }
+        }
+
+        // --- File Handling and Event Listeners ---
+
+        imageUpload.addEventListener('change', (event) => {
+            downloadLinksDiv.innerHTML = '';
+            downloadArea.classList.add('hidden');
+            
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    initCanvasAndImage(img);
+                };
+                img.onerror = () => {
+                    showMessage('Error loading the image file.', 'error');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        rowsInput.addEventListener('input', drawOverlay);
+        colsInput.addEventListener('input', drawOverlay);
+
+        // --- Cutting Logic Dispatcher ---
+
+        function cutImage() {
+            if (!originalImage) {
+                showMessage('Please upload an image first.', 'error');
+                return;
+            }
+            if (isDrawing) {
+                handleEnd(); 
+            }
+            if (isDeleteMode) {
+                toggleDeleteMode(); 
+            }
+
+            downloadLinksDiv.innerHTML = '';
+            downloadArea.classList.remove('hidden');
+
+            if (currentMode === 'grid') {
+                cutByGrid();
+                // Ensure bulk controls are visible for grid output
+                bulkControls.classList.remove('hidden');
+            } else if (currentMode === 'crop') {
+                if (invertOutputCheckbox.checked) {
+                    cutByInversion();
+                    // Ensure bulk controls are hidden for single inverted output
+                    bulkControls.classList.add('hidden');
+                } else {
+                    cutByRegions();
+                    // Ensure bulk controls are visible for multiple region outputs
+                    bulkControls.classList.remove('hidden');
+                }
+            }
+        }
+
+
+        function cutByGrid() {
+            const R = parseInt(rowsInput.value) || 1;
+            const C = parseInt(colsInput.value) || 1;
+
+            if (R < 1 || C < 1) {
+                showMessage('Rows and Columns must be 1 or greater.', 'error');
+                return;
+            }
+
+            const tileWidth = originalWidth / C;
+            const tileHeight = originalHeight / R;
+
+            const tileInfo = [];
+            for (let r = 0; r < R; r++) {
+                for (let c = 0; c < C; c++) {
+                    tileInfo.push({
+                        sx: c * tileWidth,
+                        sy: r * tileHeight,
+                        sWidth: tileWidth,
+                        sHeight: tileHeight,
+                        fileName: `grid_${R}x${C}_r${r+1}_c${c+1}.png`
+                    });
+                }
+            }
+            processTiles(tileInfo);
+        }
+
+        function cutByRegions() {
+            if (cropRegions.length === 0) {
+                showMessage('Please draw at least one crop region to download pieces.', 'error');
+                return;
+            }
+
+            const tileInfo = cropRegions.map((region, index) => {
+                const originalRect = scaleToOriginalRect(region);
+                return {
+                    ...originalRect,
+                    fileName: `cropped_piece_${index + 1}.png`
+                };
+            });
+            
+            processTiles(tileInfo);
+        }
+        
+        function cutByInversion() {
+            if (cropRegions.length === 0) {
+                showMessage('Please draw at least one region to invert (cut out).', 'error');
+                return;
+            }
+
+            // Set processing canvas size to the full original image size
+            tempCanvas.width = originalWidth;
+            tempCanvas.height = originalHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // 1. Draw the entire original image
+            tempCtx.clearRect(0, 0, originalWidth, originalHeight);
+            tempCtx.drawImage(originalImage, 0, 0);
+
+            // 2. Clear (cut out) all defined regions, making them transparent
+            tempCtx.globalCompositeOperation = 'destination-out';
+            cropRegions.forEach(region => {
+                const originalRect = scaleToOriginalRect(region);
+                tempCtx.fillRect(
+                    originalRect.sx,
+                    originalRect.sy,
+                    originalRect.sWidth,
+                    originalRect.sHeight
+                );
+            });
+            tempCtx.globalCompositeOperation = 'source-over'; // Reset mode
+
+            const tileInfo = [{
+                sx: 0, sy: 0, sWidth: originalWidth, sHeight: originalHeight,
+                fileName: `inverted_output.png`,
+                dataURL: tempCanvas.toDataURL('image/png') // Get data URL directly
+            }];
+            
+            processTiles(tileInfo, true); // Pass true for inversion mode
+            showMessage(`Successfully generated the inverted image!`, 'info');
+        }
+
+        /**
+         * Generates and inserts download links for a given array of tile source rectangles.
+         */
+        function processTiles(tiles, isInverted = false) {
+            pieceCountSpan.textContent = tiles.length;
+            downloadLinksDiv.innerHTML = '';
+            
+            let pieceCounter = 1;
+            const tempCtx = tempCanvas.getContext('2d');
+            let generatedDataUrls = [];
+
+            tiles.forEach(tile => {
+                let dataURL;
+
+                if (isInverted) {
+                    // For inverted output, the dataURL is pre-calculated in cutByInversion
+                    dataURL = tile.dataURL;
+                } else {
+                    // For standard output (grid/regions), calculate dataURL per tile
+                    tempCanvas.width = tile.sWidth;
+                    tempCanvas.height = tile.sHeight;
+
+                    tempCtx.clearRect(0, 0, tile.sWidth, tile.sHeight);
+                    tempCtx.drawImage(
+                        originalImage,
+                        tile.sx, tile.sy, tile.sWidth, tile.sHeight,
+                        0, 0, tile.sWidth, tile.sHeight
+                    );
+                    dataURL = tempCanvas.toDataURL('image/png');
+                }
+
+                generatedDataUrls.push({ dataURL, fileName: tile.fileName });
+
+                // Create the download link container
+                const linkContainer = document.createElement('div');
+                linkContainer.className = "flex items-center space-x-2 p-1 bg-gray-50 rounded-lg shadow-sm hover:bg-gray-100 transition duration-150";
+
+                if (!isInverted) {
+                    // Checkbox for bulk select (hidden in inversion mode)
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'download-checkbox h-4 w-4 text-secondary rounded border-gray-300 focus:ring-secondary';
+                    checkbox.checked = true; // Default to selected
+                    checkbox.setAttribute('data-url', dataURL);
+                    checkbox.setAttribute('data-filename', tile.fileName);
+                    checkbox.addEventListener('change', updateDownloadSelectedButton);
+                    linkContainer.appendChild(checkbox);
+                }
+
+                // Download Button
+                const downloadButton = document.createElement('a');
+                downloadButton.href = dataURL;
+                downloadButton.download = tile.fileName;
+                downloadButton.className = "flex-1 text-center py-2 px-3 bg-secondary text-white font-medium rounded-md hover:bg-green-600 transition text-sm";
+                downloadButton.textContent = isInverted ? `Download Inverted Image` : `Piece ${pieceCounter}`;
+                
+                linkContainer.appendChild(downloadButton);
+                downloadLinksDiv.appendChild(linkContainer);
+                pieceCounter++;
+            });
+
+            if (!isInverted) {
+                updateDownloadSelectedButton();
+                showMessage(`Successfully generated ${tiles.length} pieces! Use the buttons below to download.`, 'info');
+            }
+        }
+        
+        /**
+         * Updates the counter on the "Download Selected" button.
+         */
+        function updateDownloadSelectedButton() {
+            const selectedCount = document.querySelectorAll('.download-checkbox:checked').length;
+            downloadSelectedButton.textContent = `Download Selected (${selectedCount})`;
+            downloadSelectedButton.disabled = selectedCount === 0;
+        }
+
+        /**
+         * Selects or deselects all visible download checkboxes.
+         */
+        function toggleSelectAll(select) {
+            const checkboxes = document.querySelectorAll('.download-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = select;
+            });
+            updateDownloadSelectedButton();
+        }
+
+        /**
+         * Initiates download for all checked pieces.
+         */
+        function downloadSelected() {
+            const selectedCheckboxes = document.querySelectorAll('.download-checkbox:checked');
+            if (selectedCheckboxes.length === 0) {
+                showMessage('Please select at least one piece to download.', 'error');
+                return;
+            }
+
+            let delay = 0;
+            const delayIncrement = 200; // Delay to prevent browser throttling
+
+            selectedCheckboxes.forEach((checkbox, index) => {
+                const url = checkbox.getAttribute('data-url');
+                const filename = checkbox.getAttribute('data-filename');
+
+                setTimeout(() => {
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    if (index === selectedCheckboxes.length - 1) {
+                        showMessage(`Finished downloading ${selectedCheckboxes.length} files.`, 'info');
+                    }
+                }, delay);
+                delay += delayIncrement;
+            });
+        }
+
+
+        // --- Initial setup on load (Ensures the canvas size is stable) ---
+        window.onload = () => {
+            mainCanvas.width = 300;
+            mainCanvas.height = 200;
+            mainCanvas.getContext('2d').font = '16px Inter, sans-serif';
+            mainCanvas.getContext('2d').fillStyle = '#4a5568';
+            
+            switchMode(currentMode);
+        };
+
+    </script>
+</body>
+</html>
