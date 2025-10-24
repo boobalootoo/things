@@ -431,6 +431,7 @@
             if (isOccupiedByFalling) return false;
 
             // Check 4: Is it the floor? (y=19)
+            // Grains can rest at y=18, so we check y=19
             if (y === 19 && x >= 2 && x <= 10) return false;
 
             return true; // Slot is valid and empty
@@ -442,13 +443,14 @@
          */
         function drawSand() {
             topSandGroup.innerHTML = '';
-            if (visualGrains <= 0) return;
+            
+            // Calculate how many grains should be in the top
             const grainsInTopCount = visualGrains - grainsDroppedCounter;
+            if (grainsInTopCount <= 0) return;
 
-            // Draw TOP grains
-            // Start drawing from index grainsDroppedCounter
-            // This correctly makes the grains at index 0 (bottom-center) disappear first
-            for (let i = grainsDroppedCounter; i < visualGrains; i++) {
+            // Draw grains starting from the bottom-most slot (index 0)
+            // up to the number of grains left.
+            for (let i = 0; i < grainsInTopCount; i++) {
                 topSandGroup.appendChild(createSandPixel(topSandSlots[i], i));
             }
         }
@@ -498,12 +500,12 @@
             // Update Loop Mode
             loopMode = loopModeSelect.value;
             loopLimit = Number(loopCountInput.value) || 3;
-            loopCountInput.style.display = (loopMode === 'limited') ? 'block' : 'none';
+            loopCountInput.style.display = (loopMode === 'limited') ? 'flex' : 'none';
 
 
             // Update UI text
             totalTimeDisplay.textContent = `${totalTimeSlider.value} minutes`;
-            grainTimeDisplay.textContent = `${grainTimeSlider.value} seconds`; // BUG FIX HERE
+            grainTimeDisplay.textContent = `${grainTimeSlider.value} seconds`;
             totalGrainsDisplay.textContent = totalGrains;
             
             if (totalGrains > totalVisualSlots) {
@@ -548,11 +550,14 @@
          * Creates a grain and animates its fall with physics.
          */
         function animateFall(grainId) {
+            // This is the grain that was *at the bottom* of the top pile
+            const startingGrainIndex = grainsDroppedCounter;
             const grain = {
                 x: 6,
                 y: 10, // Start at the bottleneck
                 id: grainId,
-                element: createSandPixel({x: 6, y: 10}, grainId)
+                // Use the *actual* grainId (which maps to the topSandSlots index) for color
+                element: createSandPixel({x: 6, y: 10}, startingGrainIndex) 
             };
             
             bottomSandGroup.appendChild(grain.element);
@@ -606,7 +611,18 @@
                 
                 // Move from 'falling' to 'settled'
                 fallingGrains = fallingGrains.filter(g => g.id !== grain.id);
-                bottomGrainPile.push({x: grain.x, y: grain.y, id: grain.id});
+                // We must check if the settled position is valid *for the pile*
+                // This prevents grains from settling in the funnel
+                const isSettledInPile = bottomSandSlots.some(s => s.x === grain.x && s.y === grain.y);
+                if (isSettledInPile) {
+                     bottomGrainPile.push({x: grain.x, y: grain.y, id: grain.id});
+                } else {
+                    // This should ideally not happen, but if it does, remove the grain
+                    // to prevent it from blocking others.
+                    if (grain.element.parentNode) {
+                        grain.element.parentNode.removeChild(grain.element);
+                    }
+                }
 
             }, physicsIntervalSpeed);
         }
@@ -631,6 +647,7 @@
             timeRemaining = Math.max(0, totalTime - actualTimeElapsed);
 
             // Start the animation for this grain
+            // Pass the index of the grain being dropped for color consistency
             animateFall(grainsDroppedCounter);
             
             // Increment visual counter
@@ -722,7 +739,11 @@
                 loopsCompleted = 0; // Reset loop count only on manual start
             }
             
-            if (totalGrains <= 0 || grainTime <= 0 || visualGrains <= 0 || visualTickTime <= 0) return;
+            if (totalGrains <= 0 || grainTime <= 0 || visualGrains <= 0 || visualTickTime <= 0) {
+                // If nothing to do, just stop
+                fullStop();
+                return;
+            }
 
             isRunning = true;
             stopRequested = false;
