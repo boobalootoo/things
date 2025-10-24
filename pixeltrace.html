@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Art Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary': '#4f46e5',
+                        'primary-dark': '#4338ca',
+                        'secondary': '#facc15',
+                        'background': '#fefefe',
+                        'panel': '#ffffff',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Main container for all stacked layers */
+        .layer-container {
+            position: relative;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+            background-color: #f3f4f6; /* Fallback background */
+            /* Aspect ratio will be set by JS */
+        }
+
+        /* Common style for all layers */
+        .canvas-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Pass clicks through by default */
+        }
+
+        /* The drawing canvas is the only one that accepts clicks */
+        #drawingCanvas {
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+
+        /* The grid pattern layer */
+        #gridPattern {
+            background-image: linear-gradient(to right, #888 1px, transparent 1px),
+                              linear-gradient(to bottom, #888 1px, transparent 1px);
+            /* Background-size will be set by JS */
+        }
+
+        /* Style for custom file input appearance */
+        .file-upload-label {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .file-upload-label:hover {
+            background-color: #f3f4f6;
+        }
+
+        /* Re-usable button for movement */
+        .control-button {
+            @apply p-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition shadow-md;
+        }
+        
+        /* Custom appearance for range sliders */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 16px; height: 16px;
+            background: #4f46e5; /* primary color */
+            cursor: pointer; border-radius: 50%;
+            box-shadow: 0 0 2px rgba(0,0,0,0.3);
+        }
+        input[type=range]::-moz-range-thumb {
+            width: 16px; height: 16px;
+            background: #4f46e5;
+            cursor: pointer; border-radius: 50%;
+            box-shadow: 0 0 2px rgba(0,0,0,0.3);
+            border: none;
+        }
+        
+        /* Toggle switch for eraser */
+        .toggle-bg:after {
+            content: '';
+            @apply absolute top-0.5 left-0.5 bg-white border border-gray-300 rounded-full h-5 w-5 transition-all shadow;
+        }
+        input:checked + .toggle-bg:after {
+            @apply transform translate-x-full border-white;
+        }
+        input:checked + .toggle-bg {
+            @apply bg-primary;
+        }
+
+        /* NEW: Styles for the tool buttons */
+        .toolbar-btn {
+            @apply p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 transition-colors duration-150;
+            /* color: #374151; */ /* Removing this as it's not reliable */
+        }
+        .toolbar-btn.active {
+            @apply bg-primary text-white border-primary-dark shadow-inner;
+            /* color: #ffffff; */ /* Removing this as it's not reliable */
+        }
+        .toolbar-btn svg {
+            @apply w-5 h-5;
+            color: #374151; /* NEW: Default icon color (text-gray-700) */
+        }
+        /* NEW: Rule to make active icon white */
+        .toolbar-btn.active svg {
+            color: #ffffff; /* Active icon color (text-white) */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen flex flex-col items-center p-4 sm:p-8">
+
+    <!-- Main Application Content -->
+    <div id="appContainer" class="w-full max-w-7xl">
+        <h1 class="text-4xl font-extrabold text-gray-800 mb-6 text-center">Pixel Art Studio</h1>
+        
+        <div class="flex flex-col lg:flex-row gap-8">
+            
+            <!-- Control Panel (Left) -->
+            <div class="lg:w-1/3 bg-panel p-6 rounded-xl shadow-lg border border-gray-200 h-fit">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Setup</h2>
+                
+                <!-- Image Upload -->
+                <div class="mb-6">
+                    <label class="file-upload-label block w-full text-center p-3 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition duration-150">
+                        <input type="file" id="imageUpload" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+                        <span class="text-primary font-medium">Upload Reference Image</span>
+                        <p id="fileName" class="text-xs text-gray-500 mt-1 truncate">No file selected</p>
+                    </label>
+                </div>
+                
+                <!-- This section is disabled until an image is uploaded -->
+                <div id="controlsWrapper" class="opacity-40 pointer-events-none">
+                
+                    <!-- Pixelation -->
+                    <div class="mb-4">
+                        <label for="pixelationSlider" class="block text-sm font-medium text-gray-700 mb-2">
+                            Pixelation: <span id="pixelationValue" class="font-bold">1</span>x
+                        </label>
+                        <input type="range" id="pixelationSlider" min="1" max="32" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updatePixelation(this.value)">
+                        <p class="text-xs text-gray-500 mt-1">Grid: <span id="gridSizeLabel">N/A</span></p>
+                    </div>
+
+                    <!-- Bit Depth -->
+                    <div class="mb-4">
+                        <label for="bitDepthSlider" class="block text-sm font-medium text-gray-700 mb-2">
+                            Color Bit Depth: <span id="bitDepthValue" class="font-bold">8</span> bits/channel
+                        </label>
+                        <input type="range" id="bitDepthSlider" min="1" max="8" value="8" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="document.getElementById('bitDepthValue').textContent = this.value">
+                    </div>
+                    
+                    <!-- Generation Button -->
+                    <div class="text-center mt-6 mb-6">
+                        <button onclick="generatePixelArt()" id="generatePixelBtn" class="w-full p-3 bg-secondary text-gray-900 font-semibold rounded-lg hover:bg-yellow-500 transition shadow-lg">
+                            Generate Pixel Art
+                        </button>
+                    </div>
+
+                    <!-- Layer Controls -->
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-t pt-4">Layers & Tools</h2>
+                    
+                    <!-- NEW: Brush Size -->
+                    <div class="mb-4">
+                        <label for="brushSizeSlider" class="block text-sm font-medium text-gray-700 mb-2">
+                            Brush Size: <span id="brushSizeValue" class="font-bold">1x1</span>
+                        </label>
+                        <input type="range" id="brushSizeSlider" min="1" max="5" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateBrushSize(this.value)">
+                    </div>
+
+                    <!-- Layer Stack -->
+                    <div class="space-y-3">
+                        <!-- Layer: Drawing -->
+                        <div class="p-3 border rounded-lg">
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="toggleDrawing" class="font-medium text-gray-700">Drawing Layer</label>
+                                <input type="checkbox" id="toggleDrawing" checked onchange="toggleLayer('drawingCanvas', this.checked)">
+                            </div>
+                            <input type="range" min="0" max="100" value="100" class="w-full" oninput="setLayerOpacity('drawingCanvas', this.value)">
+                        </div>
+                        
+                        <!-- Layer: Generated Art -->
+                        <div class="p-3 border rounded-lg">
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="toggleGenerated" class="font-medium text-gray-700">Generated Art</label>
+                                <input type="checkbox" id="toggleGenerated" checked onchange="toggleLayer('pixelArtCanvas', this.checked)">
+                            </div>
+                            <input type="range" min="0" max="100" value="100" class="w-full" oninput="setLayerOpacity('pixelArtCanvas', this.value)">
+                        </div>
+
+                        <!-- Layer: Reference Image -->
+                        <div class="p-3 border rounded-lg">
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="toggleReference" class="font-medium text-gray-700">Reference Image</label>
+                                <input type="checkbox" id="toggleReference" checked onchange="toggleLayer('overlayImage', this.checked)">
+                            </div>
+                            <input type="range" min="0" max="100" value="100" class="w-full mb-3" oninput="setLayerOpacity('overlayImage', this.value)">
+                            
+                            <!-- Movement Controls for Reference Image -->
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-500">Move:</span>
+                                <div class="flex gap-1">
+                                    <button class="control-button w-8 h-8 flex items-center justify-center text-lg" onclick="moveImage(-1, 0)">←</button>
+                                    <button class="control-button w-8 h-8 flex items-center justify-center text-lg" onclick="moveImage(0, -1)">↑</button>
+                                    <button class="control-button w-8 h-8 flex items-center justify-center text-lg" onclick="moveImage(0, 1)">↓</button>
+                                    <button class="control-button w-8 h-8 flex items-center justify-center text-lg" onclick="moveImage(1, 0)">→</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Layer: Grid -->
+                        <div class="p-3 border rounded-lg">
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="toggleGrid" class="font-medium text-gray-700">Grid Lines</label>
+                                <input type="checkbox" id="toggleGrid" checked onchange="toggleLayer('gridPattern', this.checked)">
+                            </div>
+                            <input type="range" min="0" max="100" value="100" class="w-full" oninput="setLayerOpacity('gridPattern', this.value)">
+                        </div>
+                    </div>
+
+                    <!-- Download Button -->
+                    <div class="text-center mt-6 pt-4 border-t border-gray-200">
+                        <button id="downloadBtn" onclick="downloadPixelArt()" class="w-full p-3 bg-primary text-white font-semibold rounded-lg hover:bg-primary-dark transition shadow-lg">
+                            Download Merged Art (PNG)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grid Display (Right) -->
+            <div class="lg:w-2/3 flex flex-col justify-start items-center">
+                <div id="gridWrapper" class="layer-container w-full max-w-[800px] rounded-xl overflow-hidden">
+                    <!-- Layers will be stacked here in order -->
+                    <!-- Layer 1: Reference Image -->
+                    <img id="overlayImage" class="canvas-layer" src="https://placehold.co/800x800/e0e0e0/ffffff?text=Upload+an+image+to+start" alt="Image Overlay" style="object-fit: cover;">
+                    
+                    <!-- Layer 2: Generated Pixel Art -->
+                    <canvas id="pixelArtCanvas" class="canvas-layer"></canvas>
+                    
+                    <!-- Layer 3: Grid Pattern -->
+                    <div id="gridPattern" class="canvas-layer"></div>
+                    
+                    <!-- Layer 4: User Drawing Canvas -->
+                    <canvas id="drawingCanvas" class="canvas-layer"></canvas>
+                </div>
+
+                <!-- NEW: Drawing Toolbar -->
+                <div id="drawingToolbar" class="w-full max-w-[800px] bg-panel p-3 rounded-xl shadow-lg border border-gray-200 mt-8 flex gap-2 items-center opacity-40 pointer-events-none">
+                    
+                    <!-- Pencil -->
+                    <button id="tool-pencil" class="toolbar-btn active" onclick="setActiveTool('pencil')" title="Pencil (P)">
+                        <!-- <svg ... </svg> -->
+                        <!-- P -->
+                        <span class="text-xs font-medium">Pencil</span>
+                    </button>
+                    
+                    <!-- Eraser -->
+                    <button id="tool-eraser" class="toolbar-btn" onclick="setActiveTool('eraser')" title="Eraser (E)">
+                        <!-- <svg ... </svg> -->
+                        <!-- E -->
+                        <span class="text-xs font-medium">Eraser</span>
+                    </button>
+                    
+                    <!-- Fill Bucket -->
+                    <button id="tool-fill" class="toolbar-btn" onclick="setActiveTool('fill')" title="Fill Bucket (F)">
+                        <!-- <svg ... </svg> -->
+                        <!-- F -->
+                        <span class="text-xs font-medium">Fill</span>
+                    </button>
+                    
+                    <!-- Eyedropper -->
+                    <button id="tool-eyedropper" class="toolbar-btn" onclick="setActiveTool('eyedropper')" title="Eyedropper (I)">
+                        <!-- <svg ... </svg> -->
+                        <!-- I -->
+                        <span class="text-xs font-medium">Eyedropper</span>
+                    </button>
+
+                    <!-- Color Picker -->
+                    <input type="color" id="colorPicker" value="#000000" class="w-10 h-10 rounded-md border-2 border-gray-300 cursor-pointer ml-auto" oninput="setDrawColor(this.value)">
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Global State ---
+        let originalImage = null; // Store the original Image object
+        let referenceCanvas = null; // NEW: Hidden canvas for eyedropper sampling
+        let imageWidth = 0;
+        let imageHeight = 0;
+        
+        let gridCols = 16;
+        let gridRows = 16;
+        let pixelationLevel = 1;
+        
+        let xOffset = 0; // Movement in pixels
+        let yOffset = 0; // Movement in pixels
+        const MOVE_STEP = 1; // Movement step in pixels
+
+        // Drawing state
+        let activeTool = 'pencil'; // NEW: 'pencil', 'eraser', 'fill', 'eyedropper'
+        let isDrawing = false;
+        let drawColor = '#000000';
+        let lastDrawCol = -1;
+        let lastDrawRow = -1;
+        let brushSize = 1; // NEW: Brush size (1x1, 2x2, etc.)
+
+        // --- DOM Elements ---
+        const controlsWrapper = document.getElementById('controlsWrapper');
+        const gridWrapper = document.getElementById('gridWrapper');
+        const overlayImage = document.getElementById('overlayImage');
+        const pixelArtCanvas = document.getElementById('pixelArtCanvas');
+        const drawingCanvas = document.getElementById('drawingCanvas');
+        const gridPattern = document.getElementById('gridPattern');
+        const gridSizeLabel = document.getElementById('gridSizeLabel');
+        const pixelationValue = document.getElementById('pixelationValue');
+        const drawingToolbar = document.getElementById('drawingToolbar'); // NEW
+        
+        // --- Initialization ---
+        
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            const fileNameDisplay = document.getElementById('fileName');
+
+            if (file) {
+                fileNameDisplay.textContent = file.name;
+                
+                originalImage = new Image();
+                originalImage.crossOrigin = "Anonymous";
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    originalImage.src = e.target.result;
+                    overlayImage.src = e.target.result; // Set visible reference image
+                };
+                
+                originalImage.onload = () => {
+                    // Get native dimensions
+                    imageWidth = originalImage.naturalWidth;
+                    imageHeight = originalImage.naturalHeight;
+                    
+                    // Unlock controls
+                    controlsWrapper.classList.remove('opacity-40', 'pointer-events-none');
+                    drawingToolbar.classList.remove('opacity-40', 'pointer-events-none'); // NEW: Enable toolbar
+                    
+                    // Reset sliders and controls
+                    document.getElementById('pixelationSlider').value = 1;
+                    pixelationLevel = 1;
+                    document.getElementById('brushSizeSlider').value = 1; // NEW: Reset brush slider
+                    brushSize = 1;
+                    
+                    // Setup canvases and grid
+                    setupCanvases(imageWidth, imageHeight);
+                    updatePixelation(1); // Triggers grid update
+                    clearDrawing();
+                    
+                    // Reset image position
+                    xOffset = 0;
+                    yOffset = 0;
+                    updateImagePosition();
+                };
+                
+                reader.readAsDataURL(file);
+            } else {
+                fileNameDisplay.textContent = 'No file selected';
+            }
+        }
+
+        function setupCanvases(w, h) {
+            // Set aspect ratio of the container
+            gridWrapper.style.aspectRatio = `${w} / ${h}`;
+            
+            // Set resolution of all canvases
+            [pixelArtCanvas, drawingCanvas].forEach(canvas => {
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = false; // CRITICAL for pixel art
+            });
+            
+            // NEW: Create and draw on the hidden reference canvas
+            referenceCanvas = document.createElement('canvas');
+            referenceCanvas.width = w;
+            referenceCanvas.height = h;
+            referenceCanvas.getContext('2d').drawImage(originalImage, 0, 0, w, h);
+        }
+        
+        // --- Grid and Pixelation ---
+
+        function updatePixelation(value) {
+            pixelationLevel = parseInt(value, 10);
+            pixelationValue.textContent = pixelationLevel;
+            
+            // Calculate new grid dimensions
+            gridCols = Math.round(imageWidth / pixelationLevel);
+            gridRows = Math.round(imageHeight / pixelationLevel);
+            
+            gridSizeLabel.textContent = `${gridCols}w x ${gridRows}h`;
+            
+            updateGridPattern();
+            
+            // Clear drawing canvas as the grid has changed
+            clearDrawing();
+        }
+
+        function updateGridPattern() {
+            if (gridCols === 0 || gridRows === 0) return;
+
+            // Use percentage for CSS background size
+            const bgSizeX = 100 / gridCols;
+            const bgSizeY = 100 / gridRows;
+            
+            gridPattern.style.backgroundSize = `${bgSizeX}% ${bgSizeY}%`;
+        }
+        
+        // --- Image Generation ---
+        
+        function quantizeColor(r, g, b, bits) {
+            if (bits >= 8) return [r, g, b]; // No quantization
+            
+            const levels = Math.pow(2, bits) - 1;
+            const divisor = 255 / levels;
+            
+            const qr = Math.round( Math.round(r / divisor) * divisor );
+            const qg = Math.round( Math.round(g / divisor) * divisor );
+            const qb = Math.round( Math.round(b / divisor) * divisor );
+            
+            return [qr, qg, qb];
+        }
+
+        function generatePixelArt() {
+            if (!originalImage) return;
+
+            const bitsPerChannel = parseInt(document.getElementById('bitDepthSlider').value, 10);
+
+            // --- Hidden Canvas for Sampling ---
+            const hiddenCanvas = document.createElement('canvas');
+            hiddenCanvas.width = gridCols;
+            hiddenCanvas.height = gridRows;
+            const hiddenCtx = hiddenCanvas.getContext('2d');
+            hiddenCtx.imageSmoothingEnabled = false;
+            
+            // Draw the full-res original image onto the tiny hidden canvas
+            // This performs the automatic color averaging/sampling
+            hiddenCtx.drawImage(originalImage, 0, 0, gridCols, gridRows);
+            
+            // Get the sampled pixel data
+            const pixelData = hiddenCtx.getImageData(0, 0, gridCols, gridRows).data;
+            
+            // --- Draw Blocky Art onto Visible Canvas ---
+            const ctx = pixelArtCanvas.getContext('2d');
+            ctx.clearRect(0, 0, pixelArtCanvas.width, pixelArtCanvas.height); // Clear previous art
+            
+            const cellWidth = pixelArtCanvas.width / gridCols;
+            const cellHeight = pixelArtCanvas.height / gridRows;
+
+            for (let y = 0; y < gridRows; y++) {
+                for (let x = 0; x < gridCols; x++) {
+                    const index = (y * gridCols + x) * 4;
+                    const r = pixelData[index];
+                    const g = pixelData[index + 1];
+                    const b = pixelData[index + 2];
+                    const a = pixelData[index + 3];
+
+                    if (a > 0) { // Only draw non-transparent pixels
+                        // Apply color quantization
+                        const [qr, qg, qb] = quantizeColor(r, g, b, bitsPerChannel);
+                        ctx.fillStyle = `rgb(${qr}, ${qg}, ${qb})`;
+                        
+                        // Use Math.ceil to avoid 1px gaps from floating point rounding
+                        ctx.fillRect(
+                            x * cellWidth, 
+                            y * cellHeight, 
+                            Math.ceil(cellWidth), 
+                            Math.ceil(cellHeight)
+                        );
+                    }
+                }
+            }
+        }
+
+        // --- Layer Controls ---
+
+        function toggleLayer(layerId, isVisible) {
+            document.getElementById(layerId).style.display = isVisible ? 'block' : 'none';
+        }
+
+        function setLayerOpacity(layerId, value) {
+            document.getElementById(layerId).style.opacity = parseFloat(value) / 100;
+        }
+
+        function moveImage(dx, dy) {
+            xOffset += dx * MOVE_STEP; 
+            yOffset += dy * MOVE_STEP; 
+            updateImagePosition();
+        }
+
+        function updateImagePosition() {
+            overlayImage.style.transform = `translate(${xOffset}px, ${yOffset}px)`;
+        }
+
+        // --- Drawing Controls ---
+
+        // NEW: Brush Size
+        function updateBrushSize(value) {
+            brushSize = parseInt(value, 10);
+            document.getElementById('brushSizeValue').textContent = `${brushSize}x${brushSize}`;
+        }
+
+        function setDrawColor(color) {
+            drawColor = color;
+            document.getElementById('colorPicker').value = color; // Sync color picker UI
+            // If user picks a color, switch back to pencil tool
+            if (activeTool !== 'pencil') {
+                setActiveTool('pencil');
+            }
+        }
+        
+        // NEW: Set the active tool and update UI
+        function setActiveTool(tool) {
+            activeTool = tool;
+            
+            // Update cursor
+            if (tool === 'pencil') drawingCanvas.style.cursor = 'crosshair';
+            else if (tool === 'eraser') drawingCanvas.style.cursor = 'cell'; // 'cell' looks like an eraser block
+            else if (tool === 'fill') drawingCanvas.style.cursor = 'copy'; // 'copy' looks like a good fill cursor
+            else if (tool === 'eyedropper') drawingCanvas.style.cursor = 'copy';
+            
+            // Update toolbar button active states
+            document.querySelectorAll('.toolbar-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`tool-${tool}`).classList.add('active');
+        }
+
+        function clearDrawing() {
+            const ctx = drawingCanvas.getContext('2d');
+            ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+        }
+        
+        // --- Drawing Event Handlers ---
+        
+        drawingCanvas.addEventListener('mousedown', startDraw);
+        drawingCanvas.addEventListener('mousemove', draw);
+        drawingCanvas.addEventListener('mouseup', endDraw);
+        drawingCanvas.addEventListener('mouseleave', endDraw);
+        
+        // Touch events for mobile
+        drawingCanvas.addEventListener('touchstart', startDraw);
+        drawingCanvas.addEventListener('touchmove', draw);
+        drawingCanvas.addEventListener('touchend', endDraw);
+
+        function getEventCoords(e) {
+            const rect = drawingCanvas.getBoundingClientRect();
+            const event = e.touches ? e.touches[0] : e; // Handle touch or mouse
+            
+            // Calculate scale based on canvas resolution vs. display size
+            const scaleX = drawingCanvas.width / rect.width;
+            const scaleY = drawingCanvas.height / rect.height;
+            
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            
+            return {x, y};
+        }
+
+        function startDraw(e) {
+            e.preventDefault();
+            
+            if (activeTool === 'pencil' || activeTool === 'eraser') {
+                isDrawing = true;
+                
+                // NEW: Get coords and paint first block
+                const {x, y} = getEventCoords(e);
+                const col = Math.floor(x / (drawingCanvas.width / gridCols));
+                const row = Math.floor(y / (drawingCanvas.height / gridRows));
+                
+                paintBlockAt(col, row);
+                
+                lastDrawCol = col;
+                lastDrawRow = row;
+
+            } else if (activeTool === 'fill') {
+                floodFill(e); // Run fill algorithm
+            } else if (activeTool === 'eyedropper') {
+                pickColor(e); // Run color picker
+            }
+        }
+        
+        function draw(e) {
+            // Only 'pencil' and 'eraser' tools draw on mousemove
+            if (!isDrawing || (activeTool !== 'pencil' && activeTool !== 'eraser')) return;
+            e.preventDefault();
+
+            // NEW: Get coords and plot line
+            const {x, y} = getEventCoords(e);
+            const col = Math.floor(x / (drawingCanvas.width / gridCols));
+            const row = Math.floor(y / (drawingCanvas.height / gridRows));
+
+            if (col !== lastDrawCol || row !== lastDrawRow) {
+                plotLine(lastDrawCol, lastDrawRow, col, row);
+                lastDrawCol = col;
+                lastDrawRow = row;
+            }
+        }
+
+        function endDraw(e) {
+            e.preventDefault();
+            isDrawing = false;
+            lastDrawCol = -1; // Reset last drawn cell
+            lastDrawRow = -1;
+        }
+        
+        // --- NEW Drawing Logic Functions ---
+
+        // NEW: Paints a block of pixels based on brushSize
+        function paintBlockAt(col, row) {
+            const ctx = drawingCanvas.getContext('2d');
+            const cellWidth = drawingCanvas.width / gridCols;
+            const cellHeight = drawingCanvas.height / gridRows;
+
+            // Calculate offset to center the brush
+            const brushOffset = Math.floor((brushSize - 1) / 2);
+            const startCol = col - brushOffset;
+            const startRow = row - brushOffset;
+            // Loop brushSize times
+            const endCol = startCol + brushSize; 
+            const endRow = startRow + brushSize;
+
+            ctx.fillStyle = drawColor; // Set style once per block
+
+            for (let r = startRow; r < endRow; r++) {
+                for (let c = startCol; c < endCol; c++) {
+                    // Bounds check
+                    if (c < 0 || c >= gridCols || r < 0 || r >= gridRows) {
+                        continue;
+                    }
+                    
+                    const xPos = c * cellWidth;
+                    const yPos = r * cellHeight;
+                    
+                    if (activeTool === 'eraser') {
+                        ctx.clearRect(xPos, yPos, Math.ceil(cellWidth), Math.ceil(cellHeight));
+                    } else if (activeTool === 'pencil') {
+                        ctx.fillRect(xPos, yPos, Math.ceil(cellWidth), Math.ceil(cellHeight));
+                    }
+                }
+            }
+        }
+
+        // NEW: Bresenham's line algorithm to draw a continuous line of blocks
+        function plotLine(x0, y0, x1, y1) {
+            const dx = Math.abs(x1 - x0);
+            const dy = -Math.abs(y1 - y0);
+            const sx = x0 < x1 ? 1 : -1;
+            const sy = y0 < y1 ? 1 : -1;
+            let err = dx + dy;
+
+            while (true) {
+                paintBlockAt(x0, y0);
+                if (x0 === x1 && y0 === y1) break;
+                const e2 = 2 * err;
+                if (e2 >= dy) {
+                    err += dy;
+                    x0 += sx;
+                }
+                if (e2 <= dx) {
+                    err += dx;
+                    y0 += sy;
+                }
+            }
+        }
+
+        // --- Other Tool Functions ---
+
+        // --- NEW: Eyedropper Function ---
+        function pickColor(e) {
+            const {x, y} = getEventCoords(e);
+            let colorData = null;
+
+            // Sample from visible layers, top-down
+            // 1. Drawing Layer
+            if (document.getElementById('toggleDrawing').checked) {
+                colorData = drawingCanvas.getContext('2d').getImageData(x, y, 1, 1).data;
+            }
+            // 2. Generated Art Layer
+            if ((!colorData || colorData[3] === 0) && document.getElementById('toggleGenerated').checked) {
+                colorData = pixelArtCanvas.getContext('2d').getImageData(x, y, 1, 1).data;
+            }
+            // 3. Reference Image Layer
+            if ((!colorData || colorData[3] === 0) && document.getElementById('toggleReference').checked && referenceCanvas) {
+                colorData = referenceCanvas.getContext('2d').getImageData(x, y, 1, 1).data;
+            }
+
+            if (colorData && colorData[3] > 0) { // Found a non-transparent color
+                const r = colorData[0];
+                const g = colorData[1];
+                const b = colorData[2];
+                // Helper to convert rgb to hex
+                const toHex = c => ('0' + c.toString(16)).slice(-2);
+                const hexColor = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+                
+                setDrawColor(hexColor);
+            }
+            
+            // After picking, automatically switch back to pencil
+            setActiveTool('pencil');
+        }
+
+        // --- NEW: Flood Fill Function ---
+        function floodFill(e) {
+            const {x, y} = getEventCoords(e);
+            const ctx = drawingCanvas.getContext('2d');
+            
+            const cellWidth = drawingCanvas.width / gridCols;
+            const cellHeight = drawingCanvas.height / gridRows;
+            
+            const startCol = Math.floor(x / cellWidth);
+            const startRow = Math.floor(y / cellHeight);
+
+            // Get color of the starting cell (sample from middle of cell)
+            const sampleX = startCol * cellWidth + cellWidth / 2;
+            const sampleY = startRow * cellHeight + cellHeight / 2;
+            const startPixel = ctx.getImageData(sampleX, sampleY, 1, 1).data;
+            const startColor = `rgb(${startPixel[0]},${startPixel[1]},${startPixel[2]})`;
+            const startAlpha = startPixel[3];
+
+            // Don't fill if target color is same as draw color
+            if (drawColor === startColor && startAlpha > 0) return; // Note: This check is basic, hex vs rgb
+            // Don't fill if target color is same as draw color (handles transparent case)
+            if (drawColor === startColor && startAlpha === 0 && ctx.fillStyle === startColor) return;
+
+            const queue = [[startCol, startRow]];
+            const visited = new Set([`${startCol},${startRow}`]);
+            
+            const colorsMatch = (p) => {
+                // Check if alpha matches
+                if (p[3] !== startAlpha) return false;
+                // Check if RGB matches
+                return p[0] === startPixel[0] && p[1] === startPixel[1] && p[2] === startPixel[2];
+            };
+
+            while (queue.length > 0) {
+                const [col, row] = queue.pop();
+                
+                // 1. Fill this cell
+                ctx.fillStyle = drawColor;
+                ctx.fillRect(col * cellWidth, row * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
+                
+                // 2. Check neighbors
+                const neighbors = [[col + 1, row], [col - 1, row], [col, row + 1], [col, row - 1]];
+                
+                for (const [nCol, nRow] of neighbors) {
+                    const key = `${nCol},${nRow}`;
+                    
+                    // Check bounds and if already visited
+                    if (nCol < 0 || nCol >= gridCols || nRow < 0 || nRow >= gridRows || visited.has(key)) {
+                        continue;
+                    }
+
+                    // Get color of neighbor cell
+                    const nX = nCol * cellWidth + cellWidth / 2;
+                    const nY = nRow * cellHeight + cellHeight / 2;
+                    const neighborPixel = ctx.getImageData(nX, nY, 1, 1).data;
+                    
+                    // If neighbor matches start color, add to queue
+                    if (colorsMatch(neighborPixel)) {
+                        visited.add(key);
+                        queue.push([nCol, nRow]);
+                    }
+                }
+            }
+        }
+
+        // --- Download ---
+
+        function downloadPixelArt() {
+            const mergeCanvas = document.createElement('canvas');
+            mergeCanvas.width = imageWidth;
+            mergeCanvas.height = imageHeight;
+            const ctx = mergeCanvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+
+            // Optional: Add a background color if needed
+            // ctx.fillStyle = '#FFFFFF';
+            // ctx.fillRect(0, 0, mergeCanvas.width, mergeCanvas.height);
+            
+            // Draw Generated Art (if visible)
+            if (document.getElementById('toggleGenerated').checked) {
+                ctx.drawImage(pixelArtCanvas, 0, 0);
+            }
+
+            // Draw Drawing Layer (if visible)
+            if (document.getElementById('toggleDrawing').checked) {
+                ctx.drawImage(drawingCanvas, 0, 0);
+            }
+
+            // Trigger download
+            const dataURL = mergeCanvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataURL;
+            a.download = `pixel-art-${gridCols}x${gridRows}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+    </script>
+</body>
+</html>
+
