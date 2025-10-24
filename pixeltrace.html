@@ -16,6 +16,8 @@
                         'primary': '#4f46e5',
                         'primary-dark': '#4338ca',
                         'secondary': '#facc15',
+                        'danger': '#e11d48',
+                        'danger-dark': '#be123c',
                         'background': '#fefefe',
                         'panel': '#ffffff',
                     }
@@ -84,6 +86,12 @@
             box-shadow: 0 0 2px rgba(0,0,0,0.3);
             border: none;
         }
+        input[type=range]:disabled::-webkit-slider-thumb {
+            background: #9ca3af; /* gray-400 */
+        }
+        input[type=range]:disabled::-moz-range-thumb {
+            background: #9ca3af; /* gray-400 */
+        }
         
         /* Toggle switch for eraser */
         .toggle-bg:after {
@@ -97,22 +105,51 @@
             @apply bg-primary;
         }
 
-        /* NEW: Styles for the tool buttons */
+        /* Styles for the tool buttons */
         .toolbar-btn {
             @apply p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 transition-colors duration-150;
-            /* color: #374151; */ /* Removing this as it's not reliable */
         }
         .toolbar-btn.active {
             @apply bg-primary text-white border-primary-dark shadow-inner;
-            /* color: #ffffff; */ /* Removing this as it's not reliable */
         }
         .toolbar-btn svg {
             @apply w-5 h-5;
-            color: #374151; /* NEW: Default icon color (text-gray-700) */
+            color: #374151; /* Default icon color (text-gray-700) */
         }
-        /* NEW: Rule to make active icon white */
         .toolbar-btn.active svg {
             color: #ffffff; /* Active icon color (text-white) */
+        }
+
+        /* NEW: Modal Styles */
+        .modal-overlay {
+            @apply fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300;
+        }
+        .modal-content {
+            @apply bg-white p-6 rounded-lg shadow-xl w-full max-w-sm transform transition-all scale-95 duration-300;
+        }
+        .modal-visible .modal-overlay {
+            @apply opacity-100;
+        }
+        .modal-visible .modal-content {
+            @apply scale-100;
+        }
+        .modal-hidden .modal-overlay {
+            @apply opacity-0 pointer-events-none;
+        }
+        .modal-hidden .modal-content {
+            @apply scale-95 pointer-events-none;
+        }
+        .modal-btn {
+            @apply px-4 py-2 rounded-lg font-medium transition-colors;
+        }
+        .modal-btn-primary {
+            @apply bg-primary text-white hover:bg-primary-dark;
+        }
+        .modal-btn-danger {
+            @apply bg-danger text-white hover:bg-danger-dark;
+        }
+        .modal-btn-secondary {
+            @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
         }
     </style>
 </head>
@@ -136,8 +173,15 @@
                         <p id="fileName" class="text-xs text-gray-500 mt-1 truncate">No file selected</p>
                     </label>
                 </div>
+
+                <!-- NEW: Start with Blank Canvas -->
+                <div class="mb-6 text-center">
+                    <button onclick="startWithBlankCanvas()" class="w-full p-3 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 transition shadow">
+                        Start with Blank Canvas
+                    </button>
+                </div>
                 
-                <!-- This section is disabled until an image is uploaded -->
+                <!-- This section is disabled until an image is uploaded or blank canvas is created -->
                 <div id="controlsWrapper" class="opacity-40 pointer-events-none">
                 
                     <!-- Pixelation -->
@@ -158,7 +202,7 @@
                     </div>
                     
                     <!-- Generation Button -->
-                    <div class="text-center mt-6 mb-6">
+                    <div class="text-center mt-6 mb-6" id="generatePixelBtnWrapper">
                         <button onclick="generatePixelArt()" id="generatePixelBtn" class="w-full p-3 bg-secondary text-gray-900 font-semibold rounded-lg hover:bg-yellow-500 transition shadow-lg">
                             Generate Pixel Art
                         </button>
@@ -167,12 +211,19 @@
                     <!-- Layer Controls -->
                     <h2 class="text-xl font-semibold text-gray-800 mb-4 border-t pt-4">Layers & Tools</h2>
                     
-                    <!-- NEW: Brush Size -->
+                    <!-- Brush Size -->
                     <div class="mb-4">
                         <label for="brushSizeSlider" class="block text-sm font-medium text-gray-700 mb-2">
                             Brush Size: <span id="brushSizeValue" class="font-bold">1x1</span>
                         </label>
                         <input type="range" id="brushSizeSlider" min="1" max="5" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateBrushSize(this.value)">
+                    </div>
+
+                    <!-- NEW: Clear Drawing -->
+                    <div class="mb-4">
+                        <button onclick="confirmClearDrawing()" class="w-full p-2 bg-danger text-white text-sm font-medium rounded-lg hover:bg-danger-dark transition shadow-sm">
+                            Clear Drawing Layer
+                        </button>
                     </div>
 
                     <!-- Layer Stack -->
@@ -187,7 +238,7 @@
                         </div>
                         
                         <!-- Layer: Generated Art -->
-                        <div class="p-3 border rounded-lg">
+                        <div class="p-3 border rounded-lg" id="generatedArtLayerControls">
                             <div class="flex justify-between items-center mb-2">
                                 <label for="toggleGenerated" class="font-medium text-gray-700">Generated Art</label>
                                 <input type="checkbox" id="toggleGenerated" checked onchange="toggleLayer('pixelArtCanvas', this.checked)">
@@ -196,7 +247,7 @@
                         </div>
 
                         <!-- Layer: Reference Image -->
-                        <div class="p-3 border rounded-lg">
+                        <div class="p-3 border rounded-lg" id="referenceLayerControls">
                             <div class="flex justify-between items-center mb-2">
                                 <label for="toggleReference" class="font-medium text-gray-700">Reference Image</label>
                                 <input type="checkbox" id="toggleReference" checked onchange="toggleLayer('overlayImage', this.checked)">
@@ -239,48 +290,65 @@
                 <div id="gridWrapper" class="layer-container w-full max-w-[800px] rounded-xl overflow-hidden">
                     <!-- Layers will be stacked here in order -->
                     <!-- Layer 1: Reference Image -->
-                    <img id="overlayImage" class="canvas-layer" src="https://placehold.co/800x800/e0e0e0/ffffff?text=Upload+an+image+to+start" alt="Image Overlay" style="object-fit: cover;">
+                    <img id="overlayImage" class="canvas-layer" src="https://placehold.co/800x800/e0e0e0/ffffff?text=Start+here" alt="Image Overlay" style="object-fit: cover;">
                     
                     <!-- Layer 2: Generated Pixel Art -->
                     <canvas id="pixelArtCanvas" class="canvas-layer"></canvas>
                     
-                    <!-- Layer 3: Grid Pattern -->
+                    <!-- Layer 3: User Drawing Canvas -->
+                    <canvas id="drawingCanvas" class="canvas-layer"></canvas>
+
+                    <!-- Layer 4: Preview Canvas (for shapes) -->
+                    <canvas id="previewCanvas" class="canvas-layer" style="pointer-events: none;"></canvas>
+                    
+                    <!-- Layer 5: Grid Pattern -->
                     <div id="gridPattern" class="canvas-layer"></div>
                     
-                    <!-- Layer 4: User Drawing Canvas -->
-                    <canvas id="drawingCanvas" class="canvas-layer"></canvas>
                 </div>
 
-                <!-- NEW: Drawing Toolbar -->
-                <div id="drawingToolbar" class="w-full max-w-[800px] bg-panel p-3 rounded-xl shadow-lg border border-gray-200 mt-8 flex gap-2 items-center opacity-40 pointer-events-none">
+                <!-- Drawing Toolbar -->
+                <div id="drawingToolbar" class="w-full max-w-[800px] bg-panel p-3 rounded-xl shadow-lg border border-gray-200 mt-8 flex flex-wrap gap-2 items-center opacity-40 pointer-events-none">
                     
                     <!-- Pencil -->
                     <button id="tool-pencil" class="toolbar-btn active" onclick="setActiveTool('pencil')" title="Pencil (P)">
-                        <!-- <svg ... </svg> -->
-                        <!-- P -->
                         <span class="text-xs font-medium">Pencil</span>
                     </button>
                     
                     <!-- Eraser -->
                     <button id="tool-eraser" class="toolbar-btn" onclick="setActiveTool('eraser')" title="Eraser (E)">
-                        <!-- <svg ... </svg> -->
-                        <!-- E -->
                         <span class="text-xs font-medium">Eraser</span>
                     </button>
                     
                     <!-- Fill Bucket -->
                     <button id="tool-fill" class="toolbar-btn" onclick="setActiveTool('fill')" title="Fill Bucket (F)">
-                        <!-- <svg ... </svg> -->
-                        <!-- F -->
                         <span class="text-xs font-medium">Fill</span>
                     </button>
                     
                     <!-- Eyedropper -->
                     <button id="tool-eyedropper" class="toolbar-btn" onclick="setActiveTool('eyedropper')" title="Eyedropper (I)">
-                        <!-- <svg ... </svg> -->
-                        <!-- I -->
                         <span class="text-xs font-medium">Eyedropper</span>
                     </button>
+
+                    <!-- Line -->
+                    <button id="tool-line" class="toolbar-btn" onclick="setActiveTool('line')" title="Line (L)">
+                        <span class="text-xs font-medium">Line</span>
+                    </button>
+
+                    <!-- Square -->
+                    <button id="tool-square" class="toolbar-btn" onclick="setActiveTool('square')" title="Square (S)">
+                        <span class="text-xs font-medium">Square</span>
+                    </button>
+
+                    <!-- Circle -->
+                    <button id="tool-circle" class="toolbar-btn" onclick="setActiveTool('circle')" title="Circle (C)">
+                        <span class="text-xs font-medium">Circle</span>
+                    </button>
+
+                    <!-- Shape Fill Toggle -->
+                    <div id="shapeFillToggleContainer" class="ml-4 flex items-center gap-2" style="display: none;">
+                        <input type="checkbox" id="shapeFillToggle" class="w-4 h-4" checked>
+                        <label for="shapeFillToggle" class="text-xs font-medium text-gray-700">Fill</label>
+                    </div>
 
                     <!-- Color Picker -->
                     <input type="color" id="colorPicker" value="#000000" class="w-10 h-10 rounded-md border-2 border-gray-300 cursor-pointer ml-auto" oninput="setDrawColor(this.value)">
@@ -289,6 +357,22 @@
             </div>
         </div>
     </div>
+
+    <!-- NEW: Modal -->
+    <div id="modalContainer" class_="" onmousedown="hideModal()">
+        <div class="modal-overlay" onmousedown="hideModal()">
+            <div class="modal-content" onmousedown="event.stopPropagation();">
+                <h3 id="modalTitle" class="text-lg font-bold mb-4">Modal Title</h3>
+                <div id="modalContent" class="text-sm mb-6">
+                    <p>Modal content goes here.</p>
+                </div>
+                <div id="modalButtons" class="flex justify-end gap-3">
+                    <!-- Buttons are injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         // --- Global State ---
@@ -306,12 +390,18 @@
         const MOVE_STEP = 1; // Movement step in pixels
 
         // Drawing state
-        let activeTool = 'pencil'; // NEW: 'pencil', 'eraser', 'fill', 'eyedropper'
+        let activeTool = 'pencil'; // 'pencil', 'eraser', 'fill', 'eyedropper', 'line', 'square', 'circle'
         let isDrawing = false;
         let drawColor = '#000000';
         let lastDrawCol = -1;
         let lastDrawRow = -1;
         let brushSize = 1; // NEW: Brush size (1x1, 2x2, etc.)
+
+        // NEW: Shape tool state
+        let isShapeTool = false;
+        let startDrawCol = 0;
+        let startDrawRow = 0;
+        let isBlankCanvas = false; // NEW
 
         // --- DOM Elements ---
         const controlsWrapper = document.getElementById('controlsWrapper');
@@ -319,19 +409,35 @@
         const overlayImage = document.getElementById('overlayImage');
         const pixelArtCanvas = document.getElementById('pixelArtCanvas');
         const drawingCanvas = document.getElementById('drawingCanvas');
+        const previewCanvas = document.getElementById('previewCanvas'); 
         const gridPattern = document.getElementById('gridPattern');
         const gridSizeLabel = document.getElementById('gridSizeLabel');
         const pixelationValue = document.getElementById('pixelationValue');
-        const drawingToolbar = document.getElementById('drawingToolbar'); // NEW
+        const pixelationSlider = document.getElementById('pixelationSlider'); // NEW
+        const drawingToolbar = document.getElementById('drawingToolbar'); 
+        const shapeFillToggleContainer = document.getElementById('shapeFillToggleContainer');
+        const modalContainer = document.getElementById('modalContainer'); // NEW
+        const modalTitle = document.getElementById('modalTitle'); // NEW
+        const modalContent = document.getElementById('modalContent'); // NEW
+        const modalButtons = document.getElementById('modalButtons'); // NEW
+        const generatePixelBtnWrapper = document.getElementById('generatePixelBtnWrapper'); // NEW
+        const referenceLayerControls = document.getElementById('referenceLayerControls'); // NEW
+        const generatedArtLayerControls = document.getElementById('generatedArtLayerControls'); // NEW
         
         // --- Initialization ---
         
+        // NEW: Set initial state
+        modalContainer.classList.add('modal-hidden');
+        overlayImage.src = 'https://placehold.co/800x800/e0e0e0/ffffff?text=Upload+image+or+Start+Blank';
+
         function handleImageUpload(event) {
             const file = event.target.files[0];
             const fileNameDisplay = document.getElementById('fileName');
 
             if (file) {
                 fileNameDisplay.textContent = file.name;
+                isBlankCanvas = false; // NEW
+                pixelationSlider.disabled = false; // NEW
                 
                 originalImage = new Image();
                 originalImage.crossOrigin = "Anonymous";
@@ -347,14 +453,10 @@
                     imageWidth = originalImage.naturalWidth;
                     imageHeight = originalImage.naturalHeight;
                     
-                    // Unlock controls
-                    controlsWrapper.classList.remove('opacity-40', 'pointer-events-none');
-                    drawingToolbar.classList.remove('opacity-40', 'pointer-events-none'); // NEW: Enable toolbar
-                    
                     // Reset sliders and controls
                     document.getElementById('pixelationSlider').value = 1;
                     pixelationLevel = 1;
-                    document.getElementById('brushSizeSlider').value = 1; // NEW: Reset brush slider
+                    document.getElementById('brushSizeSlider').value = 1; 
                     brushSize = 1;
                     
                     // Setup canvases and grid
@@ -366,6 +468,13 @@
                     xOffset = 0;
                     yOffset = 0;
                     updateImagePosition();
+
+                    // NEW: Show/Enable image-specific controls
+                    unlockControls();
+                    generatePixelBtnWrapper.style.display = 'block';
+                    referenceLayerControls.style.display = 'block';
+                    generatedArtLayerControls.style.display = 'block';
+                    overlayImage.style.display = 'block';
                 };
                 
                 reader.readAsDataURL(file);
@@ -374,28 +483,111 @@
             }
         }
 
+        // NEW: Start with a blank canvas
+        function startWithBlankCanvas() {
+            const contentHtml = `
+                <p class="mb-4 text-gray-600">Choose a size for your pixel art grid.</p>
+                <div class="space-y-3">
+                    <button class="w-full p-2 border rounded-lg hover:bg-gray-100" onclick="createBlankCanvas(16, 16)">16 x 16</button>
+                    <button class="w-full p-2 border rounded-lg hover:bg-gray-100" onclick="createBlankCanvas(32, 32)">32 x 32</button>
+                    <button class="w-full p-2 border rounded-lg hover:bg-gray-100" onclick="createBlankCanvas(64, 64)">64 x 64</button>
+                    <div class="flex gap-2">
+                        <input type="number" id="customWidth" placeholder="Width" class="w-1/2 p-2 border rounded-lg" min="4" max="256" value="32">
+                        <input type="number" id="customHeight" placeholder="Height" class="w-1/2 p-2 border rounded-lg" min="4" max="256" value="32">
+                    </div>
+                </div>`;
+            
+            const buttons = [
+                { text: 'Cancel', class: 'modal-btn-secondary', onclick: hideModal },
+                { text: 'Create', class: 'modal-btn-primary', onclick: () => {
+                    const w = parseInt(document.getElementById('customWidth').value, 10);
+                    const h = parseInt(document.getElementById('customHeight').value, 10);
+                    if (w > 0 && h > 0) {
+                        createBlankCanvas(w, h);
+                    }
+                }}
+            ];
+            
+            showModal('New Blank Canvas', contentHtml, buttons);
+        }
+
+        // NEW: Helper for blank canvas creation
+        function createBlankCanvas(w, h) {
+            isBlankCanvas = true; // NEW
+            gridCols = w; // NEW: Set grid size directly
+            gridRows = h; // NEW: Set grid size directly
+
+            // NEW: Calculate a high-res canvas size
+            const baseRes = 800; // Base resolution
+            if (w >= h) {
+                imageWidth = baseRes;
+                imageHeight = Math.round(baseRes * (h / w));
+            } else {
+                imageHeight = baseRes;
+                imageWidth = Math.round(baseRes * (w / h));
+            }
+            
+            originalImage = null; // No reference image
+            
+            pixelationLevel = 1;
+            document.getElementById('pixelationSlider').value = 1;
+            pixelationSlider.disabled = true; // NEW: Disable slider
+            document.getElementById('brushSizeSlider').value = 1; 
+            brushSize = 1;
+            
+            setupCanvases(imageWidth, imageHeight);
+            
+            // NEW: Manually update grid labels and pattern
+            gridSizeLabel.textContent = `${gridCols}w x ${gridRows}h`;
+            pixelationValue.textContent = 1; // Reset this
+            updateGridPattern(); // Manually call
+            
+            clearDrawing();
+
+            // NEW: Hide image-specific controls
+            unlockControls();
+            generatePixelBtnWrapper.style.display = 'none';
+            referenceLayerControls.style.display = 'none';
+            generatedArtLayerControls.style.display = 'none';
+            overlayImage.style.display = 'none';
+            
+            hideModal();
+        }
+
+        // NEW: Unlock main controls
+        function unlockControls() {
+            controlsWrapper.classList.remove('opacity-40', 'pointer-events-none');
+            drawingToolbar.classList.remove('opacity-40', 'pointer-events-none'); 
+        }
+
         function setupCanvases(w, h) {
             // Set aspect ratio of the container
             gridWrapper.style.aspectRatio = `${w} / ${h}`;
             
             // Set resolution of all canvases
-            [pixelArtCanvas, drawingCanvas].forEach(canvas => {
+            [pixelArtCanvas, drawingCanvas, previewCanvas].forEach(canvas => { // NEW: Added previewCanvas
                 canvas.width = w;
                 canvas.height = h;
                 const ctx = canvas.getContext('2d');
                 ctx.imageSmoothingEnabled = false; // CRITICAL for pixel art
             });
             
-            // NEW: Create and draw on the hidden reference canvas
+            // Create and draw on the hidden reference canvas
             referenceCanvas = document.createElement('canvas');
             referenceCanvas.width = w;
             referenceCanvas.height = h;
-            referenceCanvas.getContext('2d').drawImage(originalImage, 0, 0, w, h);
+            if (originalImage) { // NEW: Only draw if we have an image
+                referenceCanvas.getContext('2d').drawImage(originalImage, 0, 0, w, h);
+            }
         }
         
         // --- Grid and Pixelation ---
 
         function updatePixelation(value) {
+            if (isBlankCanvas) { // NEW: Don't run this for blank canvas
+                pixelationSlider.value = 1;
+                return;
+            }
             pixelationLevel = parseInt(value, 10);
             pixelationValue.textContent = pixelationLevel;
             
@@ -409,6 +601,7 @@
             
             // Clear drawing canvas as the grid has changed
             clearDrawing();
+            clearPreview();
         }
 
         function updateGridPattern() {
@@ -448,11 +641,8 @@
             const hiddenCtx = hiddenCanvas.getContext('2d');
             hiddenCtx.imageSmoothingEnabled = false;
             
-            // Draw the full-res original image onto the tiny hidden canvas
-            // This performs the automatic color averaging/sampling
             hiddenCtx.drawImage(originalImage, 0, 0, gridCols, gridRows);
             
-            // Get the sampled pixel data
             const pixelData = hiddenCtx.getImageData(0, 0, gridCols, gridRows).data;
             
             // --- Draw Blocky Art onto Visible Canvas ---
@@ -471,11 +661,8 @@
                     const a = pixelData[index + 3];
 
                     if (a > 0) { // Only draw non-transparent pixels
-                        // Apply color quantization
                         const [qr, qg, qb] = quantizeColor(r, g, b, bitsPerChannel);
                         ctx.fillStyle = `rgb(${qr}, ${qg}, ${qb})`;
-                        
-                        // Use Math.ceil to avoid 1px gaps from floating point rounding
                         ctx.fillRect(
                             x * cellWidth, 
                             y * cellHeight, 
@@ -509,7 +696,6 @@
 
         // --- Drawing Controls ---
 
-        // NEW: Brush Size
         function updateBrushSize(value) {
             brushSize = parseInt(value, 10);
             document.getElementById('brushSizeValue').textContent = `${brushSize}x${brushSize}`;
@@ -518,32 +704,50 @@
         function setDrawColor(color) {
             drawColor = color;
             document.getElementById('colorPicker').value = color; // Sync color picker UI
-            // If user picks a color, switch back to pencil tool
-            if (activeTool !== 'pencil') {
+            if (activeTool !== 'pencil' && !isShapeTool) {
                 setActiveTool('pencil');
             }
         }
         
-        // NEW: Set the active tool and update UI
         function setActiveTool(tool) {
             activeTool = tool;
+            isShapeTool = ['line', 'square', 'circle'].includes(tool);
             
             // Update cursor
-            if (tool === 'pencil') drawingCanvas.style.cursor = 'crosshair';
-            else if (tool === 'eraser') drawingCanvas.style.cursor = 'cell'; // 'cell' looks like an eraser block
-            else if (tool === 'fill') drawingCanvas.style.cursor = 'copy'; // 'copy' looks like a good fill cursor
+            if (tool === 'pencil' || isShapeTool) drawingCanvas.style.cursor = 'crosshair';
+            else if (tool === 'eraser') drawingCanvas.style.cursor = 'cell'; 
+            else if (tool === 'fill') drawingCanvas.style.cursor = 'copy'; 
             else if (tool === 'eyedropper') drawingCanvas.style.cursor = 'copy';
             
-            // Update toolbar button active states
             document.querySelectorAll('.toolbar-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
             document.getElementById(`tool-${tool}`).classList.add('active');
+
+            shapeFillToggleContainer.style.display = isShapeTool ? 'flex' : 'none';
+        }
+
+        // NEW: Confirmation for clearing
+        function confirmClearDrawing() {
+            const contentHtml = `<p>Are you sure you want to erase your entire drawing?</p>`;
+            const buttons = [
+                { text: 'Cancel', class: 'modal-btn-secondary', onclick: hideModal },
+                { text: 'Yes, Clear', class: 'modal-btn-danger', onclick: () => {
+                    clearDrawing();
+                    hideModal();
+                }}
+            ];
+            showModal('Clear Drawing', contentHtml, buttons);
         }
 
         function clearDrawing() {
             const ctx = drawingCanvas.getContext('2d');
             ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+        }
+
+        function clearPreview() {
+            const ctx = previewCanvas.getContext('2d');
+            ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
         }
         
         // --- Drawing Event Handlers ---
@@ -562,32 +766,32 @@
             const rect = drawingCanvas.getBoundingClientRect();
             const event = e.touches ? e.touches[0] : e; // Handle touch or mouse
             
-            // Calculate scale based on canvas resolution vs. display size
             const scaleX = drawingCanvas.width / rect.width;
             const scaleY = drawingCanvas.height / rect.height;
             
             const x = (event.clientX - rect.left) * scaleX;
             const y = (event.clientY - rect.top) * scaleY;
+
+            const col = Math.floor(x / (drawingCanvas.width / gridCols));
+            const row = Math.floor(y / (drawingCanvas.height / gridRows));
             
-            return {x, y};
+            return {x, y, col, row};
         }
 
         function startDraw(e) {
             e.preventDefault();
+            const { col, row } = getEventCoords(e);
             
             if (activeTool === 'pencil' || activeTool === 'eraser') {
                 isDrawing = true;
-                
-                // NEW: Get coords and paint first block
-                const {x, y} = getEventCoords(e);
-                const col = Math.floor(x / (drawingCanvas.width / gridCols));
-                const row = Math.floor(y / (drawingCanvas.height / gridRows));
-                
-                paintBlockAt(col, row);
-                
+                paintBlockAt(col, row); // Paint first block
                 lastDrawCol = col;
                 lastDrawRow = row;
-
+            } else if (isShapeTool) { // NEW: Shape logic
+                isDrawing = true;
+                startDrawCol = col;
+                startDrawRow = row;
+                drawShape(startDrawCol, startDrawRow, col, row); // Draw single point preview
             } else if (activeTool === 'fill') {
                 floodFill(e); // Run fill algorithm
             } else if (activeTool === 'eyedropper') {
@@ -595,43 +799,50 @@
             }
         }
         
-        function draw(e) {
-            // Only 'pencil' and 'eraser' tools draw on mousemove
-            if (!isDrawing || (activeTool !== 'pencil' && activeTool !== 'eraser')) return;
+        function draw(e) { // This is mousemove
+            if (!isDrawing) return;
             e.preventDefault();
+            const { col, row } = getEventCoords(e);
 
-            // NEW: Get coords and plot line
-            const {x, y} = getEventCoords(e);
-            const col = Math.floor(x / (drawingCanvas.width / gridCols));
-            const row = Math.floor(y / (drawingCanvas.height / gridRows));
-
-            if (col !== lastDrawCol || row !== lastDrawRow) {
-                plotLine(lastDrawCol, lastDrawRow, col, row);
-                lastDrawCol = col;
-                lastDrawRow = row;
+            if (activeTool === 'pencil' || activeTool === 'eraser') {
+                if (col !== lastDrawCol || row !== lastDrawRow) {
+                    plotLine(lastDrawCol, lastDrawRow, col, row); // Draw line of blocks
+                    lastDrawCol = col;
+                    lastDrawRow = row;
+                }
+            } else if (isShapeTool) { // NEW: Shape logic
+                clearPreview();
+                drawShape(startDrawCol, startDrawRow, col, row); // Draw shape on preview canvas
             }
         }
 
         function endDraw(e) {
+            if (!isDrawing) return;
             e.preventDefault();
             isDrawing = false;
+            
+            const { col, row } = getEventCoords(e);
+
+            if (isShapeTool) { // NEW: Shape logic
+                clearPreview();
+                // Stamp final shape onto main drawing canvas
+                drawShape(startDrawCol, startDrawRow, col, row, drawingCanvas.getContext('2d'));
+            }
+            
             lastDrawCol = -1; // Reset last drawn cell
             lastDrawRow = -1;
         }
         
-        // --- NEW Drawing Logic Functions ---
+        // --- Brush Drawing Logic ---
 
-        // NEW: Paints a block of pixels based on brushSize
         function paintBlockAt(col, row) {
             const ctx = drawingCanvas.getContext('2d');
             const cellWidth = drawingCanvas.width / gridCols;
             const cellHeight = drawingCanvas.height / gridRows;
 
-            // Calculate offset to center the brush
             const brushOffset = Math.floor((brushSize - 1) / 2);
             const startCol = col - brushOffset;
             const startRow = row - brushOffset;
-            // Loop brushSize times
             const endCol = startCol + brushSize; 
             const endRow = startRow + brushSize;
 
@@ -639,7 +850,6 @@
 
             for (let r = startRow; r < endRow; r++) {
                 for (let c = startCol; c < endCol; c++) {
-                    // Bounds check
                     if (c < 0 || c >= gridCols || r < 0 || r >= gridRows) {
                         continue;
                     }
@@ -656,7 +866,6 @@
             }
         }
 
-        // NEW: Bresenham's line algorithm to draw a continuous line of blocks
         function plotLine(x0, y0, x1, y1) {
             const dx = Math.abs(x1 - x0);
             const dy = -Math.abs(y1 - y0);
@@ -679,99 +888,202 @@
             }
         }
 
+        // --- NEW Shape Drawing Logic ---
+
+        function plotPixel(ctx, x, y, cw, ch) {
+            if (x < 0 || x >= gridCols || y < 0 || y >= gridRows) return;
+            ctx.fillRect(x * cw, y * ch, Math.ceil(cw), Math.ceil(ch));
+        }
+
+        function drawShape(x0, y0, x1, y1, targetCtx = null) {
+            const ctx = targetCtx || previewCanvas.getContext('2d');
+            const cw = ctx.canvas.width / gridCols;
+            const ch = ctx.canvas.height / gridRows;
+            const isFilled = document.getElementById('shapeFillToggle').checked;
+
+            ctx.fillStyle = drawColor;
+            
+            if (activeTool === 'line') {
+                plotPixelLine(x0, y0, x1, y1, ctx, cw, ch);
+            } else if (activeTool === 'square') {
+                plotSquare(x0, y0, x1, y1, ctx, cw, ch, isFilled);
+            } else if (activeTool === 'circle') {
+                const dx = Math.abs(x1 - x0);
+                const dy = Math.abs(y1 - y0);
+                const radius = Math.max(dx, dy); // Use Chebyshev distance
+                plotCircle(x0, y0, radius, ctx, cw, ch, isFilled);
+            }
+        }
+        
+        function plotPixelLine(x0, y0, x1, y1, ctx, cw, ch) {
+            const dx = Math.abs(x1 - x0);
+            const dy = -Math.abs(y1 - y0);
+            const sx = x0 < x1 ? 1 : -1;
+            const sy = y0 < y1 ? 1 : -1;
+            let err = dx + dy;
+
+            while (true) {
+                plotPixel(ctx, x0, y0, cw, ch);
+                if (x0 === x1 && y0 === y1) break;
+                const e2 = 2 * err;
+                if (e2 >= dy) {
+                    err += dy;
+                    x0 += sx;
+                }
+                if (e2 <= dx) {
+                    err += dx;
+                    y0 += sy;
+                }
+            }
+        }
+        
+        function plotSquare(x0, y0, x1, y1, ctx, cw, ch, filled) {
+            const minX = Math.min(x0, x1);
+            const maxX = Math.max(x0, x1);
+            const minY = Math.min(y0, y1);
+            const maxY = Math.max(y0, y1);
+
+            if (filled) {
+                for (let y = minY; y <= maxY; y++) {
+                    for (let x = minX; x <= maxX; x++) {
+                        plotPixel(ctx, x, y, cw, ch);
+                    }
+                }
+            } else {
+                plotPixelLine(minX, minY, maxX, minY, ctx, cw, ch); // Top
+                plotPixelLine(minX, maxY, maxX, maxY, ctx, cw, ch); // Bottom
+                plotPixelLine(minX, minY, minX, maxY, ctx, cw, ch); // Left
+                plotPixelLine(maxX, minY, maxX, maxY, ctx, cw, ch); // Right
+            }
+        }
+
+        // NEW: Replaced circle algorithm
+        function plotCircle(xc, yc, r, ctx, cw, ch, filled) {
+            let x = 0;
+            let y = r;
+            let d = 3 - 2 * r;
+            
+            if (filled) {
+                // Use the old filled logic, which draws horizontal lines
+                let x_ = r;
+                let y_ = 0;
+                let err = 0;
+                while (x_ >= y_) {
+                    plotPixelLine(xc - x_, yc + y_, xc + x_, yc + y_, ctx, cw, ch);
+                    plotPixelLine(xc - y_, yc + x_, xc + y_, yc + x_, ctx, cw, ch);
+                    plotPixelLine(xc - x_, yc - y_, xc + x_, yc - y_, ctx, cw, ch);
+                    plotPixelLine(xc - y_, yc - x_, xc + y_, yc - x_, ctx, cw, ch);
+                    y_++;
+                    err += 1 + 2*y_;
+                    if (2*(err-x_) + 1 > 0) {
+                        x_--;
+                        err += 1 - 2*x_;
+                    }
+                }
+            } else {
+                // New pixel-perfect outline logic (Bresenham/Andres)
+                drawCircleOctants(xc, yc, x, y, ctx, cw, ch);
+                while (y >= x) {
+                    x++;
+                    if (d > 0) {
+                        y--;
+                        d = d + 4 * (x - y) + 10;
+                    } else {
+                        d = d + 4 * x + 6;
+                    }
+                    drawCircleOctants(xc, yc, x, y, ctx, cw, ch);
+                }
+            }
+        }
+
+        // NEW: Helper for new circle algorithm
+        function drawCircleOctants(xc, yc, x, y, ctx, cw, ch) {
+            plotPixel(ctx, xc + x, yc + y, cw, ch);
+            plotPixel(ctx, xc - x, yc + y, cw, ch);
+            plotPixel(ctx, xc + x, yc - y, cw, ch);
+            plotPixel(ctx, xc - x, yc - y, cw, ch);
+            plotPixel(ctx, xc + y, yc + x, cw, ch);
+            plotPixel(ctx, xc - y, yc + x, cw, ch);
+            plotPixel(ctx, xc + y, yc - x, cw, ch);
+            plotPixel(ctx, xc - y, yc - x, cw, ch);
+        }
+
+
         // --- Other Tool Functions ---
 
-        // --- NEW: Eyedropper Function ---
         function pickColor(e) {
-            const {x, y} = getEventCoords(e);
+            const {x, y} = getEventCoords(e); // Note: This is canvas pixels, not grid cells
             let colorData = null;
 
             // Sample from visible layers, top-down
-            // 1. Drawing Layer
             if (document.getElementById('toggleDrawing').checked) {
                 colorData = drawingCanvas.getContext('2d').getImageData(x, y, 1, 1).data;
             }
-            // 2. Generated Art Layer
             if ((!colorData || colorData[3] === 0) && document.getElementById('toggleGenerated').checked) {
                 colorData = pixelArtCanvas.getContext('2d').getImageData(x, y, 1, 1).data;
             }
-            // 3. Reference Image Layer
-            if ((!colorData || colorData[3] === 0) && document.getElementById('toggleReference').checked && referenceCanvas) {
-                colorData = referenceCanvas.getContext('2d').getImageData(x, y, 1, 1).data;
+            // NEW: Check for originalImage before sampling reference
+            if ((!colorData || colorData[3] === 0) && document.getElementById('toggleReference').checked && referenceCanvas && originalImage) {
+                const refCtx = referenceCanvas.getContext('2d');
+                colorData = refCtx.getImageData(x, y, 1, 1).data;
             }
 
             if (colorData && colorData[3] > 0) { // Found a non-transparent color
                 const r = colorData[0];
                 const g = colorData[1];
                 const b = colorData[2];
-                // Helper to convert rgb to hex
                 const toHex = c => ('0' + c.toString(16)).slice(-2);
                 const hexColor = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
                 
                 setDrawColor(hexColor);
             }
             
-            // After picking, automatically switch back to pencil
             setActiveTool('pencil');
         }
 
-        // --- NEW: Flood Fill Function ---
         function floodFill(e) {
-            const {x, y} = getEventCoords(e);
+            const { col: startCol, row: startRow } = getEventCoords(e); // Get grid cell
             const ctx = drawingCanvas.getContext('2d');
             
             const cellWidth = drawingCanvas.width / gridCols;
             const cellHeight = drawingCanvas.height / gridRows;
-            
-            const startCol = Math.floor(x / cellWidth);
-            const startRow = Math.floor(y / cellHeight);
 
-            // Get color of the starting cell (sample from middle of cell)
             const sampleX = startCol * cellWidth + cellWidth / 2;
             const sampleY = startRow * cellHeight + cellHeight / 2;
             const startPixel = ctx.getImageData(sampleX, sampleY, 1, 1).data;
             const startColor = `rgb(${startPixel[0]},${startPixel[1]},${startPixel[2]})`;
             const startAlpha = startPixel[3];
 
-            // Don't fill if target color is same as draw color
-            if (drawColor === startColor && startAlpha > 0) return; // Note: This check is basic, hex vs rgb
-            // Don't fill if target color is same as draw color (handles transparent case)
+            if (drawColor === startColor && startAlpha > 0) return; 
             if (drawColor === startColor && startAlpha === 0 && ctx.fillStyle === startColor) return;
 
             const queue = [[startCol, startRow]];
             const visited = new Set([`${startCol},${startRow}`]);
             
             const colorsMatch = (p) => {
-                // Check if alpha matches
                 if (p[3] !== startAlpha) return false;
-                // Check if RGB matches
                 return p[0] === startPixel[0] && p[1] === startPixel[1] && p[2] === startPixel[2];
             };
 
             while (queue.length > 0) {
                 const [col, row] = queue.pop();
                 
-                // 1. Fill this cell
                 ctx.fillStyle = drawColor;
                 ctx.fillRect(col * cellWidth, row * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
                 
-                // 2. Check neighbors
                 const neighbors = [[col + 1, row], [col - 1, row], [col, row + 1], [col, row - 1]];
                 
                 for (const [nCol, nRow] of neighbors) {
                     const key = `${nCol},${nRow}`;
                     
-                    // Check bounds and if already visited
                     if (nCol < 0 || nCol >= gridCols || nRow < 0 || nRow >= gridRows || visited.has(key)) {
                         continue;
                     }
 
-                    // Get color of neighbor cell
                     const nX = nCol * cellWidth + cellWidth / 2;
                     const nY = nRow * cellHeight + cellHeight / 2;
                     const neighborPixel = ctx.getImageData(nX, nY, 1, 1).data;
                     
-                    // If neighbor matches start color, add to queue
                     if (colorsMatch(neighborPixel)) {
                         visited.add(key);
                         queue.push([nCol, nRow]);
@@ -789,12 +1101,8 @@
             const ctx = mergeCanvas.getContext('2d');
             ctx.imageSmoothingEnabled = false;
 
-            // Optional: Add a background color if needed
-            // ctx.fillStyle = '#FFFFFF';
-            // ctx.fillRect(0, 0, mergeCanvas.width, mergeCanvas.height);
-            
-            // Draw Generated Art (if visible)
-            if (document.getElementById('toggleGenerated').checked) {
+            // Draw Generated Art (if visible and exists)
+            if (originalImage && document.getElementById('toggleGenerated').checked) {
                 ctx.drawImage(pixelArtCanvas, 0, 0);
             }
 
@@ -806,11 +1114,33 @@
             // Trigger download
             const dataURL = mergeCanvas.toDataURL('image/png');
             const a = document.createElement('a');
-            a.href = dataURL;
             a.download = `pixel-art-${gridCols}x${gridRows}.png`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+        }
+
+        // --- NEW: Modal Functions ---
+        function showModal(title, contentHtml, buttons = []) {
+            modalTitle.textContent = title;
+            modalContent.innerHTML = contentHtml;
+            
+            modalButtons.innerHTML = ''; // Clear old buttons
+            buttons.forEach(btn => {
+                const buttonEl = document.createElement('button');
+                buttonEl.textContent = btn.text;
+                buttonEl.className = `modal-btn ${btn.class}`;
+                buttonEl.onclick = btn.onclick;
+                modalButtons.appendChild(buttonEl);
+            });
+
+            modalContainer.classList.remove('modal-hidden');
+            modalContainer.classList.add('modal-visible');
+        }
+
+        function hideModal() {
+            modalContainer.classList.add('modal-hidden');
+            modalContainer.classList.remove('modal-visible');
         }
 
     </script>
