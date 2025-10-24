@@ -151,6 +151,17 @@
         .modal-btn-secondary {
             @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
         }
+
+        /* NEW: Active Edit Layer style */
+        .layer-control.active-edit {
+            @apply ring-2 ring-primary ring-offset-2;
+        }
+        .layer-edit-btn {
+            @apply text-xs font-medium bg-gray-200 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-300;
+        }
+        .layer-edit-btn.active {
+            @apply bg-primary text-white;
+        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans min-h-screen flex flex-col items-center p-4 sm:p-8">
@@ -219,35 +230,51 @@
                         <input type="range" id="brushSizeSlider" min="1" max="5" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateBrushSize(this.value)">
                     </div>
 
-                    <!-- NEW: Clear Drawing -->
+                    <!-- Clear Drawing -->
                     <div class="mb-4">
                         <button onclick="confirmClearDrawing()" class="w-full p-2 bg-danger text-white text-sm font-medium rounded-lg hover:bg-danger-dark transition shadow-sm">
-                            Clear Drawing Layer
+                            Clear Active Drawing Layer
                         </button>
                     </div>
 
                     <!-- Layer Stack -->
                     <div class="space-y-3">
                         <!-- Layer: Drawing -->
-                        <div class="p-3 border rounded-lg">
+                        <div id="drawingLayerControls" class="layer-control p-3 border rounded-lg active-edit">
                             <div class="flex justify-between items-center mb-2">
                                 <label for="toggleDrawing" class="font-medium text-gray-700">Drawing Layer</label>
+                                <button id="editDrawingBtn" class="layer-edit-btn active" onclick="setActiveDrawLayer('drawing')">Edit</button>
+                            </div>
+                            <input type="range" min="0" max="100" value="100" class="w-full mb-2" oninput="setLayerOpacity('drawingCanvas', this.value)">
+                            <div class="flex justify-between items-center">
+                                <label for="toggleDrawing" class="text-sm text-gray-600">Visible</label>
                                 <input type="checkbox" id="toggleDrawing" checked onchange="toggleLayer('drawingCanvas', this.checked)">
                             </div>
-                            <input type="range" min="0" max="100" value="100" class="w-full" oninput="setLayerOpacity('drawingCanvas', this.value)">
+                            <!-- NEW: SVG Download -->
+                            <button onclick="downloadSVG('drawingCanvas', 'drawing-layer.svg')" class="w-full mt-3 p-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition shadow-sm">
+                                Download (SVG)
+                            </button>
                         </div>
                         
                         <!-- Layer: Generated Art -->
-                        <div class="p-3 border rounded-lg" id="generatedArtLayerControls">
+                        <div id="generatedArtLayerControls" class="layer-control p-3 border rounded-lg">
                             <div class="flex justify-between items-center mb-2">
                                 <label for="toggleGenerated" class="font-medium text-gray-700">Generated Art</label>
+                                <button id="editGeneratedBtn" class="layer-edit-btn" onclick="setActiveDrawLayer('generated')">Edit</button>
+                            </div>
+                            <input type="range" min="0" max="100" value="100" class="w-full mb-2" oninput="setLayerOpacity('pixelArtCanvas', this.value)">
+                            <div class="flex justify-between items-center">
+                                <label for="toggleGenerated" class="text-sm text-gray-600">Visible</label>
                                 <input type="checkbox" id="toggleGenerated" checked onchange="toggleLayer('pixelArtCanvas', this.checked)">
                             </div>
-                            <input type="range" min="0" max="100" value="100" class="w-full" oninput="setLayerOpacity('pixelArtCanvas', this.value)">
+                            <!-- NEW: SVG Download -->
+                            <button onclick="downloadSVG('pixelArtCanvas', 'generated-layer.svg')" class="w-full mt-3 p-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition shadow-sm">
+                                Download (SVG)
+                            </button>
                         </div>
 
                         <!-- Layer: Reference Image -->
-                        <div class="p-3 border rounded-lg" id="referenceLayerControls">
+                        <div id="referenceLayerControls" class="p-3 border rounded-lg">
                             <div class="flex justify-between items-center mb-2">
                                 <label for="toggleReference" class="font-medium text-gray-700">Reference Image</label>
                                 <input type="checkbox" id="toggleReference" checked onchange="toggleLayer('overlayImage', this.checked)">
@@ -344,6 +371,16 @@
                         <span class="text-xs font-medium">Circle</span>
                     </button>
 
+                    <!-- NEW: Delete Color -->
+                    <button id="tool-deleteColor" class="toolbar-btn" onclick="setActiveTool('deleteColor')" title="Delete by Color">
+                        <span class="text-xs font-medium">Delete Color</span>
+                    </button>
+
+                    <!-- NEW: Delete Background -->
+                    <button id="tool-deleteBg" class="toolbar-btn" onclick="setActiveTool('deleteBg')" title="Delete Background">
+                        <span class="text-xs font-medium">Delete BG</span>
+                    </button>
+
                     <!-- Shape Fill Toggle -->
                     <div id="shapeFillToggleContainer" class="ml-4 flex items-center gap-2" style="display: none;">
                         <input type="checkbox" id="shapeFillToggle" class="w-4 h-4" checked>
@@ -390,7 +427,7 @@
         const MOVE_STEP = 1; // Movement step in pixels
 
         // Drawing state
-        let activeTool = 'pencil'; // 'pencil', 'eraser', 'fill', 'eyedropper', 'line', 'square', 'circle'
+        let activeTool = 'pencil'; // 'pencil', 'eraser', 'fill', 'eyedropper', 'line', 'square', 'circle', 'deleteColor', 'deleteBg'
         let isDrawing = false;
         let drawColor = '#000000';
         let lastDrawCol = -1;
@@ -402,6 +439,7 @@
         let startDrawCol = 0;
         let startDrawRow = 0;
         let isBlankCanvas = false; // NEW
+        let activeDrawLayer = 'drawing'; // NEW: 'drawing' or 'generated'
 
         // --- DOM Elements ---
         const controlsWrapper = document.getElementById('controlsWrapper');
@@ -423,6 +461,7 @@
         const generatePixelBtnWrapper = document.getElementById('generatePixelBtnWrapper'); // NEW
         const referenceLayerControls = document.getElementById('referenceLayerControls'); // NEW
         const generatedArtLayerControls = document.getElementById('generatedArtLayerControls'); // NEW
+        const drawingLayerControls = document.getElementById('drawingLayerControls'); // NEW
         
         // --- Initialization ---
         
@@ -475,6 +514,7 @@
                     referenceLayerControls.style.display = 'block';
                     generatedArtLayerControls.style.display = 'block';
                     overlayImage.style.display = 'block';
+                    setActiveDrawLayer('drawing'); // Default to drawing layer
                 };
                 
                 reader.readAsDataURL(file);
@@ -543,6 +583,7 @@
             updateGridPattern(); // Manually call
             
             clearDrawing();
+            clearCanvas(pixelArtCanvas); // Also clear generated layer
 
             // NEW: Hide image-specific controls
             unlockControls();
@@ -550,6 +591,7 @@
             referenceLayerControls.style.display = 'none';
             generatedArtLayerControls.style.display = 'none';
             overlayImage.style.display = 'none';
+            setActiveDrawLayer('drawing'); // Default to drawing layer
             
             hideModal();
         }
@@ -676,6 +718,23 @@
 
         // --- Layer Controls ---
 
+        // NEW: Set active layer for drawing
+        function setActiveDrawLayer(layerName) {
+            activeDrawLayer = layerName;
+            
+            if (layerName === 'drawing') {
+                drawingLayerControls.classList.add('active-edit');
+                document.getElementById('editDrawingBtn').classList.add('active');
+                generatedArtLayerControls.classList.remove('active-edit');
+                document.getElementById('editGeneratedBtn').classList.remove('active');
+            } else {
+                drawingLayerControls.classList.remove('active-edit');
+                document.getElementById('editDrawingBtn').classList.remove('active');
+                generatedArtLayerControls.classList.add('active-edit');
+                document.getElementById('editGeneratedBtn').classList.add('active');
+            }
+        }
+
         function toggleLayer(layerId, isVisible) {
             document.getElementById(layerId).style.display = isVisible ? 'block' : 'none';
         }
@@ -716,7 +775,7 @@
             // Update cursor
             if (tool === 'pencil' || isShapeTool) drawingCanvas.style.cursor = 'crosshair';
             else if (tool === 'eraser') drawingCanvas.style.cursor = 'cell'; 
-            else if (tool === 'fill') drawingCanvas.style.cursor = 'copy'; 
+            else if (tool === 'fill' || tool === 'deleteColor' || tool === 'deleteBg') drawingCanvas.style.cursor = 'copy'; 
             else if (tool === 'eyedropper') drawingCanvas.style.cursor = 'copy';
             
             document.querySelectorAll('.toolbar-btn').forEach(btn => {
@@ -729,20 +788,29 @@
 
         // NEW: Confirmation for clearing
         function confirmClearDrawing() {
-            const contentHtml = `<p>Are you sure you want to erase your entire drawing?</p>`;
+            const layerName = activeDrawLayer === 'drawing' ? 'Drawing' : 'Generated Art';
+            const contentHtml = `<p>Are you sure you want to erase the entire <strong>${layerName}</strong> layer?</p>`;
             const buttons = [
                 { text: 'Cancel', class: 'modal-btn-secondary', onclick: hideModal },
                 { text: 'Yes, Clear', class: 'modal-btn-danger', onclick: () => {
-                    clearDrawing();
+                    if (activeDrawLayer === 'drawing') {
+                        clearDrawing();
+                    } else {
+                        clearCanvas(pixelArtCanvas);
+                    }
                     hideModal();
                 }}
             ];
-            showModal('Clear Drawing', contentHtml, buttons);
+            showModal('Clear Layer', contentHtml, buttons);
         }
 
         function clearDrawing() {
-            const ctx = drawingCanvas.getContext('2d');
-            ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            clearCanvas(drawingCanvas);
+        }
+        
+        function clearCanvas(canvas) { // NEW: Generic clear
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
 
         function clearPreview() {
@@ -762,6 +830,11 @@
         drawingCanvas.addEventListener('touchmove', draw);
         drawingCanvas.addEventListener('touchend', endDraw);
 
+        // NEW: Get active canvas based on selected layer
+        function getActiveCanvas() {
+            return (activeDrawLayer === 'drawing') ? drawingCanvas : pixelArtCanvas;
+        }
+
         function getEventCoords(e) {
             const rect = drawingCanvas.getBoundingClientRect();
             const event = e.touches ? e.touches[0] : e; // Handle touch or mouse
@@ -780,7 +853,7 @@
 
         function startDraw(e) {
             e.preventDefault();
-            const { col, row } = getEventCoords(e);
+            const { x, y, col, row } = getEventCoords(e);
             
             if (activeTool === 'pencil' || activeTool === 'eraser') {
                 isDrawing = true;
@@ -793,9 +866,13 @@
                 startDrawRow = row;
                 drawShape(startDrawCol, startDrawRow, col, row); // Draw single point preview
             } else if (activeTool === 'fill') {
-                floodFill(e); // Run fill algorithm
+                floodFill(col, row); // Run fill algorithm
             } else if (activeTool === 'eyedropper') {
-                pickColor(e); // Run color picker
+                pickColor(x, y); // Run color picker (uses x, y)
+            } else if (activeTool === 'deleteColor') { // NEW
+                deleteByColor(col, row);
+            } else if (activeTool === 'deleteBg') { // NEW
+                deleteBackground();
             }
         }
         
@@ -826,7 +903,7 @@
             if (isShapeTool) { // NEW: Shape logic
                 clearPreview();
                 // Stamp final shape onto main drawing canvas
-                drawShape(startDrawCol, startDrawRow, col, row, drawingCanvas.getContext('2d'));
+                drawShape(startDrawCol, startDrawRow, col, row, getActiveCanvas().getContext('2d'));
             }
             
             lastDrawCol = -1; // Reset last drawn cell
@@ -836,9 +913,10 @@
         // --- Brush Drawing Logic ---
 
         function paintBlockAt(col, row) {
-            const ctx = drawingCanvas.getContext('2d');
-            const cellWidth = drawingCanvas.width / gridCols;
-            const cellHeight = drawingCanvas.height / gridRows;
+            const canvas = getActiveCanvas(); // NEW
+            const ctx = canvas.getContext('2d');
+            const cellWidth = canvas.width / gridCols;
+            const cellHeight = canvas.height / gridRows;
 
             const brushOffset = Math.floor((brushSize - 1) / 2);
             const startCol = col - brushOffset;
@@ -1008,11 +1086,9 @@
             plotPixel(ctx, xc - y, yc - x, cw, ch);
         }
 
-
         // --- Other Tool Functions ---
 
-        function pickColor(e) {
-            const {x, y} = getEventCoords(e); // Note: This is canvas pixels, not grid cells
+        function pickColor(x, y) { // Takes canvas x, y
             let colorData = null;
 
             // Sample from visible layers, top-down
@@ -1022,7 +1098,6 @@
             if ((!colorData || colorData[3] === 0) && document.getElementById('toggleGenerated').checked) {
                 colorData = pixelArtCanvas.getContext('2d').getImageData(x, y, 1, 1).data;
             }
-            // NEW: Check for originalImage before sampling reference
             if ((!colorData || colorData[3] === 0) && document.getElementById('toggleReference').checked && referenceCanvas && originalImage) {
                 const refCtx = referenceCanvas.getContext('2d');
                 colorData = refCtx.getImageData(x, y, 1, 1).data;
@@ -1041,30 +1116,39 @@
             setActiveTool('pencil');
         }
 
-        function floodFill(e) {
-            const { col: startCol, row: startRow } = getEventCoords(e); // Get grid cell
-            const ctx = drawingCanvas.getContext('2d');
-            
-            const cellWidth = drawingCanvas.width / gridCols;
-            const cellHeight = drawingCanvas.height / gridRows;
+        // NEW: Gets pixel data [r,g,b,a] from a specific grid cell on a canvas
+        function getCellColor(canvas, col, row) {
+            const ctx = canvas.getContext('2d');
+            const cellWidth = canvas.width / gridCols;
+            const cellHeight = canvas.height / gridRows;
+            const sampleX = col * cellWidth + cellWidth / 2;
+            const sampleY = row * cellHeight + cellHeight / 2;
+            return ctx.getImageData(sampleX, sampleY, 1, 1).data;
+        }
 
-            const sampleX = startCol * cellWidth + cellWidth / 2;
-            const sampleY = startRow * cellHeight + cellHeight / 2;
-            const startPixel = ctx.getImageData(sampleX, sampleY, 1, 1).data;
+        // NEW: Compares two pixel data arrays [r,g,b,a]
+        function colorsMatch(p1, p2) {
+            return p1[0] === p2[0] && p1[1] === p2[1] && p1[2] === p2[2] && p1[3] === p2[3];
+        }
+
+        function floodFill(startCol, startRow) {
+            const canvas = getActiveCanvas(); // NEW
+            const ctx = canvas.getContext('2d');
+            
+            const cellWidth = canvas.width / gridCols;
+            const cellHeight = canvas.height / gridRows;
+            
+            const startPixel = getCellColor(canvas, startCol, startRow);
             const startColor = `rgb(${startPixel[0]},${startPixel[1]},${startPixel[2]})`;
             const startAlpha = startPixel[3];
 
+            // Don't fill if target color is same as draw color
             if (drawColor === startColor && startAlpha > 0) return; 
             if (drawColor === startColor && startAlpha === 0 && ctx.fillStyle === startColor) return;
 
             const queue = [[startCol, startRow]];
             const visited = new Set([`${startCol},${startRow}`]);
             
-            const colorsMatch = (p) => {
-                if (p[3] !== startAlpha) return false;
-                return p[0] === startPixel[0] && p[1] === startPixel[1] && p[2] === startPixel[2];
-            };
-
             while (queue.length > 0) {
                 const [col, row] = queue.pop();
                 
@@ -1080,11 +1164,68 @@
                         continue;
                     }
 
-                    const nX = nCol * cellWidth + cellWidth / 2;
-                    const nY = nRow * cellHeight + cellHeight / 2;
-                    const neighborPixel = ctx.getImageData(nX, nY, 1, 1).data;
+                    const neighborPixel = getCellColor(canvas, nCol, nRow);
                     
-                    if (colorsMatch(neighborPixel)) {
+                    if (colorsMatch(neighborPixel, startPixel)) { // Use helper
+                        visited.add(key);
+                        queue.push([nCol, nRow]);
+                    }
+                }
+            }
+        }
+        
+        // NEW: Delete by Color Tool
+        function deleteByColor(startCol, startRow) {
+            const canvas = getActiveCanvas();
+            const ctx = canvas.getContext('2d');
+            const cellWidth = canvas.width / gridCols;
+            const cellHeight = canvas.height / gridRows;
+            
+            const targetPixel = getCellColor(canvas, startCol, startRow);
+            
+            // Iterate over all cells
+            for (let r = 0; r < gridRows; r++) {
+                for (let c = 0; c < gridCols; c++) {
+                    const currentPixel = getCellColor(canvas, c, r);
+                    if (colorsMatch(currentPixel, targetPixel)) {
+                        ctx.clearRect(c * cellWidth, r * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
+                    }
+                }
+            }
+        }
+        
+        // NEW: Delete Background Tool
+        function deleteBackground() {
+            const canvas = getActiveCanvas();
+            const ctx = canvas.getContext('2d');
+            const cellWidth = canvas.width / gridCols;
+            const cellHeight = canvas.height / gridRows;
+            
+            const startCol = 0;
+            const startRow = 0;
+            const startPixel = getCellColor(canvas, startCol, startRow); // Target color is top-left
+
+            const queue = [[startCol, startRow]];
+            const visited = new Set([`${startCol},${startRow}`]);
+            
+            while (queue.length > 0) {
+                const [col, row] = queue.pop();
+                
+                // Erase this cell
+                ctx.clearRect(col * cellWidth, row * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
+                
+                const neighbors = [[col + 1, row], [col - 1, row], [col, row + 1], [col, row - 1]];
+                
+                for (const [nCol, nRow] of neighbors) {
+                    const key = `${nCol},${nRow}`;
+                    
+                    if (nCol < 0 || nCol >= gridCols || nRow < 0 || nRow >= gridRows || visited.has(key)) {
+                        continue;
+                    }
+
+                    const neighborPixel = getCellColor(canvas, nCol, nRow);
+                    
+                    if (colorsMatch(neighborPixel, startPixel)) { // Use helper
                         visited.add(key);
                         queue.push([nCol, nRow]);
                     }
@@ -1092,15 +1233,16 @@
             }
         }
 
+
         // --- Download ---
 
-        function downloadPixelArt() {
+        function downloadPixelArt() { // PNG Download
             const mergeCanvas = document.createElement('canvas');
             mergeCanvas.width = imageWidth;
             mergeCanvas.height = imageHeight;
             const ctx = mergeCanvas.getContext('2d');
             ctx.imageSmoothingEnabled = false;
-
+            
             // Draw Generated Art (if visible and exists)
             if (originalImage && document.getElementById('toggleGenerated').checked) {
                 ctx.drawImage(pixelArtCanvas, 0, 0);
@@ -1118,6 +1260,48 @@
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+        }
+        
+        // NEW: SVG Download
+        function downloadSVG(canvasId, filename) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+
+            const cellWidth = 1; // Use 1x1 pixels for SVG
+            const cellHeight = 1;
+
+            let svgRects = [];
+            
+            for (let r = 0; r < gridRows; r++) {
+                for (let c = 0; c < gridCols; c++) {
+                    const colorData = getCellColor(canvas, c, r);
+                    const [red, green, blue, alpha] = colorData;
+                    
+                    if (alpha > 0) { // Only add non-transparent pixels
+                        const color = `rgb(${red},${green},${blue})`;
+                        const opacity = (alpha / 255).toFixed(2);
+                        
+                        svgRects.push(
+                            `<rect x="${c * cellWidth}" y="${r * cellHeight}" width="${cellWidth}" height="${cellHeight}" fill="${color}" fill-opacity="${opacity}" />`
+                        );
+                    }
+                }
+            }
+
+            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${gridCols} ${gridRows}" shape-rendering="crispEdges">
+    ${svgRects.join('\n    ')}
+</svg>`;
+
+            const blob = new Blob([svgContent], {type: 'image/svg+xml;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         // --- NEW: Modal Functions ---
