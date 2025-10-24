@@ -93,7 +93,7 @@
             background-size: .65em auto;
             padding-right: 2.5rem;
         }
-        select:disabled {
+        select:disabled, input[type="number"]:disabled {
             opacity: 0.5;
             background-color: #f3f4f6;
         }
@@ -146,6 +146,22 @@
                     <option value="rainbow">Rainbow</option>
                 </select>
             </div>
+            
+            <!-- Loop Mode -->
+            <div>
+                <label for="loopMode" class="block text-sm font-medium text-gray-700">
+                    Loop Mode
+                </label>
+                <div class="flex space-x-2 mt-1">
+                    <select id="loopMode" class="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="none">None (Stop after 1 run)</option>
+                        <option value="infinite">Infinite Loop</option>
+                        <option value="limited">Loop X Times</option>
+                    </select>
+                    <input type="number" id="loopCount" value="3" min="2" class="w-20 text-center border border-gray-300 rounded-md shadow-sm sm:text-sm" style="display: none;">
+                </div>
+            </div>
+
         </div>
 
         <!-- Hourglass and Digital Display -->
@@ -156,12 +172,8 @@
                 30:00
             </div>
 
-            <!-- 
-              This is the exact SVG code you provided, embedded directly.
-              The shape-rendering="crispEdges" is key to the pixelated look.
-            -->
             <svg class="hourglass-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22" shape-rendering="crispEdges">
-                <!-- Outline (as provided) -->
+                <!-- Outline -->
                 <rect x="0" y="0" width="1" height="1" fill="rgb(0,0,0)" />
                 <rect x="1" y="0" width="1" height="1" fill="rgb(0,0,0)" />
                 <rect x="2" y="0" width="1" height="1" fill="rgb(0,0,0)" />
@@ -293,12 +305,16 @@
         const totalTimeSlider = document.getElementById('totalTimeSlider');
         const grainTimeSlider = document.getElementById('grainTimeSlider');
         const grainColorSelect = document.getElementById('grainColor');
+        const loopModeSelect = document.getElementById('loopMode');
+        const loopCountInput = document.getElementById('loopCount');
+        
         const totalTimeDisplay = document.getElementById('totalTimeDisplay');
         const grainTimeDisplay = document.getElementById('grainTimeDisplay');
         const totalGrainsDisplay = document.getElementById('totalGrainsDisplay');
         const visualCapDisplay = document.getElementById('visualCapDisplay');
         const timerDisplay = document.getElementById('timerDisplay');
         const actionButton = document.getElementById('actionButton');
+        
         const topSandGroup = document.getElementById('top-sand');
         const bottomSandGroup = document.getElementById('bottom-sand');
         const svgNS = "http://www.w3.org/2000/svg"; // Namespace for creating SVG elements
@@ -308,10 +324,18 @@
         let grainTime = 30;         // Time per "real" grain in seconds
         let totalGrains = 60;       // Total number of "real" grains (calculated)
         let visualGrains = 51;      // Number of grains to *visualize* (capped)
+        let visualTickTime = 30 * 1000; // Time per *visual* grain drop (ms)
+        
         let timeRemaining = totalTime;
         let isRunning = false;
         let timerInterval = null;
         let grainsDroppedCounter = 0; // Counts "visual" grains dropped
+
+        // --- LOOPING STATE ---
+        let loopMode = 'none';
+        let loopLimit = 3;
+        let loopsCompleted = 0;
+        let stopRequested = false;
 
         // --- VISUAL STATE ---
         let grainColor = 'rgb(0,0,0)';
@@ -319,6 +343,7 @@
         const rainbowColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#6366f1', '#a855f7'];
         let bottomGrainPile = []; // Stores {x, y, id} for *settled* grains
         let fallingGrains = []; // Stores {x, y, id, element, physicsInterval} for *active* grains
+        let physicsIntervalSpeed = 50; // ms per physics step
 
         // --- VISUAL STATE (COORDINATES) ---
         // Slots ordered from bottom-center up and out, as per the PDF
@@ -380,18 +405,19 @@
 
         /**
          * Checks if a slot is valid (within bounds) and empty.
-         * Now checks both settled pile AND other falling grains.
          */
         function isSlotValidAndEmpty(x, y, fallingGrainId) {
-            // Check 1: Is it a valid slot *to be in*? (Funnel or Pile)
-            const isFunnel = (y === 10 || y === 11) && x >= 4 && x <= 8;
-            const isPile = bottomSandSlots.some(s => s.x === x && s.y === y);
-            if (!isFunnel && !isPile) {
-                 // Check if it's the very bottom boundary
-                 if (y === 19 && x >= 2 && x <= 10) return false; // Hit the floor
-                 // Allow falling through non-pile area
-                 if (y > 11 && y < 19) return true; 
-                 return false;
+            // Check 1: Is it a valid slot *to be in*?
+            // This includes the funnel and the pile area
+            const isFunnel = (y === 10 || y === 11) && (x >= 4 && x <= 8);
+            const isPileArea = bottomSandSlots.some(s => s.x === x && s.y === y);
+            
+            // Allow falling *through* the open space below the funnel
+            const isFallingSpace = (y >= 12 && y <= 18) && (x >= 2 && x <= 10);
+
+            if (!isFunnel && !isPileArea && !isFallingSpace) {
+                // If it's not in the funnel, pile, or falling space, it's out of bounds
+                return false;
             }
 
             // Check 2: Is it occupied by a *settled* grain?
@@ -402,26 +428,26 @@
             const isOccupiedByFalling = fallingGrains.some(
                 g => g.id !== fallingGrainId && g.x === x && g.y === y
             );
-            return !isOccupiedByFalling;
+            if (isOccupiedByFalling) return false;
+
+            // Check 4: Is it the floor? (y=19)
+            if (y === 19 && x >= 2 && x <= 10) return false;
+
+            return true; // Slot is valid and empty
         }
+
 
         /**
          * Draws the *static* sand in the top bulb.
-         * The bottom sand is drawn by the physics simulation.
          */
         function drawSand() {
-            // Clear existing *static* sand
             topSandGroup.innerHTML = '';
-
-            // Handle edge case of 0 grains
             if (visualGrains <= 0) return;
-
             const grainsInTopCount = visualGrains - grainsDroppedCounter;
 
             // Draw TOP grains
-            // We draw grains from index `grainsDroppedCounter` to the end of the list.
-            // This correctly makes the grains at the start of the list (bottom-center)
-            // disappear first.
+            // Start drawing from index grainsDroppedCounter
+            // This correctly makes the grains at index 0 (bottom-center) disappear first
             for (let i = grainsDroppedCounter; i < visualGrains; i++) {
                 topSandGroup.appendChild(createSandPixel(topSandSlots[i], i));
             }
@@ -446,39 +472,40 @@
             
             // Cap visual grains at 51
             visualGrains = Math.min(totalGrains, totalVisualSlots);
+            
+            // Calculate visual tick time
+            if (visualGrains > 0) {
+                visualTickTime = (totalTime / visualGrains) * 1000; // in milliseconds
+            } else {
+                visualTickTime = 0;
+            }
 
             // Reset timer state
             timeRemaining = totalTime;
             grainsDroppedCounter = 0;
+            loopsCompleted = 0;
+            stopRequested = false;
             
             // Clear all sand
-            bottomGrainPile = [];
-            // Stop and remove any falling grains
-            fallingGrains.forEach(g => {
-                clearInterval(g.physicsInterval);
-                if (g.element && g.element.parentNode) {
-                    g.element.parentNode.removeChild(g.element);
-                }
-            });
-            fallingGrains = [];
-            // Clear the visual bottom pile
-            bottomSandGroup.innerHTML = '';
-            // Clear top pile
-            topSandGroup.innerHTML = '';
-
+            clearAllSand();
 
             // Update Color
             isRainbow = (grainColorSelect.value === 'rainbow');
             if (!isRainbow) {
                 grainColor = grainColorSelect.value;
             }
+            
+            // Update Loop Mode
+            loopMode = loopModeSelect.value;
+            loopLimit = Number(loopCountInput.value) || 3;
+            loopCountInput.style.display = (loopMode === 'limited') ? 'block' : 'none';
+
 
             // Update UI text
             totalTimeDisplay.textContent = `${totalTimeSlider.value} minutes`;
-            grainTimeDisplay.textContent = `${grainTimeDisplay.value} seconds`;
+            grainTimeDisplay.textContent = `${grainTimeSlider.value} seconds`; // BUG FIX HERE
             totalGrainsDisplay.textContent = totalGrains;
             
-            // Show/hide visual cap warning
             if (totalGrains > totalVisualSlots) {
                 visualCapDisplay.textContent = `(Visual physics capped at ${totalVisualSlots} grains)`;
                 visualCapDisplay.style.display = 'block';
@@ -487,9 +514,33 @@
             }
             
             timerDisplay.textContent = formatTime(timeRemaining);
+            actionButton.textContent = 'Start Timer';
+            actionButton.classList.remove('bg-yellow-500', 'hover:bg-yellow-600', 'bg-red-500', 'hover:bg-red-600');
+            actionButton.classList.add('bg-green-500', 'hover:bg-green-600');
 
             // Draw initial sand state (full or partial)
             drawSand();
+        }
+
+        /**
+         * Stops and clears all physics and sand.
+         */
+        function clearAllSand() {
+            // Stop and remove any falling grains
+            fallingGrains.forEach(g => {
+                clearInterval(g.physicsInterval);
+                if (g.element && g.element.parentNode) {
+                    g.element.parentNode.removeChild(g.element);
+                }
+            });
+            fallingGrains = [];
+            
+            // Clear the visual bottom pile
+            bottomGrainPile = [];
+            bottomSandGroup.innerHTML = '';
+            
+            // Clear top pile
+            topSandGroup.innerHTML = '';
         }
 
 
@@ -557,7 +608,7 @@
                 fallingGrains = fallingGrains.filter(g => g.id !== grain.id);
                 bottomGrainPile.push({x: grain.x, y: grain.y, id: grain.id});
 
-            }, 50); // Physics simulation speed (50ms per step)
+            }, physicsIntervalSpeed);
         }
 
 
@@ -565,22 +616,21 @@
          * The main timer loop, runs every `visualTickTime` milliseconds.
          */
         function tick() {
+            if (stopRequested) return; // Check if stop was pressed
+            
             // Stop ticking if all *visual* grains have dropped
             if (grainsDroppedCounter >= visualGrains) {
-                timeRemaining = 0; // Force time to 0
-                timerDisplay.textContent = formatTime(timeRemaining);
-                stopTimer(); 
+                // This shouldn't be reached if logic is correct, but as a safeguard.
+                handleRunCompletion();
                 return;
             }
             
             // Calculate time remaining based on *actual* total grains, not visual
-            // This math finds which "real" grain corresponds to this "visual" grain
             let actualGrainToDrop = Math.ceil((grainsDroppedCounter + 1) * (totalGrains / visualGrains));
             let actualTimeElapsed = actualGrainToDrop * grainTime;
             timeRemaining = Math.max(0, totalTime - actualTimeElapsed);
 
             // Start the animation for this grain
-            // The grainId passed (grainsDroppedCounter) is used for color
             animateFall(grainsDroppedCounter);
             
             // Increment visual counter
@@ -592,35 +642,98 @@
             // Redraw *top* sand (one grain is now gone)
             drawSand();
 
-            // Final check if timer should end (e.g., last grain)
+            // Check if this was the last grain
             if (grainsDroppedCounter >= visualGrains) {
+                // All grains dropped, finish this run
                 timeRemaining = 0;
                 timerDisplay.textContent = formatTime(timeRemaining);
-                stopTimer();
+                handleRunCompletion();
             }
+        }
+        
+        /**
+         * Called when the last grain has dropped.
+         */
+        function handleRunCompletion() {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            loopsCompleted++;
+
+            let shouldLoop = false;
+            if (loopMode === 'infinite') {
+                shouldLoop = true;
+            } else if (loopMode === 'limited' && loopsCompleted < loopLimit) {
+                shouldLoop = true;
+            }
+            
+            if (shouldLoop && !stopRequested) {
+                // Wait for any falling grains to settle, then reset
+                let waitInterval = setInterval(() => {
+                    if (fallingGrains.length === 0) {
+                        clearInterval(waitInterval);
+                        // Pause for 1 sec, then reset
+                        actionButton.textContent = 'Resetting...';
+                        actionButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+                        actionButton.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
+                        
+                        setTimeout(() => {
+                            if (stopRequested) { // Check again in case stop was pressed during timeout
+                                fullStop();
+                                return;
+                            }
+                            resetTimerState();
+                            startTimer(true); // Start immediately without re-updating settings
+                        }, 1000);
+                    }
+                }, 100);
+
+            } else {
+                // No more loops, stop completely
+                fullStop();
+            }
+        }
+
+        /**
+         * Resets the timer state for a new loop.
+         */
+        function resetTimerState() {
+            timeRemaining = totalTime;
+            grainsDroppedCounter = 0;
+            
+            // Clear all sand
+            clearAllSand();
+            
+            // Redraw top sand
+            drawSand();
+            
+            // Update display
+            timerDisplay.textContent = formatTime(timeRemaining);
         }
         
         /**
          * Starts the timer.
          */
-        function startTimer() {
+        function startTimer(isLoop = false) {
             if (isRunning) return;
             
             // Lock in settings from sliders
-            updateSettings();
-            if (totalGrains <= 0 || grainTime <= 0 || visualGrains <= 0) return; // Don't start a timer that won't run
+            if (!isLoop) {
+                updateSettings();
+                loopsCompleted = 0; // Reset loop count only on manual start
+            }
+            
+            if (totalGrains <= 0 || grainTime <= 0 || visualGrains <= 0 || visualTickTime <= 0) return;
 
             isRunning = true;
+            stopRequested = false;
             actionButton.textContent = 'Stop Timer';
-            actionButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+            actionButton.classList.remove('bg-green-500', 'hover:bg-green-600', 'bg-yellow-500', 'hover:bg-yellow-600');
             actionButton.classList.add('bg-red-500', 'hover:bg-red-600');
-            [totalTimeSlider, grainTimeSlider, grainColorSelect].forEach(s => s.disabled = true);
-            
-            // Calculate the "tick" interval based on *visual* grains
-            const visualTickTime = (totalTime / visualGrains) * 1000; // in milliseconds
+            [totalTimeSlider, grainTimeSlider, grainColorSelect, loopModeSelect, loopCountInput].forEach(s => s.disabled = true);
             
             // Start the first tick immediately
             tick();
+            
             // Set interval for subsequent ticks
             if (visualGrains > 1) { // Only set interval if more than one grain
                 timerInterval = setInterval(tick, visualTickTime);
@@ -628,35 +741,27 @@
         }
 
         /**
-         * Stops the timer.
+         * Requests a stop. If looping, will stop after current run.
+         * If running, will stop immediately.
          */
-        function stopTimer() {
-            if (isRunning) {
-                // If we're stopping, clear all physics intervals
-                fallingGrains.forEach(g => {
-                    clearInterval(g.physicsInterval);
-                    // Also remove the element from the DOM
-                    if (g.element && g.element.parentNode) {
-                        g.element.parentNode.removeChild(g.element);
-                    }
-                });
-                fallingGrains = []; // Clear the array
-            }
-            
+        function fullStop() {
             isRunning = false;
+            stopRequested = true; // Signal any pending loops to stop
+            
             clearInterval(timerInterval);
             timerInterval = null;
             
+            // Stop and clear all falling grains
+            fallingGrains.forEach(g => clearInterval(g.physicsInterval));
+            fallingGrains = [];
+            
             actionButton.textContent = 'Start Timer';
-            actionButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+            actionButton.classList.remove('bg-red-500', 'hover:bg-red-600', 'bg-yellow-500', 'hover:bg-yellow-600');
             actionButton.classList.add('bg-green-500', 'hover:bg-green-600');
-            [totalTimeSlider, grainTimeSlider, grainColorSelect].forEach(s => s.disabled = false);
+            [totalTimeSlider, grainTimeSlider, grainColorSelect, loopModeSelect, loopCountInput].forEach(s => s.disabled = false);
 
-            // If stopped mid-way, reset to full by calling updateSettings
-            if (timeRemaining > 0) {
-                updateSettings();
-            }
-            // If timer finished, it just stops and unlocks.
+            // Reset to full state
+            updateSettings();
         }
 
         /**
@@ -664,9 +769,9 @@
          */
         function toggleTimer() {
             if (isRunning) {
-                stopTimer();
+                fullStop();
             } else {
-                startTimer();
+                startTimer(false);
             }
         }
 
@@ -674,6 +779,8 @@
         totalTimeSlider.addEventListener('input', updateSettings);
         grainTimeSlider.addEventListener('input', updateSettings);
         grainColorSelect.addEventListener('change', updateSettings);
+        loopModeSelect.addEventListener('change', updateSettings);
+        loopCountInput.addEventListener('change', updateSettings);
         actionButton.addEventListener('click', toggleTimer);
 
         // Initial setup on load
@@ -682,4 +789,3 @@
     </script>
 </body>
 </html>
-
