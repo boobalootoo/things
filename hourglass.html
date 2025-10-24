@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Hourglass SVG Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Use a nice, readable font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Share+Tech+Mono&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .timer-display {
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        .hourglass-svg {
+            /* Scale up the 13x22 SVG to be easily visible */
+            width: 260px; 
+            height: 440px;
+            /* Ensures the pixels stay sharp and not blurry when scaled */
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+            background-color: white;
+            border: 1px solid #eee;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            /* Added to make sure falling grains are visible */
+            overflow: visible; 
+        }
+
+        /* Style for the sand pixels */
+        .sand-pixel {
+            /* fill is set by JS */
+            /* Prevent thin white lines between small grains */
+            shape-rendering: crispEdges;
+            /* Transitions are handled by the animateFall function */
+        }
+
+        /* Slider track */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0; /* bg-gray-200 */
+            border-radius: 9999px;
+            outline: none;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]:disabled {
+            opacity: 0.5;
+        }
+
+        /* Slider thumb */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6; /* bg-blue-500 */
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* Style for the select dropdown */
+        select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%236b7280%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-13%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2013l128%20128c3.6%203.6%207.8%205.4%2013%205.4s9.4-1.8%2013-5.4l128-128c3.6-3.6%205.4-7.8%205.4-13%200-4.8-1.8-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
+            background-repeat: no-repeat;
+            background-position: right .7rem center;
+            background-size: .65em auto;
+            padding-right: 2.5rem;
+        }
+        select:disabled {
+            opacity: 0.5;
+            background-color: #f3f4f6;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-md w-full p-8 bg-white rounded-2xl shadow-xl">
+
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Pixel Timer</h1>
+
+        <!-- Timer Controls -->
+        <div class="space-y-6">
+            <!-- Total Time Slider -->
+            <div>
+                <label for="totalTimeSlider" class="block text-sm font-medium text-gray-700">
+                    Total Time: <span id="totalTimeDisplay" class="font-bold text-blue-600">30 minutes</span>
+                </label>
+                <input type="range" id="totalTimeSlider" min="1" max="60" value="30" class="mt-2">
+            </div>
+
+            <!-- Grain Time Slider -->
+            <div>
+                <label for="grainTimeSlider" class="block text-sm font-medium text-gray-700">
+                    Time Per Grain: <span id="grainTimeDisplay" class="font-bold text-blue-600">30 seconds</span>
+                </label>
+                <input type="range" id="grainTimeSlider" min="1" max="60" value="30" class="mt-2">
+            </div>
+
+            <!-- Grains Calculation Display -->
+            <div class="text-sm text-center text-gray-500 bg-gray-50 p-3 rounded-lg">
+                This setting calculates <strong id="totalGrainsDisplay" class="text-gray-700">60</strong> total grains.
+                <span id="visualCapDisplay" class="block text-xs">(Visual physics capped at 51 grains)</span>
+            </div>
+
+            <!-- Grain Color Selector -->
+            <div>
+                <label for="grainColor" class="block text-sm font-medium text-gray-700">
+                    Grain Color
+                </label>
+                <select id="grainColor" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    <option value="rgb(0,0,0)">Black (Default)</option>
+                    <option value="#ef4444">Red</option>
+                    <option value="#f97316">Orange</option>
+                    <option value="#eab308">Yellow</option>
+                    <option value="#22c55e">Green</option>
+                    <option value="#3b82f6">Blue</option>
+                    <option value="#a855f7">Purple</option>
+                    <option value="rainbow">Rainbow</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Hourglass and Digital Display -->
+        <div class="flex flex-col items-center justify-center my-8">
+            
+            <!-- Digital Timer Display -->
+            <div id="timerDisplay" class="timer-display text-6xl font-bold text-gray-800 mb-4">
+                30:00
+            </div>
+
+            <!-- 
+              This is the exact SVG code you provided, embedded directly.
+              The shape-rendering="crispEdges" is key to the pixelated look.
+            -->
+            <svg class="hourglass-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22" shape-rendering="crispEdges">
+                <!-- Outline (as provided) -->
+                <rect x="0" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="2" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="3" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="4" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="5" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="6" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="7" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="8" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="9" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="10" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="12" y="0" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="0" y="1" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="1" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="1" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="12" y="1" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="0" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="2" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="3" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="4" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="5" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="6" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="7" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="8" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="9" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="10" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="12" y="2" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="3" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="3" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="4" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="4" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="5" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="5" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="6" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="6" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="7" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="2" y="7" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="10" y="7" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="7" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="2" y="8" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="3" y="8" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="9" y="8" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="10" y="8" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="3" y="9" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="4" y="9" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="8" y="9" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="9" y="9" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="4" y="10" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="5" y="10" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="7" y="10" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="8" y="10" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="4" y="11" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="5" y="11" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="7" y="11" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="8" y="11" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="3" y="12" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="4" y="12" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="8" y="12" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="9" y="12" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="2" y="13" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="3" y="13" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="9" y="13" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="10" y="13" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="14" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="2" y="14" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="10" y="14" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="14" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="15" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="15" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="16" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="16" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="17" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="17" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="18" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="18" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="0" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="2" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="3" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="4" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="5" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="6" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="7" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="8" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="9" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="10" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="12" y="19" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="0" y="20" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="20" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="20" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="12" y="20" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="0" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="1" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="2" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="3" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="4" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="5" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="6" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="7" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="8" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="9" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="10" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="11" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+                <rect x="12" y="21" width="1" height="1" fill="rgb(0,0,0)" />
+
+                <!-- Sand groups -->
+                <!-- top-sand holds static grains -->
+                <g id="top-sand"></g>
+                <!-- bottom-sand holds static grains AND falling grains -->
+                <g id="bottom-sand"></g>
+            </svg>
+        </div>
+
+        <!-- Start/Stop Button -->
+        <div class="flex justify-center">
+            <button id="actionButton"
+                class="w-full py-3 px-6 bg-green-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-green-600 active:bg-green-700 transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                Start Timer
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM ELEMENTS ---
+        const totalTimeSlider = document.getElementById('totalTimeSlider');
+        const grainTimeSlider = document.getElementById('grainTimeSlider');
+        const grainColorSelect = document.getElementById('grainColor');
+        const totalTimeDisplay = document.getElementById('totalTimeDisplay');
+        const grainTimeDisplay = document.getElementById('grainTimeDisplay');
+        const totalGrainsDisplay = document.getElementById('totalGrainsDisplay');
+        const visualCapDisplay = document.getElementById('visualCapDisplay');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const actionButton = document.getElementById('actionButton');
+        const topSandGroup = document.getElementById('top-sand');
+        const bottomSandGroup = document.getElementById('bottom-sand');
+        const svgNS = "http://www.w3.org/2000/svg"; // Namespace for creating SVG elements
+
+        // --- TIMER STATE ---
+        let totalTime = 30 * 60;    // Total duration in seconds
+        let grainTime = 30;         // Time per "real" grain in seconds
+        let totalGrains = 60;       // Total number of "real" grains (calculated)
+        let visualGrains = 51;      // Number of grains to *visualize* (capped)
+        let timeRemaining = totalTime;
+        let isRunning = false;
+        let timerInterval = null;
+        let grainsDroppedCounter = 0; // Counts "visual" grains dropped
+
+        // --- VISUAL STATE ---
+        let grainColor = 'rgb(0,0,0)';
+        let isRainbow = false;
+        const rainbowColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#6366f1', '#a855f7'];
+        let bottomGrainPile = []; // Stores {x, y, id} for *settled* grains
+        let fallingGrains = []; // Stores {x, y, id, element, physicsInterval} for *active* grains
+
+        // --- VISUAL STATE (COORDINATES) ---
+        // Slots ordered from bottom-center up and out, as per the PDF
+        const topSandSlots = [
+            {x: 6, y: 9}, {x: 5, y: 9}, {x: 7, y: 9}, // Row y=9 (3)
+            {x: 6, y: 8}, {x: 5, y: 8}, {x: 7, y: 8}, {x: 4, y: 8}, {x: 8, y: 8}, // Row y=8 (5)
+            {x: 6, y: 7}, {x: 5, y: 7}, {x: 7, y: 7}, {x: 4, y: 7}, {x: 8, y: 7}, {x: 3, y: 7}, {x: 9, y: 7}, // Row y=7 (7)
+            {x: 6, y: 6}, {x: 5, y: 6}, {x: 7, y: 6}, {x: 4, y: 6}, {x: 8, y: 6}, {x: 3, y: 6}, {x: 9, y: 6}, {x: 2, y: 6}, {x: 10, y: 6}, // Row y=6 (9)
+            {x: 6, y: 5}, {x: 5, y: 5}, {x: 7, y: 5}, {x: 4, y: 5}, {x: 8, y: 5}, {x: 3, y: 5}, {x: 9, y: 5}, {x: 2, y: 5}, {x: 10, y: 5}, // Row y=5 (9)
+            {x: 6, y: 4}, {x: 5, y: 4}, {x: 7, y: 4}, {x: 4, y: 4}, {x: 8, y: 4}, {x: 3, y: 4}, {x: 9, y: 4}, {x: 2, y: 4}, {x: 10, y: 4}, // Row y=4 (9)
+            {x: 6, y: 3}, {x: 5, y: 3}, {x: 7, y: 3}, {x: 4, y: 3}, {x: 8, y: 3}, {x: 3, y: 3}, {x: 9, y: 3}, {x: 2, y: 3}, {x: 10, y: 3}  // Row y=3 (9)
+        ]; // Total 51 slots
+        
+        // All valid settlement slots in the bottom bulb
+        const bottomSandSlots = [];
+        for (let y = 12; y <= 18; y++) {
+            let x_start, x_end;
+            if (y >= 15) { x_start = 2; x_end = 10; } // y=15,16,17,18
+            else if (y === 14) { x_start = 3; x_end = 9; } // y=14
+            else if (y === 13) { x_start = 4; x_end = 8; } // y=13
+            else if (y === 12) { x_start = 5; x_end = 7; } // y=12
+            
+            for (let x = x_start; x <= x_end; x++) {
+                bottomSandSlots.push({x, y});
+            }
+        }
+        
+        const totalVisualSlots = topSandSlots.length; // 51
+
+        // --- FUNCTIONS ---
+
+        /**
+         * Formats seconds into a MM:SS string.
+         */
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        /**
+         * Creates a 1x1 sand pixel at a given coordinate.
+         */
+        function createSandPixel(coord, grainId) {
+            const rect = document.createElementNS(svgNS, 'rect');
+            rect.setAttribute('x', coord.x);
+            rect.setAttribute('y', coord.y);
+            rect.setAttribute('width', 1);
+            rect.setAttribute('height', 1);
+            
+            let fillColor = grainColor;
+            if (isRainbow) {
+                fillColor = rainbowColors[grainId % rainbowColors.length];
+            }
+            rect.setAttribute('fill', fillColor);
+            rect.setAttribute('class', 'sand-pixel');
+            return rect;
+        }
+
+        /**
+         * Checks if a slot is valid (within bounds) and empty.
+         * Now checks both settled pile AND other falling grains.
+         */
+        function isSlotValidAndEmpty(x, y, fallingGrainId) {
+            // Check 1: Is it a valid slot *to be in*? (Funnel or Pile)
+            const isFunnel = (y === 10 || y === 11) && x >= 4 && x <= 8;
+            const isPile = bottomSandSlots.some(s => s.x === x && s.y === y);
+            if (!isFunnel && !isPile) {
+                 // Check if it's the very bottom boundary
+                 if (y === 19 && x >= 2 && x <= 10) return false; // Hit the floor
+                 // Allow falling through non-pile area
+                 if (y > 11 && y < 19) return true; 
+                 return false;
+            }
+
+            // Check 2: Is it occupied by a *settled* grain?
+            const isOccupied = bottomGrainPile.some(g => g.x === x && g.y === y);
+            if (isOccupied) return false;
+
+            // Check 3: Is it occupied by *another falling* grain?
+            const isOccupiedByFalling = fallingGrains.some(
+                g => g.id !== fallingGrainId && g.x === x && g.y === y
+            );
+            return !isOccupiedByFalling;
+        }
+
+        /**
+         * Draws the *static* sand in the top bulb.
+         * The bottom sand is drawn by the physics simulation.
+         */
+        function drawSand() {
+            // Clear existing *static* sand
+            topSandGroup.innerHTML = '';
+
+            // Handle edge case of 0 grains
+            if (visualGrains <= 0) return;
+
+            const grainsInTopCount = visualGrains - grainsDroppedCounter;
+
+            // Draw TOP grains
+            // We draw grains from index `grainsDroppedCounter` to the end of the list.
+            // This correctly makes the grains at the start of the list (bottom-center)
+            // disappear first.
+            for (let i = grainsDroppedCounter; i < visualGrains; i++) {
+                topSandGroup.appendChild(createSandPixel(topSandSlots[i], i));
+            }
+        }
+
+        /**
+         * Updates all settings and displays when sliders change.
+         */
+        function updateSettings() {
+            if (isRunning) return; // Don't update if timer is running
+
+            // Get values from sliders
+            totalTime = Number(totalTimeSlider.value) * 60;
+            grainTime = Number(grainTimeSlider.value);
+            
+            // Calculate grains
+            if (grainTime > 0) {
+                totalGrains = Math.round(totalTime / grainTime);
+            } else {
+                totalGrains = 0; // Avoid division by zero
+            }
+            
+            // Cap visual grains at 51
+            visualGrains = Math.min(totalGrains, totalVisualSlots);
+
+            // Reset timer state
+            timeRemaining = totalTime;
+            grainsDroppedCounter = 0;
+            
+            // Clear all sand
+            bottomGrainPile = [];
+            // Stop and remove any falling grains
+            fallingGrains.forEach(g => {
+                clearInterval(g.physicsInterval);
+                if (g.element && g.element.parentNode) {
+                    g.element.parentNode.removeChild(g.element);
+                }
+            });
+            fallingGrains = [];
+            // Clear the visual bottom pile
+            bottomSandGroup.innerHTML = '';
+            // Clear top pile
+            topSandGroup.innerHTML = '';
+
+
+            // Update Color
+            isRainbow = (grainColorSelect.value === 'rainbow');
+            if (!isRainbow) {
+                grainColor = grainColorSelect.value;
+            }
+
+            // Update UI text
+            totalTimeDisplay.textContent = `${totalTimeSlider.value} minutes`;
+            grainTimeDisplay.textContent = `${grainTimeDisplay.value} seconds`;
+            totalGrainsDisplay.textContent = totalGrains;
+            
+            // Show/hide visual cap warning
+            if (totalGrains > totalVisualSlots) {
+                visualCapDisplay.textContent = `(Visual physics capped at ${totalVisualSlots} grains)`;
+                visualCapDisplay.style.display = 'block';
+            } else {
+                visualCapDisplay.style.display = 'none';
+            }
+            
+            timerDisplay.textContent = formatTime(timeRemaining);
+
+            // Draw initial sand state (full or partial)
+            drawSand();
+        }
+
+
+        /**
+         * Creates a grain and animates its fall with physics.
+         */
+        function animateFall(grainId) {
+            const grain = {
+                x: 6,
+                y: 10, // Start at the bottleneck
+                id: grainId,
+                element: createSandPixel({x: 6, y: 10}, grainId)
+            };
+            
+            bottomSandGroup.appendChild(grain.element);
+            fallingGrains.push(grain);
+
+            grain.physicsInterval = setInterval(() => {
+                // Check 1: Can it fall straight down?
+                if (isSlotValidAndEmpty(grain.x, grain.y + 1, grain.id)) {
+                    grain.y++;
+                    grain.element.setAttribute('y', grain.y);
+                    return; // Continue falling
+                }
+
+                // Can't fall. Check 2: Can it slide? (Randomize direction)
+                const tryLeftFirst = Math.random() < 0.5;
+
+                if (tryLeftFirst) {
+                    if (isSlotValidAndEmpty(grain.x - 1, grain.y + 1, grain.id)) {
+                        grain.x--;
+                        grain.y++;
+                        grain.element.setAttribute('x', grain.x);
+                        grain.element.setAttribute('y', grain.y);
+                        return; // Continue falling
+                    }
+                    if (isSlotValidAndEmpty(grain.x + 1, grain.y + 1, grain.id)) {
+                        grain.x++;
+                        grain.y++;
+                        grain.element.setAttribute('x', grain.x);
+                        grain.element.setAttribute('y', grain.y);
+                        return; // Continue falling
+                    }
+                } else {
+                    if (isSlotValidAndEmpty(grain.x + 1, grain.y + 1, grain.id)) {
+                        grain.x++;
+                        grain.y++;
+                        grain.element.setAttribute('x', grain.x);
+                        grain.element.setAttribute('y', grain.y);
+                        return; // Continue falling
+                    }
+                    if (isSlotValidAndEmpty(grain.x - 1, grain.y + 1, grain.id)) {
+                        grain.x--;
+                        grain.y++;
+                        grain.element.setAttribute('x', grain.x);
+                        grain.element.setAttribute('y', grain.y);
+                        return; // Continue falling
+                    }
+                }
+
+                // Check 3: Can't fall or slide. Grain has settled.
+                clearInterval(grain.physicsInterval);
+                
+                // Move from 'falling' to 'settled'
+                fallingGrains = fallingGrains.filter(g => g.id !== grain.id);
+                bottomGrainPile.push({x: grain.x, y: grain.y, id: grain.id});
+
+            }, 50); // Physics simulation speed (50ms per step)
+        }
+
+
+        /**
+         * The main timer loop, runs every `visualTickTime` milliseconds.
+         */
+        function tick() {
+            // Stop ticking if all *visual* grains have dropped
+            if (grainsDroppedCounter >= visualGrains) {
+                timeRemaining = 0; // Force time to 0
+                timerDisplay.textContent = formatTime(timeRemaining);
+                stopTimer(); 
+                return;
+            }
+            
+            // Calculate time remaining based on *actual* total grains, not visual
+            // This math finds which "real" grain corresponds to this "visual" grain
+            let actualGrainToDrop = Math.ceil((grainsDroppedCounter + 1) * (totalGrains / visualGrains));
+            let actualTimeElapsed = actualGrainToDrop * grainTime;
+            timeRemaining = Math.max(0, totalTime - actualTimeElapsed);
+
+            // Start the animation for this grain
+            // The grainId passed (grainsDroppedCounter) is used for color
+            animateFall(grainsDroppedCounter);
+            
+            // Increment visual counter
+            grainsDroppedCounter++;
+
+            // Update digital display
+            timerDisplay.textContent = formatTime(timeRemaining);
+            
+            // Redraw *top* sand (one grain is now gone)
+            drawSand();
+
+            // Final check if timer should end (e.g., last grain)
+            if (grainsDroppedCounter >= visualGrains) {
+                timeRemaining = 0;
+                timerDisplay.textContent = formatTime(timeRemaining);
+                stopTimer();
+            }
+        }
+        
+        /**
+         * Starts the timer.
+         */
+        function startTimer() {
+            if (isRunning) return;
+            
+            // Lock in settings from sliders
+            updateSettings();
+            if (totalGrains <= 0 || grainTime <= 0 || visualGrains <= 0) return; // Don't start a timer that won't run
+
+            isRunning = true;
+            actionButton.textContent = 'Stop Timer';
+            actionButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+            actionButton.classList.add('bg-red-500', 'hover:bg-red-600');
+            [totalTimeSlider, grainTimeSlider, grainColorSelect].forEach(s => s.disabled = true);
+            
+            // Calculate the "tick" interval based on *visual* grains
+            const visualTickTime = (totalTime / visualGrains) * 1000; // in milliseconds
+            
+            // Start the first tick immediately
+            tick();
+            // Set interval for subsequent ticks
+            if (visualGrains > 1) { // Only set interval if more than one grain
+                timerInterval = setInterval(tick, visualTickTime);
+            }
+        }
+
+        /**
+         * Stops the timer.
+         */
+        function stopTimer() {
+            if (isRunning) {
+                // If we're stopping, clear all physics intervals
+                fallingGrains.forEach(g => {
+                    clearInterval(g.physicsInterval);
+                    // Also remove the element from the DOM
+                    if (g.element && g.element.parentNode) {
+                        g.element.parentNode.removeChild(g.element);
+                    }
+                });
+                fallingGrains = []; // Clear the array
+            }
+            
+            isRunning = false;
+            clearInterval(timerInterval);
+            timerInterval = null;
+            
+            actionButton.textContent = 'Start Timer';
+            actionButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+            actionButton.classList.add('bg-green-500', 'hover:bg-green-600');
+            [totalTimeSlider, grainTimeSlider, grainColorSelect].forEach(s => s.disabled = false);
+
+            // If stopped mid-way, reset to full by calling updateSettings
+            if (timeRemaining > 0) {
+                updateSettings();
+            }
+            // If timer finished, it just stops and unlocks.
+        }
+
+        /**
+         * Toggles the timer on/off.
+         */
+        function toggleTimer() {
+            if (isRunning) {
+                stopTimer();
+            } else {
+                startTimer();
+            }
+        }
+
+        // --- INITIALIZATION ---
+        totalTimeSlider.addEventListener('input', updateSettings);
+        grainTimeSlider.addEventListener('input', updateSettings);
+        grainColorSelect.addEventListener('change', updateSettings);
+        actionButton.addEventListener('click', toggleTimer);
+
+        // Initial setup on load
+        updateSettings();
+
+    </script>
+</body>
+</html>
+
