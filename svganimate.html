@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Animator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        
+        /* Sidebar element highlighting */
+        .sidebar-item:hover {
+            background-color: #e0f2fe; /* light-blue-100 */
+        }
+        
+        /* SVG element highlighting */
+        .svg-highlight {
+            outline: 2px dashed #0ea5e9; /* sky-500 */
+            outline-offset: 2px;
+        }
+        
+        /* Collapsible sidebar styles */
+        details > summary {
+            cursor: pointer;
+            padding: 8px;
+            font-weight: 600;
+            list-style: none; /* Remove default triangle */
+        }
+        
+        details > summary::before {
+            content: '►';
+            margin-right: 8px;
+            font-size: 0.8em;
+            display: inline-block;
+            transition: transform 0.1s ease-in-out;
+        }
+        
+        details[open] > summary::before {
+            transform: rotate(90deg);
+        }
+        
+        /* Sidebar item layout */
+        .sidebar-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 8px 6px 16px; /* Indent non-group items */
+            border-radius: 6px;
+            margin: 2px 0;
+        }
+        
+        .sidebar-item span {
+            font-family: monospace;
+            font-size: 0.9em;
+            color: #4b5563; /* gray-600 */
+        }
+
+        #svg-container {
+            cursor: default;
+        }
+
+        #svg-container.drawing-mode {
+            cursor: crosshair;
+        }
+        
+        /* Temp path for drawing */
+        #animation-drawing-path {
+            stroke: #ec4899; /* pink-500 */
+            stroke-width: 2px;
+            stroke-dasharray: 4 4;
+            fill: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900 h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-white shadow-md p-4 z-10">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <button id="toggle-sidebar-btn" class="p-2 rounded-md hover:bg-gray-100 text-gray-600 hover:text-gray-900" title="Hide Sidebar">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg>
+                </button>
+                <h1 class="text-2xl font-bold text-sky-600">SVG Animator</h1>
+            </div>
+            <div>
+                <label for="svg-upload" class="cursor-pointer bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-sky-600 transition-colors">
+                    Upload SVG
+                </label>
+                <input type="file" id="svg-upload" class="hidden" accept=".svg,image/svg+xml">
+                <!-- Download Button Dropdown -->
+                <div id="download-options" class="relative inline-block ml-4 opacity-50 cursor-not-allowed">
+                    <button id="download-svg-btn" class="bg-green-500 text-white px-4 py-2 rounded-l-lg font-semibold hover:bg-green-600 transition-colors" disabled>
+                        Download SVG
+                    </button>
+                    <button id="download-toggle-btn" class="bg-green-600 text-white px-2 py-2 rounded-r-lg font-semibold hover:bg-green-700 transition-colors" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                    <!-- Dropdown Menu -->
+                    <div id="download-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-20 ring-1 ring-black ring-opacity-5">
+                        <div class="py-1" role="menu" aria-orientation="vertical" aria-labelledby="download-toggle-btn">
+                            <a href="#" id="download-svg-menu" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">Download as .svg</a>
+                            <a href="#" id="download-html-menu" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">Download as .html</a>
+                            <a href="#" id="copy-svg-menu" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">Copy SVG Code</a>
+                            <a href="#" id="copy-data-url-menu" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">Copy Data URL</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="w-80 bg-white h-full overflow-y-auto p-4 shadow-lg flex-shrink-0">
+            <h2 class="text-lg font-semibold mb-2">SVG Elements</h2>
+            <div class="mb-3">
+                <label for="anim-duration" class="block text-sm font-medium text-gray-700">Duration (s):</label>
+                <input type="number" id="anim-duration" value="5" min="0.1" step="0.1" class="mt-1 block w-full px-2 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
+            </div>
+            <div id="sidebar-content" class="text-sm">
+                <p class="text-gray-500">Upload an SVG to see its elements here.</p>
+            </div>
+        </aside>
+
+        <!-- Main SVG Display -->
+        <main class="flex-1 flex flex-col bg-gray-50 overflow-auto">
+            <!-- Info Bar -->
+            <div id="info-bar" class="p-3 bg-yellow-100 text-yellow-800 text-center font-medium hidden">
+                <span id="info-message">Info</span>
+            </div>
+            
+            <!-- SVG Container -->
+            <div id="svg-container" class="flex-1 flex items-center justify-center p-8 overflow-auto">
+                <p class="text-gray-400 text-lg">Your SVG will be displayed here.</p>
+            </div>
+        </main>
+        
+    </div>
+
+    <script>
+        const svgUpload = document.getElementById('svg-upload');
+        const sidebarContent = document.getElementById('sidebar-content');
+        const svgContainer = document.getElementById('svg-container');
+        const infoBar = document.getElementById('info-bar');
+        const infoMessage = document.getElementById('info-message');
+        const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+        const sidebar = document.getElementById('sidebar');
+        
+        // Download elements
+        const downloadOptionsContainer = document.getElementById('download-options');
+        const downloadSvgBtn = document.getElementById('download-svg-btn');
+        const downloadToggleBtn = document.getElementById('download-toggle-btn');
+        const downloadMenu = document.getElementById('download-menu');
+        const downloadSvgMenu = document.getElementById('download-svg-menu');
+        const downloadHtmlMenu = document.getElementById('download-html-menu');
+        const copySvgMenu = document.getElementById('copy-svg-menu');
+        const copyDataUrlMenu = document.getElementById('copy-data-url-menu');
+
+        // --- Global State ---
+        let svgElement = null; // Holds the root <svg> element
+        let elementCounter = 0; // For generating unique IDs
+        const elementMap = new Map(); // Maps sidebar item ID to SVG element
+
+        toggleSidebarBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('hidden');
+            // Change the icon to reflect the new state
+            if (sidebar.classList.contains('hidden')) {
+                toggleSidebarBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg>`;
+                toggleSidebarBtn.title = "Show Sidebar";
+            } else {
+                toggleSidebarBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg>`;
+                toggleSidebarBtn.title = "Hide Sidebar";
+            }
+        });
+
+        // --- Download Dropdown Logic ---
+        downloadToggleBtn.addEventListener('click', () => {
+            if (!downloadToggleBtn.disabled) {
+                downloadMenu.classList.toggle('hidden');
+            }
+        });
+
+        // Hide dropdown if clicking outside
+        document.addEventListener('click', (e) => {
+            if (!downloadOptionsContainer.contains(e.target)) {
+                downloadMenu.classList.add('hidden');
+            }
+        });
+        
+        // --- Animation State ---
+        let animationState = 'none'; // 'none', 'waitingForAnchor', 'drawingPath'
+        let isDrawing = false;
+        let elementToAnimate = null;
+        let animationPathData = '';
+        let tempDrawingPath = null;
+        let tempDrawingPathStart = { x: 0, y: 0 };
+
+        // --- 1. SVG Upload & Parsing ---
+        svgUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file && (file.type === 'image/svg+xml' || file.name.endsWith('.svg'))) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const svgText = e.target.result;
+                    parseAndDisplaySVG(svgText);
+                };
+                reader.readAsText(file);
+            } else {
+                alert('Please upload a valid .svg file.');
+            }
+            // Reset file input to allow re-upload of the same file
+            event.target.value = null;
+        });
+
+        // Main download button
+        downloadSvgBtn.addEventListener('click', downloadAnimatedSVG);
+
+        // Menu options
+        downloadSvgMenu.addEventListener('click', (e) => {
+            e.preventDefault();
+            downloadAnimatedSVG();
+        });
+        
+        downloadHtmlMenu.addEventListener('click', (e) => {
+            e.preventDefault();
+            downloadAnimatedHTML();
+        });
+        
+        copySvgMenu.addEventListener('click', (e) => {
+            e.preventDefault();
+            copySVGCode();
+        });
+        
+        copyDataUrlMenu.addEventListener('click', (e) => {
+            e.preventDefault();
+            copyDataURL();
+        });
+
+        function parseAndDisplaySVG(svgText) {
+            // Clear previous state
+            svgContainer.innerHTML = '';
+            sidebarContent.innerHTML = '';
+            elementMap.clear();
+            elementCounter = 0;
+            cancelAnimationWorkflow(); // Reset state
+            hideInfo();
+            
+            // Disable download buttons
+            downloadOptionsContainer.classList.add('opacity-50', 'cursor-not-allowed');
+            downloadSvgBtn.disabled = true;
+            downloadToggleBtn.disabled = true;
+            
+            // Parse the SVG
+            const parser = new DOMParser();
+            const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+            svgElement = svgDoc.documentElement;
+            
+            // Error handling
+            if (svgDoc.getElementsByTagName('parsererror').length) {
+                svgContainer.innerHTML = '<p class="text-red-500">Error parsing SVG file.</p>';
+                return;
+            }
+
+            // Ensure SVG scales
+            svgElement.setAttribute('width', '100%');
+            svgElement.setAttribute('height', '100%');
+            svgElement.style.maxWidth = '100%';
+            svgElement.style.maxHeight = 'calc(100vh - 200px)'; // Adjust as needed
+            
+            // Build sidebar and add IDs
+            buildSidebar(svgElement, sidebarContent);
+            
+            // Display SVG
+            svgContainer.innerHTML = '';
+            svgContainer.appendChild(svgElement);
+            
+            // Enable download buttons
+            downloadOptionsContainer.classList.remove('opacity-50', 'cursor-not-allowed');
+            downloadSvgBtn.disabled = false;
+            downloadToggleBtn.disabled = false;
+
+            // Add SVG event listeners for drawing
+            setupDrawingListeners();
+        }
+
+        // --- 2. Sidebar Building ---
+        function buildSidebar(element, parentNode) {
+            // Ignore non-renderable or empty elements
+            const tagName = element.tagName.toLowerCase();
+            const ignoredTags = ['defs', 'style', 'script', 'title', 'desc', 'metadata', 'foreignobject'];
+            if (ignoredTags.includes(tagName) || element.nodeType !== 1) {
+                return;
+            }
+            
+            // Assign a unique ID if it doesn't have one
+            if (!element.id) {
+                element.id = `svg-el-${elementCounter++}`;
+            }
+            
+            const sidebarItemId = `sidebar-item-${element.id}`;
+
+            if (tagName === 'g' || tagName === 'svg') {
+                const details = document.createElement('details');
+                details.id = sidebarItemId;
+                details.open = (tagName === 'svg'); // Open root <svg> by default
+                
+                const summary = document.createElement('summary');
+                summary.className = 'hover:bg-gray-100 rounded-md';
+                summary.textContent = `<${tagName}>#${element.id}`;
+                details.appendChild(summary);
+                
+                // Add highlighting listeners
+                addHighlightListeners(summary, element);
+                
+                parentNode.appendChild(details);
+
+                // Recurse for children
+                Array.from(element.children).forEach(child => {
+                    buildSidebar(child, details);
+                });
+                
+            } else {
+                // It's a shape (path, rect, circle, etc.)
+                const itemDiv = document.createElement('div');
+                itemDiv.id = sidebarItemId;
+                itemDiv.className = 'sidebar-item';
+                
+                const elementName = document.createElement('span');
+                elementName.textContent = `<${tagName}>#${element.id}`;
+                itemDiv.appendChild(elementName);
+                
+                const animButton = document.createElement('button');
+                animButton.textContent = 'Add Animation';
+                animButton.className = 'text-xs bg-sky-500 text-white px-2 py-1 rounded-md hover:bg-sky-600 transition-colors';
+                animButton.onclick = () => startAnimationWorkflow(element);
+                element.animationButton = animButton; // Store reference
+                
+                itemDiv.appendChild(animButton);
+                
+                // Add highlighting listeners
+                addHighlightListeners(itemDiv, element);
+                
+                parentNode.appendChild(itemDiv);
+            }
+            
+            // Map the sidebar item ID to the actual SVG element
+            elementMap.set(sidebarItemId, element);
+        }
+
+        // --- 3. UI Interaction & Highlighting ---
+        function addHighlightListeners(sidebarItem, svgItem) {
+            // Highlight SVG element on sidebar hover
+            sidebarItem.addEventListener('mouseenter', () => {
+                if (!isDrawing) {
+                    svgItem.classList.add('svg-highlight');
+                }
+            });
+            sidebarItem.addEventListener('mouseleave', () => {
+                svgItem.classList.remove('svg-highlight');
+            });
+
+            // Highlight sidebar item on SVG element hover
+            svgItem.addEventListener('mouseenter', () => {
+                if (!isDrawing) {
+                    sidebarItem.style.backgroundColor = '#e0f2fe'; // light-blue-100
+                    // The line below was causing the unwanted scrolling
+                    // sidebarItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            });
+            svgItem.addEventListener('mouseleave', () => {
+                sidebarItem.style.backgroundColor = '';
+            });
+        }
+        
+        function showInfo(message) {
+            infoMessage.textContent = message;
+            infoBar.classList.remove('hidden');
+        }
+        
+        function hideInfo() {
+            infoBar.classList.add('hidden');
+        }
+
+        // --- 4. Animation Workflow ---
+        
+        function cancelAnimationWorkflow() {
+            if (elementToAnimate) {
+                // Just in case a listener was left hanging (though 'once' should handle it)
+                elementToAnimate.removeEventListener('click', onAnchorClick); 
+            }
+            elementToAnimate = null;
+            animationState = 'none';
+            isDrawing = false;
+            animationPathData = '';
+            hideInfo();
+            svgContainer.classList.remove('drawing-mode');
+            if (tempDrawingPath) tempDrawingPath.remove();
+            tempDrawingPath = null;
+        }
+
+        function startAnimationWorkflow(element) {
+            if (isDrawing) return; // Don't interrupt a draw in progress
+            cancelAnimationWorkflow(); // Cancel any previous pending state (e.g., waiting for anchor)
+
+            elementToAnimate = element;
+            animationState = 'waitingForAnchor';
+            svgContainer.classList.add('drawing-mode'); // Use crosshair
+            showInfo(`Click a point on <${element.tagName}>#${element.id} to be the animation anchor.`);
+            
+            // Add a one-time listener to the element itself to select the anchor
+            elementToAnimate.addEventListener('click', onAnchorClick, { once: true });
+        }
+        
+        function onAnchorClick(e) {
+            if (animationState !== 'waitingForAnchor') return;
+            
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const pt_root = getSVGCoordinates(e); // Click point in root SVG space
+            const bbox_local = elementToAnimate.getBBox(); // BBox in local space
+            
+            // Get the transform from this element's space to the root SVG's space
+            let transformMatrix = getTransformToRoot(elementToAnimate);
+            
+            // Create a point representing the element's local origin (from its bbox)
+            const localOrigin = svgElement.createSVGPoint();
+            localOrigin.x = bbox_local.x;
+            localOrigin.y = bbox_local.y;
+            
+            // Transform this local origin point into the root SVG's coordinate space
+            const rootOrigin = localOrigin.matrixTransform(transformMatrix);
+            
+            // Now both pt_root and rootOrigin are in the same coordinate space!
+            // The offset is the difference between where the user clicked (in root space)
+            // and the element's transformed origin (in root space).
+            const offsetX = pt_root.x - rootOrigin.x;
+            const offsetY = pt_root.y - rootOrigin.y;
+            
+            // This offset is the vector from the element's origin to the anchor, in root coordinates
+            elementToAnimate.animationOffset = { x: offsetX, y: offsetY };
+            
+            animationState = 'drawingPath';
+            showInfo(`Anchor set! Now click and drag on the canvas to draw the path.`);
+        }
+        
+        function setupDrawingListeners() {
+            if (!svgElement) return;
+            
+            svgContainer.addEventListener('mousedown', (e) => {
+                // If we're waiting for an anchor, but click *off* the element (on the background), cancel.
+                if (animationState === 'waitingForAnchor' && e.target !== elementToAnimate && !e.target.closest(`#${elementToAnimate.id}`)) {
+                    cancelAnimationWorkflow();
+                    return;
+                }
+                
+                // Start drawing the path
+                if (animationState !== 'drawingPath' || e.button !== 0) return;
+                
+                // --- DEFENSIVE CHECK ---
+                // This state "should" be impossible (state=drawingPath but no offset)
+                // But if it happens, (as Error 1 suggests), cancel everything.
+                if (!elementToAnimate || typeof elementToAnimate.animationOffset === 'undefined') {
+                    console.error("Animation state error: 'drawingPath' with no offset. Resetting.");
+                    cancelAnimationWorkflow();
+                    return;
+                }
+                // --- END CHECK ---
+                
+                isDrawing = true;
+                const pt_draw_root = getSVGCoordinates(e);
+                const offset_root = elementToAnimate.animationOffset;
+
+                // 1. Calculate the target point for the element's origin, in ROOT space
+                const path_start_root_pt = svgElement.createSVGPoint();
+                path_start_root_pt.x = pt_draw_root.x - offset_root.x;
+                path_start_root_pt.y = pt_draw_root.y - offset_root.y;
+                
+                // 2. Get parent and the transform from ROOT space to PARENT space
+                const parent = elementToAnimate.parentElement;
+                const matrix_root_to_parent = getTransformToRoot(parent).inverse();
+                
+                // 3. Transform the target point from ROOT space to PARENT space
+                const path_start_parent = path_start_root_pt.matrixTransform(matrix_root_to_parent);
+                
+                // 4. This is the coordinate for the animation path
+                animationPathData = `M ${path_start_parent.x} ${path_start_parent.y}`;
+                
+                // The *visual* temp path starts where the user clicked (in root space)
+                tempDrawingPathStart = pt_draw_root;
+                
+                // Create temp path
+                if (tempDrawingPath) tempDrawingPath.remove();
+                tempDrawingPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                tempDrawingPath.id = 'animation-drawing-path';
+                tempDrawingPath.setAttribute('d', `M ${tempDrawingPathStart.x} ${tempDrawingPathStart.y}`);
+                svgElement.appendChild(tempDrawingPath);
+            });
+            
+            svgContainer.addEventListener('mousemove', (e) => {
+                if (!isDrawing || animationState !== 'drawingPath') return;
+                
+                const pt_draw_root = getSVGCoordinates(e);
+                const offset_root = elementToAnimate.animationOffset;
+
+                // 1. Calculate the target point for the element's origin, in ROOT space
+                const path_next_root_pt = svgElement.createSVGPoint();
+                path_next_root_pt.x = pt_draw_root.x - offset_root.x;
+                path_next_root_pt.y = pt_draw_root.y - offset_root.y;
+                
+                // 2. Get parent and the transform from ROOT space to PARENT space
+                const parent = elementToAnimate.parentElement;
+                const matrix_root_to_parent = getTransformToRoot(parent).inverse();
+                
+                // 3. Transform the target point from ROOT space to PARENT space
+                const path_next_parent = path_next_root_pt.matrixTransform(matrix_root_to_parent);
+                
+                // 4. Add to the real data path
+                animationPathData += ` L ${path_next_parent.x} ${path_next_parent.y}`;
+                
+                // Add to the visual temp path (which is always in root space)
+                if (tempDrawingPath) {
+                    let tempPathD = tempDrawingPath.getAttribute('d');
+                    tempPathD += ` L ${pt_draw_root.x} ${pt_draw_root.y}`;
+                    tempDrawingPath.setAttribute('d', tempPathD);
+                }
+            });
+            
+            svgContainer.addEventListener('mouseup', (e) => {
+                if (!isDrawing || animationState !== 'drawingPath' || e.button !== 0) return;
+                
+                isDrawing = false;
+                
+                // Get duration from input
+                const durationInput = document.getElementById('anim-duration');
+                const duration = parseFloat(durationInput.value) || 5;
+                
+                // Apply the animation
+                applyAnimation(elementToAnimate, animationPathData, duration);
+                
+                // Reset everything
+                cancelAnimationWorkflow();
+            });
+            
+            svgContainer.addEventListener('mouseleave', (e) => {
+                // If user releases mouse outside the window, stop drawing
+                if (isDrawing) {
+                    isDrawing = false;
+                    
+                    const durationInput = document.getElementById('anim-duration');
+                    const duration = parseFloat(durationInput.value) || 5;
+
+                    applyAnimation(elementToAnimate, animationPathData, duration);
+                    cancelAnimationWorkflow();
+                }
+            });
+        }
+        
+        function applyAnimation(element, pathData, duration) {
+            // Check if path is too short
+            if (!pathData || pathData.split(' ').length < 5) {
+                console.log('Animation path too short, cancelled.');
+                return;
+            }
+
+            // Remove existing motion animations
+            Array.from(element.getElementsByTagName('animateMotion')).forEach(anim => anim.remove());
+            
+            // Create and append new animation
+            const motion = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
+            motion.setAttribute('path', pathData);
+            motion.setAttribute('dur', `${duration}s`); // Use specified duration
+            motion.setAttribute('repeatCount', 'indefinite');
+            
+            element.appendChild(motion);
+
+            // --- Add/Update UI ---
+            const itemDiv = document.getElementById(`sidebar-item-${element.id}`);
+            if (!itemDiv) return;
+
+            // Hide 'Add' button
+            if (element.animationButton) {
+                element.animationButton.style.display = 'none';
+            }
+
+            // Add 'Remove' button
+            if (element.removeAnimationButton) {
+                element.removeAnimationButton.remove(); // Remove old one if it exists
+            }
+            
+            const removeButton = document.createElement('button');
+            removeButton.textContent = 'Remove';
+            removeButton.className = 'text-xs bg-red-500 text-white px-2 py-1 rounded-md hover:bg-red-600 transition-colors ml-2';
+            removeButton.onclick = (e) => { 
+                e.stopPropagation(); // Prevent sidebar item click
+                removeAnimation(element); 
+            };
+            
+            itemDiv.appendChild(removeButton);
+            element.removeAnimationButton = removeButton;
+        }
+
+        function removeAnimation(element) {
+            const motion = element.querySelector('animateMotion');
+            if (motion) {
+                motion.remove();
+            }
+
+            // Restore UI
+            if (element.removeAnimationButton) {
+                element.removeAnimationButton.remove();
+                element.removeAnimationButton = null;
+            }
+            if (element.animationButton) {
+                element.animationButton.style.display = 'inline-block';
+            }
+            
+            cancelAnimationWorkflow(); // Reset state just in case
+        }
+
+        // --- 5. Coordinate Transformation Utility ---
+        function getSVGCoordinates(event) {
+            if (!svgElement) return { x: 0, y: 0 };
+            
+            // Create an SVG point
+            const pt = svgElement.createSVGPoint();
+            pt.x = event.clientX;
+            pt.y = event.clientY;
+            
+            // Get the transformation matrix
+            const ctm = svgElement.getScreenCTM();
+            if (ctm) {
+                // Apply the inverse matrix to get SVG coordinates
+                return pt.matrixTransform(ctm.inverse());
+            }
+            return pt;
+        }
+
+        /**
+         * Robustly gets the transformation matrix from any SVG element to the root <svg> element.
+         * Handles elements that don't support getTransformToElement (like <image>)
+         * by using a getScreenCTM fallback.
+         */
+        function getTransformToRoot(element) {
+            if (!svgElement || !element) return svgElement.createSVGMatrix(); // Return identity matrix
+
+            if (typeof element.getTransformToElement === 'function') {
+                try {
+                    // This is the standard and preferred way
+                    return element.getTransformToElement(svgElement);
+                } catch (e) {
+                    // Some elements (like <svg> inside <a>) might throw error
+                    console.warn(`getTransformToElement failed for <${element.tagName}>: ${e.message}. Trying fallback.`);
+                }
+            }
+            
+            // Fallback using CTM (Common for <image> or other special elements)
+            if (typeof element.getScreenCTM === 'function' && typeof svgElement.getScreenCTM === 'function') {
+                const screenCTM = element.getScreenCTM();
+                const rootScreenCTM = svgElement.getScreenCTM();
+                
+                if (screenCTM && rootScreenCTM) {
+                    // CTM_root * Matrix = CTM_element
+                    // Matrix = (CTM_root)^-1 * CTM_element
+                    return rootScreenCTM.inverse().multiply(screenCTM);
+                }
+            }
+            
+            // Failsafe: assume no transform (identity matrix)
+            console.warn(`Could not find transform for <${element.tagName}>, assuming identity.`);
+            return svgElement.createSVGMatrix();
+        }
+
+        // --- 6. Download & Export Functions ---
+
+        function getAnimatedSVGString() {
+            if (!svgElement) return null;
+
+            // Create a clone to avoid modifying the displayed SVG
+            const svgClone = svgElement.cloneNode(true);
+
+            // Clean up the clone for export
+            // 1. Remove temp drawing path if it exists
+            const tempPath = svgClone.querySelector('#animation-drawing-path');
+            if (tempPath) {
+                tempPath.remove();
+            }
+            // 2. Remove highlight classes
+            svgClone.querySelectorAll('.svg-highlight').forEach(el => {
+                el.classList.remove('svg-highlight');
+            });
+            // 3. Remove highlight style attributes from sidebar hovers
+            svgClone.querySelectorAll('[style]').forEach(el => {
+                // Check for inline style added by JS
+                if (el.style.backgroundColor) {
+                    el.style.backgroundColor = '';
+                }
+                // Remove style attribute if it's now empty
+                if(el.getAttribute('style') === '') {
+                    el.removeAttribute('style');
+                }
+            });
+
+            const serializer = new XMLSerializer();
+            let svgString = serializer.serializeToString(svgClone);
+
+            // Add xmlns if it's missing (serializer sometimes omits it)
+            if (!svgString.includes('xmlns="http://www.w3.org/2000/svg"')) {
+                svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+            }
+            
+            return svgString;
+        }
+        
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            downloadMenu.classList.add('hidden');
+        }
+
+        function downloadAnimatedSVG() {
+            const svgString = getAnimatedSVGString();
+            if (!svgString) {
+                alert("No SVG loaded to download.");
+                return;
+            }
+            const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            triggerDownload(blob, 'animated.svg');
+        }
+
+        function downloadAnimatedHTML() {
+            const svgString = getAnimatedSVGString();
+            if (!svgString) {
+                alert("No SVG loaded to download.");
+                return;
+            }
+            const htmlString = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated SVG</title>
+    <style>
+        body { margin: 0; padding: 0; display: grid; place-items: center; min-height: 100vh; background-color: #f0f0f0; }
+        svg { max-width: 90vw; max-height: 90vh; }
+    </style>
+</head>
+<body>
+    ${svgString}
+</body>
+</html>
+            `;
+            const blob = new Blob([htmlString], { type: 'text/html;charset=utf-8' });
+            triggerDownload(blob, 'animated.html');
+        }
+
+        async function copyToClipboard(text, successMessage) {
+            // Use Clipboard API if available (secure contexts)
+            if (navigator.clipboard) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    showInfo(successMessage);
+                    downloadMenu.classList.add('hidden');
+                    setTimeout(hideInfo, 2000); // Hide info after 2s
+                    return;
+                } catch (err) {
+                    console.error('Failed to copy text: ', err);
+                    // Fallback to execCommand
+                }
+            }
+
+            // Fallback for insecure contexts or API failure
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";  // Avoid scrolling
+                textArea.style.top = "-9999px";
+                textArea.style.left = "-9999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                showInfo(successMessage);
+            } catch (err) {
+                console.error('Fallback: Oops, unable to copy', err);
+                showInfo('Failed to copy to clipboard.');
+            }
+            
+            downloadMenu.classList.add('hidden');
+            setTimeout(hideInfo, 2000); // Hide info after 2s
+        }
+
+        function copySVGCode() {
+            const svgString = getAnimatedSVGString();
+            if (!svgString) return;
+            copyToClipboard(svgString, 'SVG code copied to clipboard!');
+        }
+        
+        function copyDataURL() {
+            const svgString = getAnimatedSVGString();
+            if (!svgString) return;
+            // Use encodeURIComponent to handle all special characters
+            const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+            copyToClipboard(dataUrl, 'Data URL copied to clipboard!');
+        }
+
+    </script>
+</body>
+</html>
+
+
