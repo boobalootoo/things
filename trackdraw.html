@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Train Track Drawer</title>
+    <!-- Load Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind to use Inter font --><script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                },
+            },
+        };
+    </script>
+    <style>
+        /* Use Inter font */
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Prevent page scroll on mobile when drawing */
+            touch-action: none;
+            overflow: hidden;
+        }
+        /* Make canvas fill its container */
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: #ffffff;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        /* Custom styles for range sliders */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 8px;
+            background: #e5e7eb; /* gray-200 */
+            border-radius: 9999px; /* rounded-full */
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6; /* blue-500 */
+            border-radius: 9999px; /* rounded-full */
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6; /* blue-500 */
+            border-radius: 9999px; /* rounded-full */
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        input[type="color"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border: none;
+            border-radius: 0.5rem; /* rounded-lg */
+            cursor: pointer;
+            overflow: hidden;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border: 2px solid #e5e7eb; /* gray-200 */
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        input[type="color"]::-moz-color-swatch {
+            border: 2px solid #e5e7eb; /* gray-200 */
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        /* Custom style for select dropdown */
+        select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: #fff;
+            border: 1px solid #d1d5db; /* gray-300 */
+            border-radius: 0.5rem; /* rounded-lg */
+            padding: 0.4rem 2rem 0.4rem 0.75rem; /* py-2 pl-3 pr-8 */
+            font-size: 0.875rem; /* text-sm */
+            line-height: 1.25rem;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.25em 1.25em;
+            cursor: pointer;
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+        select:focus {
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            border-color: #3b82f6; /* blue-500 */
+            box-shadow: 0 0 0 1px #3b82f6; /* ring-1 ring-blue-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
+
+    <!-- Header & Controls --><header class="bg-white shadow-md p-3 sm:p-4">
+        <div class="container mx-auto flex flex-wrap justify-between items-center gap-4">
+            <h1 class="text-xl sm:text-2xl font-bold text-gray-800">Train Track Drawer</h1>
+            
+            <!-- Toolbar --><div class="flex flex-wrap items-center gap-3 sm:gap-6">
+                
+                <!-- Control: Color --><div class="flex items-center gap-2">
+                    <label for="colorPicker" class="text-sm font-medium text-gray-600">Color</label>
+                    <input type="color" id="colorPicker" value="#4A5568" class="border-gray-300">
+                </div>
+
+                <!-- Control: Track Style --><div class="flex items-center gap-2">
+                    <label for="styleSelect" class="text-sm font-medium text-gray-600">Style</label>
+                    <select id="styleSelect">
+                        <option value="standard">Standard</option>
+                        <option value="railsOnly">Rails Only</option>
+                        <option value="realistic">Realistic</option>
+                        <option value="monorail">Monorail</option>
+                        <option value="dashedPath">Dashed Path</option>
+                    </select>
+                </div>
+
+                <!-- Control: Rail Thickness --><div class="flex items-center gap-2">
+                    <label for="thicknessSlider" class="text-sm font-medium text-gray-600">Rails</label>
+                    <input type="range" id="thicknessSlider" min="1" max="10" value="2" class="w-20 sm:w-24">
+                    <span id="thicknessValue" class="text-sm text-gray-700 w-4 text-right">2</span>
+                </div>
+
+                <!-- Control: Track Width --><div class="flex items-center gap-2">
+                    <label for="widthSlider" class="text-sm font-medium text-gray-600">Width</label>
+                    <input type="range" id="widthSlider" min="5" max="50" value="15" class="w-20 sm:w-24">
+                    <span id="widthValue" class="text-sm text-gray-700 w-6 text-right">15</span>
+                </div>
+
+                <!-- Control: Tie Spacing --><div class="flex items-center gap-2">
+                    <label for="spacingSlider" class="text-sm font-medium text-gray-600">Spacing</label>
+                    <input type="range" id="spacingSlider" min="5" max="50" value="25" class="w-20 sm:w-24">
+                    <span id="spacingValue" class="text-sm text-gray-700 w-6 text-right">25</span>
+                </div>
+
+                <!-- Clear Button --><button id="clearButton" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition-colors duration-200">
+                    Clear
+                </button>
+                <!-- Save Button --><button id="saveButton" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition-colors duration-200">
+                    Save SVG
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Canvas Area --><main class="flex-grow p-4">
+        <canvas id="drawCanvas"></canvas>
+    </main>
+
+    <script>
+        window.addEventListener('load', () => {
+            const canvas = document.getElementById('drawCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Get control elements
+            const colorPicker = document.getElementById('colorPicker');
+            const thicknessSlider = document.getElementById('thicknessSlider');
+            const thicknessValue = document.getElementById('thicknessValue');
+            const widthSlider = document.getElementById('widthSlider');
+            const widthValue = document.getElementById('widthValue');
+            const spacingSlider = document.getElementById('spacingSlider');
+            const spacingValue = document.getElementById('spacingValue');
+            const clearButton = document.getElementById('clearButton');
+            const styleSelect = document.getElementById('styleSelect');
+
+            // Drawing state
+            let isDrawing = false;
+            // let lastX = 0; // No longer needed
+            // let lastY = 0; // No longer needed
+            // let totalDistance = 0; // No longer needed, will be calculated locally
+            let centerlinePoints = []; // Store points for the current path
+            let savedImageData = null; // Store canvas state on mousedown
+            let allTracks = []; // Store all completed tracks
+
+            // --- Helper Functions ---
+
+            // Update slider value text
+            thicknessSlider.oninput = () => { thicknessValue.textContent = thicknessSlider.value; };
+            widthSlider.oninput = () => { widthValue.textContent = widthSlider.value; };
+            spacingSlider.oninput = () => { spacingValue.textContent = spacingSlider.value; };
+
+            // Resize canvas to fill its container
+            function resizeCanvas() {
+                // Resize
+                canvas.width = canvas.clientWidth;
+                canvas.height = canvas.clientHeight;
+                
+                // Redraw all committed tracks
+                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear first
+                allTracks.forEach(track => {
+                    drawPathFromPoints(track); 
+                });
+
+                // Re-apply context settings
+                // These will be overridden by specific styles if needed
+                ctx.lineCap = 'butt'; 
+                ctx.lineJoin = 'round';
+            }
+
+            // Get coordinates for both mouse and touch events
+            function getCoords(e) {
+                const rect = canvas.getBoundingClientRect();
+                if (e.touches) {
+                    return {
+                        x: e.touches[0].clientX - rect.left,
+                        y: e.touches[0].clientY - rect.top
+                    };
+                }
+                return {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            }
+            
+            // Clear the canvas
+            function clearCanvas() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                centerlinePoints = []; // Also clear any path in progress
+                savedImageData = null;
+                allTracks = []; // Clear all saved tracks
+            }
+
+            // --- New function to get SVG path data from points ---
+            function getTrackSVGPaths(track) {
+                const { points, thickness, trackWidth, tieSpacing, style } = track;
+                
+                if (points.length < 2) return {};
+
+                const tieWidth = trackWidth * 1.5;
+                
+                if (style === 'standard' || style === 'railsOnly' || style === 'realistic') {
+                    const halfTrackWidth = trackWidth / 2;
+                    const halfTieWidth = tieWidth / 2;
+                    
+                    // --- Pre-calculate miter vectors ---
+                    const miterVectors = [];
+                    for (let i = 0; i < points.length; i++) {
+                        const p_prev = points[i - 1];
+                        const p_curr = points[i];
+                        const p_next = points[i + 1];
+                        
+                        let px, py;
+
+                        if (!p_prev) {
+                            // First point: use perpendicular of first segment
+                            const p = getPerpendicular(p_curr, p_next || p_curr);
+                            if (p) {
+                                px = p.px;
+                                py = p.py;
+                            } else {
+                                px = 1; py = 0; // Default
+                            }
+                        } else if (!p_next) {
+                            // Last point: use perpendicular of last segment
+                            const p = getPerpendicular(p_prev, p_curr);
+                             if (p) {
+                                px = p.px;
+                                py = p.py;
+                            } else {
+                                px = miterVectors[i-1].px; // Use previous
+                                py = miterVectors[i-1].py;
+                            }
+                        } else {
+                            // Mid point: calculate miter
+                            const p_in = getPerpendicular(p_prev, p_curr);
+                            const p_out = getPerpendicular(p_curr, p_next);
+
+                            if (!p_in || !p_out) {
+                                // Handle collinear or identical points
+                                px = p_in ? p_in.px : (p_out ? p_out.px : 1);
+                                py = p_in ? p_in.py : (p_out ? p_out.py : 0);
+                            } else {
+                                // Average perpendiculars
+                                let miter_x = p_in.px + p_out.px;
+                                let miter_y = p_in.py + p_out.py;
+                                const miter_len = Math.sqrt(miter_x * miter_x + miter_y * miter_y);
+
+                                if (miter_len < 0.01) {
+                                    // 180-degree turn, just use one
+                                    px = p_in.px;
+                                    py = p_in.py;
+                                } else {
+                                    // Normalize miter vector
+                                    const norm_miter_x = miter_x / miter_len;
+                                    const norm_miter_y = miter_y / miter_len;
+                                    
+                                    // Calculate miter scaling factor
+                                    // Clamp to avoid extreme spikes at > 135 deg turns
+                                    const dot = (norm_miter_x * p_in.px) + (norm_miter_y * p_in.py);
+                                    const scale = 1 / Math.max(0.3, dot); 
+                                    
+                                    px = norm_miter_x * scale;
+                                    py = norm_miter_y * scale;
+                                }
+                            }
+                        }
+                        miterVectors.push({ px, py });
+                    }
+                    
+                    // --- Build Path Strings ---
+                    let rail1_d = `M ${points[0].x + miterVectors[0].px * halfTrackWidth} ${points[0].y + miterVectors[0].py * halfTrackWidth} `;
+                    let rail2_d = `M ${points[0].x - miterVectors[0].px * halfTrackWidth} ${points[0].y - miterVectors[0].py * halfTrackWidth} `;
+                    let ties_d = ""; // Will be a set of "M ... L ..."
+
+                    let localTotalDistance = 0;
+                    
+                    for (let i = 1; i < points.length; i++) {
+                        const p1 = points[i-1];
+                        const p2 = points[i];
+                        
+                        const miter_p2 = miterVectors[i];
+                        
+                        // Add to rail paths
+                        rail1_d += `L ${p2.x + miter_p2.px * halfTrackWidth} ${p2.y + miter_p2.py * halfTrackWidth} `;
+                        rail2_d += `L ${p2.x - miter_p2.px * halfTrackWidth} ${p2.y - miter_p2.py * halfTrackWidth} `;
+
+                        // --- Add ties for 'standard' or 'realistic' style ---
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if ((style === 'standard' || style === 'realistic') && dist > 0.5) {
+                            const newTotalDistance = localTotalDistance + dist;
+                            let firstTieDist = Math.ceil(localTotalDistance / tieSpacing) * tieSpacing;
+                            if (firstTieDist < localTotalDistance) firstTieDist += tieSpacing; // ensure it's ahead
+
+                            for (let d = firstTieDist; d < newTotalDistance; d += tieSpacing) {
+                                const t = (d - localTotalDistance) / dist;
+                                
+                                // Interpolate position
+                                const tieX = p1.x + dx * t;
+                                const tieY = p1.y + dy * t;
+                                
+                                // Interpolate perpendicular vector (lerp)
+                                const miter_p1 = miterVectors[i-1];
+                                const tie_px = miter_p1.px + (miter_p2.px - miter_p1.px) * t;
+                                const tie_py = miter_p1.py + (miter_p2.py - miter_p1.py) * t;
+                                
+                                // Normalize the interpolated vector before use
+                                const tie_len = Math.sqrt(tie_px * tie_px + tie_py * tie_py);
+                                const norm_tie_px = tie_px / tie_len;
+                                const norm_tie_py = tie_py / tie_len;
+
+                                const x1 = tieX + norm_tie_px * halfTieWidth;
+                                const y1 = tieY + norm_tie_py * halfTieWidth;
+                                const x2 = tieX - norm_tie_px * halfTieWidth;
+                                const y2 = tieY - norm_tie_py * halfTieWidth;
+                                ties_d += `M ${x1} ${y1} L ${x2} ${y2} `;
+                            }
+                        }
+                        localTotalDistance += dist;
+                    }
+                    
+                    return { rail1_d, rail2_d, ties_d };
+
+                } else if (style === 'monorail' || style === 'dashedPath') {
+                    let path_d = `M ${points[0].x} ${points[0].y} `;
+                    for (let i = 1; i < points.length; i++) {
+                        path_d += `L ${points[i].x} ${points[i].y} `;
+                    }
+                    return { path_d };
+                }
+                return {};
+            }
+
+
+            // --- Modified function to draw path from a track object ---
+            function drawPathFromPoints(track) {
+                const { color, thickness, style } = track;
+                
+                // Get the SVG path data
+                const paths = getTrackSVGPaths(track);
+
+                if (style === 'standard' || style === 'railsOnly' || style === 'realistic') {
+                    if (!paths.rail1_d) return; // Not enough points
+
+                    const rail1Path = new Path2D(paths.rail1_d);
+                    const rail2Path = new Path2D(paths.rail2_d);
+                    const tiePath = new Path2D(paths.ties_d || "");
+
+                    // --- Stroke the paths BASED ON STYLE ---
+                    if (style === 'realistic') {
+                        // 1. Draw Ties (Brown and Thick)
+                        ctx.strokeStyle = '#8B4513'; // SaddleBrown
+                        ctx.lineWidth = Math.max(4, thickness * 3.5); // Make ties thick
+                        ctx.lineCap = 'butt';
+                        ctx.stroke(tiePath);
+
+                        // 2. Draw Rails (User Color and Thin)
+                        ctx.strokeStyle = color; // User-selected color
+                        ctx.lineWidth = thickness;
+                        ctx.lineJoin = 'round';
+                        ctx.stroke(rail1Path);
+                        ctx.stroke(rail2Path);
+
+                    } else { // 'standard' or 'railsOnly'
+                        // Draw everything with the user's color
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = thickness; // Set default thickness
+                        ctx.lineJoin = 'round';
+                        ctx.lineCap = 'butt';
+                        
+                        if (style === 'standard') {
+                            ctx.stroke(tiePath); // Ties are drawn with same thickness
+                        }
+                        
+                        ctx.stroke(rail1Path);
+                        ctx.stroke(rail2Path);
+                    }
+
+                } else if (style === 'monorail') {
+                    if (!paths.path_d) return;
+                    ctx.lineWidth = thickness * 3;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.setLineDash([]);
+                    
+                    ctx.strokeStyle = color; // Set color
+                    ctx.stroke(new Path2D(paths.path_d));
+
+                } else if (style === 'dashedPath') {
+                    if (!paths.path_d) return;
+                    ctx.lineWidth = thickness * 2;
+                    ctx.setLineDash([thickness * 5, thickness * 3]);
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+
+                    ctx.strokeStyle = color; // Set color
+                    ctx.stroke(new Path2D(paths.path_d));
+                }
+            }
+            
+            // Helper to get perpendicular vector from two points
+            function getPerpendicular(p1, p2) {
+                if (!p1 || !p2) return null;
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 0.1) return null; // Use a small threshold
+                const nx = dx / dist;
+                const ny = dy / dist;
+                return { px: -ny, py: nx };
+            }
+
+            // --- Drawing Functions (Modified) ---
+
+            function startDraw(e) {
+                e.preventDefault();
+                isDrawing = true;
+                centerlinePoints = []; // Start a new path
+                savedImageData = ctx.getImageData(0, 0, canvas.width, canvas.height); // Save canvas state
+
+                const { x, y } = getCoords(e);
+                centerlinePoints.push({ x: x, y: y });
+                
+                // [lastX, lastY] = [x, y]; // No longer needed
+                // totalDistance = 0; // No longer needed
+            }
+
+            function draw(e) {
+                if (!isDrawing) return;
+                e.preventDefault();
+
+                const { x: currentX, y: currentY } = getCoords(e);
+                
+                // Add the new point only if it's moved a bit
+                const lastPoint = centerlinePoints[centerlinePoints.length - 1];
+                const dx = currentX - lastPoint.x;
+                const dy = currentY - lastPoint.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < 2) { // Add a threshold to avoid too many points
+                    return;
+                }
+                
+                centerlinePoints.push({ x: currentX, y: currentY });
+
+                // Restore the clean canvas state (to clear last preview)
+                ctx.putImageData(savedImageData, 0, 0);
+
+                // Redraw the entire path-in-progress as a preview
+                const previewTrack = {
+                    points: centerlinePoints,
+                    color: colorPicker.value,
+                    thickness: parseInt(thicknessSlider.value, 10),
+                    trackWidth: parseInt(widthSlider.value, 10),
+                    tieSpacing: parseInt(spacingSlider.value, 10),
+                    style: styleSelect.value
+                };
+                drawPathFromPoints(previewTrack);
+            }
+
+            function stopDraw() {
+                if (!isDrawing) return; // Prevent multiple triggers
+                isDrawing = false;
+                
+                // Commit the new track to our array
+                if (centerlinePoints.length > 1) {
+                    allTracks.push({
+                        points: [...centerlinePoints], // Store a copy
+                        color: colorPicker.value,
+                        thickness: parseInt(thicknessSlider.value, 10),
+                        trackWidth: parseInt(widthSlider.value, 10),
+                        tieSpacing: parseInt(spacingSlider.value, 10),
+                        style: styleSelect.value
+                    });
+                }
+                
+                // Clear the temporary data
+                centerlinePoints = [];
+                savedImageData = null;
+                
+                // Redraw all committed tracks permanently
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                allTracks.forEach(track => {
+                    drawPathFromPoints(track);
+                });
+            }
+
+            // --- New function to generate and download SVG ---
+            function generateSVG() {
+                let svgPaths = {
+                    realisticTies: [],
+                    realisticRails: [],
+                    standardTies: [],
+                    standardRails: [],
+                    railsOnly: [],
+                    monorails: [],
+                    dashedPaths: []
+                };
+
+                // Loop through all committed tracks and generate path data
+                allTracks.forEach(track => {
+                    const paths = getTrackSVGPaths(track);
+                    if (!paths) return;
+
+                    const { style, color, thickness } = track;
+
+                    if (style === 'realistic') {
+                        svgPaths.realisticTies.push(
+                            `<path d="${paths.ties_d || ''}" stroke="#8B4513" stroke-width="${Math.max(4, thickness * 3.5)}" fill="none" stroke-linecap="butt" />`
+                        );
+                        svgPaths.realisticRails.push(
+                            `<path d="${paths.rail1_d || ''}" stroke="${color}" stroke-width="${thickness}" fill="none" stroke-linecap="butt" stroke-linejoin="round" />`
+                        );
+                        svgPaths.realisticRails.push(
+                            `<path d="${paths.rail2_d || ''}" stroke="${color}" stroke-width="${thickness}" fill="none" stroke-linecap="butt" stroke-linejoin="round" />`
+                        );
+                    } else if (style === 'standard') {
+                        svgPaths.standardTies.push(
+                            `<path d="${paths.ties_d || ''}" stroke="${color}" stroke-width="${thickness}" fill="none" stroke-linecap="butt" />`
+                        );
+                        svgPaths.standardRails.push(
+                            `<path d="${paths.rail1_d || ''}" stroke="${color}" stroke-width="${thickness}" fill="none" stroke-linecap="butt" stroke-linejoin="round" />`
+                        );
+                         svgPaths.standardRails.push(
+                            `<path d="${paths.rail2_d || ''}" stroke="${color}" stroke-width="${thickness}" fill="none" stroke-linecap="butt" stroke-linejoin="round" />`
+                        );
+                    } else if (style === 'railsOnly') {
+                        svgPaths.railsOnly.push(
+                            `<path d="${paths.rail1_d || ''}" stroke="${color}" stroke-width="${thickness}" fill="none" stroke-linecap="butt" stroke-linejoin="round" />`
+                        );
+                        svgPaths.railsOnly.push(
+                            `<path d="${paths.rail2_d || ''}" stroke="${color}" stroke-width="${thickness}" fill="none" stroke-linecap="butt" stroke-linejoin="round" />`
+                        );
+                    } else if (style === 'monorail') {
+                        svgPaths.monorails.push(
+                            `<path d="${paths.path_d || ''}" stroke="${color}" stroke-width="${thickness * 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" />`
+                        );
+                    } else if (style === 'dashedPath') {
+                         svgPaths.dashedPaths.push(
+                            `<path d="${paths.path_d || ''}" stroke="${color}" stroke-width="${thickness * 2}" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${thickness * 5} ${thickness * 3}" />`
+                        );
+                    }
+                });
+
+                // Assemble SVG string, drawing ties first for realistic tracks
+                const svgHeader = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${canvas.width} ${canvas.height}">\n  <g fill="none">`;
+                const svgFooter = `\n  </g>\n</svg>`;
+                
+                const svgContent = [
+                    ...svgPaths.realisticTies,
+                    ...svgPaths.standardTies,
+                    ...svgPaths.realisticRails,
+                    ...svgPaths.standardRails,
+                    ...svgPaths.railsOnly,
+                    ...svgPaths.monorails,
+                    ...svgPaths.dashedPaths
+                ].map(path => `    ${path}`).join('\n');
+
+                const svgData = svgHeader + "\n" + svgContent + svgFooter;
+
+                // Trigger download
+                const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'train-tracks.svg';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            // --- Event Listeners ---
+            
+            // Mouse events
+            canvas.addEventListener('mousedown', startDraw);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDraw);
+            canvas.addEventListener('mouseleave', stopDraw); // Stop if mouse leaves canvas
+
+            // Touch events
+            canvas.addEventListener('touchstart', startDraw);
+            canvas.addEventListener('touchmove', draw);
+            canvas.addEventListener('touchend', stopDraw);
+            
+            // Other events
+            const saveButton = document.getElementById('saveButton');
+            clearButton.addEventListener('click', clearCanvas);
+            saveButton.addEventListener('click', generateSVG);
+            window.addEventListener('resize', resizeCanvas);
+
+            // Initial setup
+            resizeCanvas();
+            // Set initial text values
+            thicknessValue.textContent = thicknessSlider.value;
+            widthValue.textContent = widthSlider.value;
+            spacingValue.textContent = spacingSlider.value;
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
