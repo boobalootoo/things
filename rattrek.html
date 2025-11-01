@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rat's Instinct: First-Person Maze</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom CSS for Game Aesthetics */
+        body {
+            font-family: 'Roboto Mono', monospace;
+            background-color: #1a202c; /* Dark background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: #e2e8f0;
+        }
+
+        .game-container {
+            background-color: #2d3748; /* Slightly lighter dark container */
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 95vw;
+            width: 500px;
+            position: relative; /* Needed for absolute positioning of minimap */
+        }
+
+        #mazeCanvas {
+            border: 4px solid #4a5568;
+            background-color: #1a202c;
+            border-radius: 0.5rem;
+            touch-action: none; /* Prevent scrolling on canvas interaction */
+        }
+
+        #minimapCanvas {
+            position: absolute;
+            top: 2.5rem; /* Adjust as needed */
+            right: 2.5rem; /* Adjust as needed */
+            background-color: rgba(0, 0, 0, 0.6); /* Semi-transparent background */
+            border: 2px solid #4a5568;
+            border-radius: 0.5rem;
+            z-index: 10; /* Ensure it's above the main canvas */
+        }
+
+        button {
+            transition: all 0.15s ease-in-out;
+            box-shadow: 0 4px #000;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px #000;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #000;
+        }
+
+        /* Responsive adjustments for controls */
+        .controls-desktop {
+            display: none;
+        }
+
+        @media (min-width: 768px) {
+            .controls-desktop {
+                display: block;
+            }
+            .controls-mobile {
+                display: none;
+            }
+        }
+        
+        .controls-mobile {
+            display: grid;
+            grid-template-areas: ". up ." "left center right" ". down .";
+            width: 200px;
+            margin-top: 1rem;
+        }
+
+        .controls-mobile button {
+            width: 55px;
+            height: 55px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1rem;
+            margin: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <h1 class="text-3xl font-bold mb-4 text-yellow-300">Rat's Instinct 🐀</h1>
+    
+    <div class="flex justify-between w-full mb-4 px-2">
+        <div class="text-lg font-semibold">Level: <span id="levelDisplay">1</span></div>
+        <div>
+            <label for="difficulty" class="mr-2">Size:</label>
+            <select id="difficulty" class="bg-gray-700 p-1 rounded text-white">
+                <option value="10">Small (10x10)</option>
+                <option value="15" selected>Medium (15x15)</option>
+                <option value="20">Large (20x20)</option>
+            </select>
+        </div>
+    </div>
+
+    <canvas id="mazeCanvas" width="450" height="450"></canvas>
+    <canvas id="minimapCanvas" width="150" height="150"></canvas>
+
+    <div class="mt-4 w-full">
+        <button id="startButton" class="w-full py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg transition duration-150">Start New Game</button>
+    </div>
+
+    <div id="messageBox" class="mt-4 p-3 bg-gray-700 text-yellow-300 font-bold rounded-lg hidden w-full text-center">
+        Use Arrow Keys or the buttons below!
+    </div>
+
+    <!-- Mobile/Touch Controls --><div class="controls-mobile">
+        <button class="bg-blue-500 hover:bg-blue-600 text-white rounded-full" data-action="forward" style="grid-area: up;">FORWARD ↑</button>
+        <button class="bg-blue-500 hover:bg-blue-600 text-white rounded-full" data-action="left" style="grid-area: left;">TURN LEFT ←</button>
+        <div style="grid-area: center;"></div>
+        <button class="bg-blue-500 hover:bg-blue-600 text-white rounded-full" data-action="right" style="grid-area: right;">TURN RIGHT →</button>
+        <button class="bg-yellow-500 hover:bg-yellow-600 text-white rounded-full" data-action="turn" style="grid-area: down;">TURN 180°</button>
+    </div>
+
+    <div class="controls-desktop mt-4 text-sm text-gray-400">
+        **UP**: Move Forward | **LEFT**: Turn Left | **RIGHT**: Turn Right | **DOWN**: Turn 180° (Turn Around). Find the cheese 🧀!
+    </div>
+</div>
+
+<script>
+    // --- Global Variables and Setup ---
+    const canvas = document.getElementById('mazeCanvas');
+    const ctx = canvas.getContext('2d');
+    const minimapCanvas = document.getElementById('minimapCanvas');
+    const minimapCtx = minimapCanvas.getContext('2d');
+    const startButton = document.getElementById('startButton');
+    const difficultySelect = document.getElementById('difficulty');
+    const levelDisplay = document.getElementById('levelDisplay');
+    const messageBox = document.getElementById('messageBox');
+    const mobileControls = document.querySelectorAll('.controls-mobile button');
+
+    let maze = [];
+    let cols, rows;
+    const wallColor = '#4a5568';
+    const pathColor = '#374151';
+
+    // Rat state includes position and direction (0=N, 1=E, 2=S, 3=W)
+    const DIR_N = 0, DIR_E = 1, DIR_S = 2, DIR_W = 3;
+    let rat = { x: 0, y: 0, direction: DIR_E, visitedCells: {} }; // Added visitedCells
+    let cheese = { x: 0, y: 0 };
+    let currentLevel = 1;
+    let isGameRunning = false;
+
+    // Minimap specific variables
+    const MINIMAP_SIZE = 150; // px
+    const MINIMAP_CELL_SIZE = 10; // px per cell on minimap
+    const MINIMAP_VIEW_RADIUS = 7; // How many cells in each direction from rat to show on minimap
+
+    // --- Maze Cell Class ---
+    class Cell {
+        constructor(col, row) {
+            this.col = col;
+            this.row = row;
+            this.visited = false;
+            this.walls = {
+                top: true,
+                right: true,
+                bottom: true,
+                left: true
+            };
+        }
+
+        // Returns an array of unvisited neighbors
+        checkNeighbors() {
+            let neighbors = [];
+            // Note: maze[col][row] convention
+            const up = maze[this.col] && maze[this.col][this.row - 1];
+            const right = maze[this.col + 1] && maze[this.col + 1][this.row];
+            const down = maze[this.col] && maze[this.col][this.row + 1];
+            const left = maze[this.col - 1] && maze[this.col - 1][this.row];
+
+            if (up && !up.visited) neighbors.push(up);
+            if (right && !right.visited) neighbors.push(right);
+            if (down && !down.visited) neighbors.push(down);
+            if (left && !left.visited) neighbors.push(left);
+
+            return neighbors;
+        }
+    }
+
+    // --- Maze Generation (Recursive Backtracker) ---
+    function setupMaze(size) {
+        cols = size;
+        rows = size;
+
+        maze = [];
+        for (let i = 0; i < cols; i++) {
+            maze[i] = [];
+            for (let j = 0; j < rows; j++) {
+                maze[i][j] = new Cell(i, j);
+            }
+        }
+
+        // --- LEVEL 1 SPECIAL CASE: STRAIGHT LINE ---
+        if (currentLevel === 1) {
+            // Straight horizontal path from (0,0) to (cols-1, 0)
+            for (let i = 0; i < cols - 1; i++) {
+                // Open the wall between cell (i, 0) and (i+1, 0)
+                maze[i][0].walls.right = false;
+                maze[i + 1][0].walls.left = false;
+            }
+            rat = { x: 0, y: 0, direction: DIR_E, visitedCells: {} };
+            cheese = { x: cols - 1, y: 0 };
+            return;
+        }
+        
+        // --- GENERAL MAZE GENERATION (Recursive Backtracker) ---
+        const stack = [];
+        let current = maze[0][0];
+        current.visited = true;
+        stack.push(current);
+
+        while (stack.length > 0) {
+            const neighbors = current.checkNeighbors();
+
+            if (neighbors.length > 0) {
+                const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                stack.push(current);
+                removeWalls(current, next);
+                current = next;
+                current.visited = true;
+            } else if (stack.length > 0) {
+                current = stack.pop();
+            }
+        }
+
+        // Set rat start position (top-left) and cheese goal (bottom-right) for complex mazes
+        rat = { x: 0, y: 0, direction: DIR_E, visitedCells: {} };
+        cheese = { x: cols - 1, y: rows - 1 };
+    }
+
+    // Removes the wall between two adjacent cells
+    function removeWalls(a, b) {
+        const x = a.col - b.col;
+        if (x === 1) { // a is to the right of b (b is left of a)
+            a.walls.left = false;
+            b.walls.right = false;
+        } else if (x === -1) { // a is to the left of b (b is right of a)
+            a.walls.right = false;
+            b.walls.left = false;
+        }
+
+        const y = a.row - b.row;
+        if (y === 1) { // a is below b (b is above a)
+            a.walls.top = false;
+            b.walls.bottom = false;
+        } else if (y === -1) { // a is above b (b is below a)
+            a.walls.bottom = false;
+            b.walls.top = false;
+        }
+    }
+
+    // Gets the walls relative to the rat's current direction
+    function getCurrentWalls(x, y, dir) {
+        const cell = maze[x][y];
+        let frontWall, rightWall, leftWall;
+
+        switch (dir) {
+            case DIR_N: // Facing North
+                frontWall = cell.walls.top;
+                rightWall = cell.walls.right;
+                leftWall = cell.walls.left;
+                break;
+            case DIR_E: // Facing East
+                frontWall = cell.walls.right;
+                rightWall = cell.walls.bottom;
+                leftWall = cell.walls.top;
+                break;
+            case DIR_S: // Facing South
+                frontWall = cell.walls.bottom;
+                rightWall = cell.walls.left;
+                leftWall = cell.walls.right;
+                break;
+            case DIR_W: // Facing West
+                frontWall = cell.walls.left;
+                rightWall = cell.walls.top;
+                leftWall = cell.walls.bottom;
+                break;
+        }
+        return { front: frontWall, right: rightWall, left: leftWall };
+    }
+
+    // --- Smell Logic (retained from previous version) ---
+    function calculateSmellStrength() {
+        const dist = Math.abs(rat.x - cheese.x) + Math.abs(rat.y - cheese.y);
+        
+        const maxSmellDistance = 25; 
+        let strength = Math.max(0, (maxSmellDistance - dist) / maxSmellDistance); 
+
+        let wallsBetween = countWallsBetween(rat.x, rat.y, cheese.x, cheese.y);
+        strength *= Math.pow(0.8, wallsBetween); 
+
+        const deltaX = cheese.x - rat.x;
+        const deltaY = cheese.y - rat.y;
+
+        let targetDirection = -1; 
+        if (deltaX > 0 && Math.abs(deltaX) > Math.abs(deltaY)) targetDirection = DIR_E;
+        else if (deltaX < 0 && Math.abs(deltaX) > Math.abs(deltaY)) targetDirection = DIR_W;
+        else if (deltaY > 0 && Math.abs(deltaY) >= Math.abs(deltaX)) targetDirection = DIR_S;
+        else if (deltaY < 0 && Math.abs(deltaY) >= Math.abs(deltaX)) targetDirection = DIR_N;
+
+        let relativeDirection = (targetDirection - rat.direction + 4) % 4; 
+        let smellLocation = 'none';
+
+        if (relativeDirection === 0) { 
+            strength *= 1.2; 
+            smellLocation = 'front';
+        } else if (relativeDirection === 1) { 
+            strength *= 0.7; 
+            smellLocation = 'right';
+        } else if (relativeDirection === 3) { 
+            strength *= 0.7; 
+            smellLocation = 'left';
+        } else if (relativeDirection === 2) { 
+            strength *= 0.4; 
+            smellLocation = 'behind'; 
+        }
+
+        strength = Math.max(0, Math.min(1, strength)); 
+
+        return { strength: strength, location: smellLocation };
+    }
+
+    function countWallsBetween(startX, startY, endX, endY) {
+        let walls = 0;
+        let currX = startX;
+        let currY = startY;
+
+        while (currX !== endX || currY !== endY) {
+            let moved = false;
+            if (currX !== endX) {
+                if (currX < endX && !maze[currX][currY].walls.right) {
+                    currX++; moved = true;
+                } else if (currX > endX && !maze[currX][currY].walls.left) {
+                    currX--; moved = true;
+                }
+            }
+            if (!moved && currY !== endY) {
+                if (currY < endY && !maze[currX][currY].walls.bottom) {
+                    currY++; moved = true;
+                } else if (currY > endY && !maze[currX][currY].walls.top) {
+                    currY--; moved = true;
+                }
+            }
+            if (!moved) {
+                walls++;
+                if (walls > 5) return walls; 
+                
+                let currentCell = maze[currX][currY];
+                let possibleMoves = [];
+                if (!currentCell.walls.top) possibleMoves.push({dx:0, dy:-1});
+                if (!currentCell.walls.right) possibleMoves.push({dx:1, dy:0});
+                if (!currentCell.walls.bottom) possibleMoves.push({dx:0, dy:1});
+                if (!currentCell.walls.left) possibleMoves.push({dx:-1, dy:0});
+
+                if(possibleMoves.length > 0) {
+                    let move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+                    currX += move.dx;
+                    currY += move.dy;
+                } else {
+                    break; 
+                }
+            }
+        }
+        return walls;
+    }
+
+
+    // --- Drawing Functions (First-Person View) ---
+    function draw() {
+        if (!isGameRunning) return;
+
+        const W = canvas.width;
+        const H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Check for win condition and draw win screen immediately
+        if (rat.x === cheese.x && rat.y === cheese.y) {
+            // WIN TILE VIEW
+            ctx.fillStyle = '#22c55e'; // Green win screen
+            ctx.fillRect(0, 0, W, H);
+            ctx.font = `${W / 8}px sans-serif`;
+            ctx.fillStyle = '#fff';
+            ctx.fillText('🏆 CHEESE FOUND! 🧀', W / 2, H / 2);
+            handleWin();
+            return;
+        }
+
+        const walls = getCurrentWalls(rat.x, rat.y, rat.direction);
+        
+        // 1. Draw the floor and ceiling (Initial base colors)
+        ctx.fillStyle = pathColor; // Floor/Path
+        ctx.fillRect(0, H / 2, W, H / 2);
+        ctx.fillStyle = '#1e293b'; // Ceiling/Sky
+        ctx.fillRect(0, 0, W, H / 2);
+
+        // --- 2. Footprint Drawing (Layer 2: Overlay visited tiles on FLOOR ONLY) ---
+        const footprintColor = 'rgba(255, 165, 0, 0.15)'; 
+        const currentKey = `${rat.x},${rat.y}`;
+
+        if (rat.visitedCells[currentKey]) {
+            ctx.fillStyle = footprintColor;
+            
+            // Floor area of current tile: Trapezoid from viewport bottom to distant wall bottom
+            ctx.beginPath();
+            ctx.moveTo(0, H);
+            ctx.lineTo(W, H);
+            ctx.lineTo(W * 0.9, H * 0.9);
+            ctx.lineTo(W * 0.1, H * 0.9);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        // Check and draw footprint for cell ahead (if open)
+        let nextX = rat.x, nextY = rat.y;
+        if (!walls.front) {
+            switch (rat.direction) {
+                case DIR_N: nextY--; break;
+                case DIR_E: nextX++; break;
+                case DIR_S: nextY++; break;
+                case DIR_W: nextX--; break;
+            }
+            const nextKey = `${nextX},${nextY}`;
+
+            if (rat.visitedCells[nextKey]) {
+                // Draw footprint on the floor of the next cell (central bottom part)
+                const distantFootprintColor = 'rgba(255, 165, 0, 0.3)';
+                ctx.fillStyle = distantFootprintColor;
+                
+                // This draws a trapezoid that represents the floor of the next tile
+                ctx.beginPath();
+                ctx.moveTo(W * 0.1, H / 2); // Top-left of the next cell's floor
+                ctx.lineTo(W * 0.9, H / 2); // Top-right of the next cell's floor
+                ctx.lineTo(W * 0.9, H * 0.9); // Bottom-right of the next cell's floor
+                ctx.lineTo(W * 0.1, H * 0.9); // Bottom-left of the next cell's floor
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+
+        // --- 3. Draw the Front Wall or Receding Hallway ---
+        if (walls.front) {
+            // Dead End / Front Wall
+            ctx.fillStyle = wallColor;
+            ctx.fillRect(W * 0.1, H * 0.1, W * 0.8, H * 0.8);
+            
+            // Wall detailing
+            ctx.strokeStyle = '#6b7280';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(W * 0.1, H * 0.1, W * 0.8, H * 0.8);
+
+        } else {
+            // Path Ahead - Draw receding hallway
+            
+            // Check if CHEESE is ahead (in the next cell)
+            let nextX = rat.x, nextY = rat.y;
+            switch (rat.direction) {
+                case DIR_N: nextY--; break;
+                case DIR_E: nextX++; break;
+                case DIR_S: nextY++; break;
+                case DIR_W: nextX--; break;
+            }
+
+            if (nextX === cheese.x && nextY === cheese.y) {
+                // Show a giant cheese block in the distance
+                ctx.fillStyle = '#f6e05e'; // Cheese color
+                ctx.fillRect(W * 0.4, H * 0.4, W * 0.2, H * 0.2); 
+                ctx.font = `${W / 15}px sans-serif`;
+                ctx.fillStyle = '#000';
+                ctx.fillText('🧀', W / 2, H / 2);
+            }
+            
+            // Draw the vanishing point perspective lines
+            ctx.strokeStyle = '#1e293b'; // Dark lines for path
+            ctx.lineWidth = 3;
+            
+            // Receding lines from center to corners (creates depth)
+            ctx.beginPath();
+            ctx.moveTo(W/2, H/2); ctx.lineTo(0, 0); // TL
+            ctx.moveTo(W/2, H/2); ctx.lineTo(W, 0); // TR
+            ctx.moveTo(W/2, H/2); ctx.lineTo(0, H); // BL
+            ctx.moveTo(W/2, H/2); ctx.lineTo(W, H); // BR
+            ctx.stroke();
+            
+            // Distant boundary line
+            ctx.strokeStyle = wallColor;
+            ctx.lineWidth = 5;
+            ctx.strokeRect(W * 0.1, H * 0.1, W * 0.8, H * 0.8);
+        }
+
+        // --- 4. Draw Side Walls (Layer 4) ---
+        
+        // Left Wall
+        if (walls.left) {
+            ctx.fillStyle = wallColor;
+            // Draw a large perspective trapezoid for the near left wall
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(W * 0.1, H * 0.1);
+            ctx.lineTo(W * 0.1, H * 0.9);
+            ctx.lineTo(0, H);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Right Wall
+        if (walls.right) {
+            ctx.fillStyle = wallColor;
+            // Draw a large perspective trapezoid for the near right wall
+            ctx.beginPath();
+            ctx.moveTo(W, 0);
+            ctx.lineTo(W * 0.9, H * 0.1);
+            ctx.lineTo(W * 0.9, H * 0.9);
+            ctx.lineTo(W, H);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // --- 5. Draw Smell Indication (Layer 5) ---
+        const { strength, location } = calculateSmellStrength();
+        if (strength > 0.05) { 
+            const smellAlpha = strength; 
+            ctx.fillStyle = `rgba(255, 255, 0, ${smellAlpha})`; 
+
+            const rayWidth = W * 0.1; 
+            
+            if (location === 'front') {
+                // Frontal smell: a central glow
+                ctx.beginPath();
+                ctx.moveTo(W / 2 - rayWidth, H * 0.2);
+                ctx.lineTo(W / 2 + rayWidth, H * 0.2);
+                ctx.lineTo(W * 0.7, H * 0.8);
+                ctx.lineTo(W * 0.3, H * 0.8);
+                ctx.closePath();
+                ctx.fill();
+
+                if (strength > 0.4) {
+                    ctx.font = `${W / 10}px sans-serif`;
+                    ctx.fillStyle = `rgba(0, 0, 0, ${smellAlpha * 0.5})`; 
+                    ctx.fillText('🧀', W / 2, H / 2);
+                }
+
+            } else if (location === 'left') {
+                // Left smell: ray on the left side
+                ctx.beginPath();
+                ctx.moveTo(0, H * 0.2);
+                ctx.lineTo(rayWidth, H * 0.2);
+                ctx.lineTo(rayWidth, H * 0.8);
+                ctx.lineTo(0, H * 0.8);
+                ctx.closePath();
+                ctx.fill();
+            } else if (location === 'right') {
+                // Right smell: ray on the right side
+                ctx.beginPath();
+                ctx.moveTo(W, H * 0.2);
+                ctx.lineTo(W - rayWidth, H * 0.2);
+                ctx.lineTo(W - rayWidth, H * 0.8);
+                ctx.lineTo(W, H * 0.8);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+        drawMinimap(); // Draw minimap after main scene
+    }
+
+    // --- Minimap Drawing ---
+    function drawMinimap() {
+        minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+        minimapCtx.fillStyle = 'rgba(0, 0, 0, 0.6)'; // Background for the minimap
+        minimapCtx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+        minimapCtx.strokeStyle = '#4a5568';
+        minimapCtx.lineWidth = 1;
+
+        // Calculate offset to center the view on the rat's position
+        const mapCenterX = MINIMAP_SIZE / 2;
+        const mapCenterY = MINIMAP_SIZE / 2;
+
+        // The map is now FIXED (North is UP) - NO GLOBAL ROTATION APPLIED HERE
+
+        // Iterate through visited cells to draw the map
+        for (const key in rat.visitedCells) {
+            const [x, y] = key.split(',').map(Number);
+            
+            // Calculate relative position to the rat
+            const relativeX = x - rat.x;
+            const relativeY = y - rat.y;
+
+            // Only draw cells within the view radius
+            if (Math.abs(relativeX) <= MINIMAP_VIEW_RADIUS && Math.abs(relativeY) <= MINIMAP_VIEW_RADIUS) {
+                
+                // Fixed map coordinates (North is UP, East is RIGHT)
+                // relativeX (E/W) maps to drawX
+                // relativeY (S/N) maps to drawY
+                const minimapDrawX = mapCenterX + relativeX * MINIMAP_CELL_SIZE - MINIMAP_CELL_SIZE / 2;
+                const minimapDrawY = mapCenterY + relativeY * MINIMAP_CELL_SIZE - MINIMAP_CELL_SIZE / 2;
+                
+                // Draw visited cell background (Place Cells)
+                minimapCtx.fillStyle = '#3f51b5'; // Blue for visited path
+                minimapCtx.fillRect(minimapDrawX, minimapDrawY, MINIMAP_CELL_SIZE, MINIMAP_CELL_SIZE);
+
+                const cell = maze[x][y];
+                minimapCtx.strokeStyle = 'white'; // White lines for walls
+                minimapCtx.lineWidth = 1;
+
+                // Draw walls based on maze configuration (Grid Cells) - Fixed N, E, S, W walls
+                
+                // Top wall is always the 'North' wall
+                if (cell.walls.top) { 
+                    minimapCtx.beginPath();
+                    minimapCtx.moveTo(minimapDrawX, minimapDrawY);
+                    minimapCtx.lineTo(minimapDrawX + MINIMAP_CELL_SIZE, minimapDrawY);
+                    minimapCtx.stroke();
+                }
+                // Right wall is always the 'East' wall
+                if (cell.walls.right) {
+                    minimapCtx.beginPath();
+                    minimapCtx.moveTo(minimapDrawX + MINIMAP_CELL_SIZE, minimapDrawY);
+                    minimapCtx.lineTo(minimapDrawX + MINIMAP_CELL_SIZE, minimapDrawY + MINIMAP_CELL_SIZE);
+                    minimapCtx.stroke();
+                }
+                // Bottom wall is always the 'South' wall
+                if (cell.walls.bottom) {
+                    minimapCtx.beginPath();
+                    minimapCtx.moveTo(minimapDrawX, minimapDrawY + MINIMAP_CELL_SIZE);
+                    minimapCtx.lineTo(minimapDrawX + MINIMAP_CELL_SIZE, minimapDrawY + MINIMAP_CELL_SIZE);
+                    minimapCtx.stroke();
+                }
+                // Left wall is always the 'West' wall
+                if (cell.walls.left) {
+                    minimapCtx.beginPath();
+                    minimapCtx.moveTo(minimapDrawX, minimapDrawY);
+                    minimapCtx.lineTo(minimapDrawX, minimapDrawY + MINIMAP_CELL_SIZE);
+                    minimapCtx.stroke();
+                }
+            }
+        }
+
+        // --- Draw Rat Icon (Emoji 🐀) ---
+        const ratEmoji = '🐀';
+        const fontSize = MINIMAP_CELL_SIZE * 2; // Make the emoji quite large
+        minimapCtx.font = `bold ${fontSize}px sans-serif`;
+        
+        // Isolate the rat icon drawing to apply rotation based on direction
+        minimapCtx.save();
+        minimapCtx.translate(mapCenterX, mapCenterY);
+        
+        // Calculate total rotation:
+        // The rat emoji faces right (East) by default.
+        // Rotation = (-PI/2) (to face North) + (rat.direction * PI/2) (directional rotation)
+        // ADD Math.PI (180 degrees) to flip the orientation, as reported by the user.
+        let totalRotation = -Math.PI / 2 + (rat.direction * Math.PI / 2) + Math.PI;
+
+        minimapCtx.rotate(totalRotation); 
+        minimapCtx.fillText(ratEmoji, 0, 2); // Draw at the center (0, 0 after translate)
+        minimapCtx.restore(); 
+
+
+        // Draw cheese if discovered (Landmark)
+        const smellData = calculateSmellStrength();
+        if (smellData.strength > 0.1 || rat.visitedCells[`${cheese.x},${cheese.y}`]) { 
+            const relativeX = cheese.x - rat.x;
+            const relativeY = cheese.y - rat.y;
+
+            if (Math.abs(relativeX) <= MINIMAP_VIEW_RADIUS && Math.abs(relativeY) <= MINIMAP_VIEW_RADIUS) {
+                
+                const minimapCheeseX = mapCenterX + relativeX * MINIMAP_CELL_SIZE;
+                const minimapCheeseY = mapCenterY + relativeY * MINIMAP_CELL_SIZE;
+
+                minimapCtx.font = `${MINIMAP_CELL_SIZE * 1.5}px sans-serif`;
+                // Draw emoji without rotation on the fixed map
+                minimapCtx.fillText('🧀', minimapCheeseX, minimapCheeseY + MINIMAP_CELL_SIZE * 0.3); 
+            }
+        }
+    }
+
+    // --- Game Logic and Input Handling ---
+
+    function moveRat(action) { // action: 'forward', 'left', 'right', 'turn'
+        if (!isGameRunning) return;
+
+        // Mark the current cell as visited before moving or turning
+        rat.visitedCells[`${rat.x},${rat.y}`] = true; 
+
+        if (action === 'left') {
+            rat.direction = (rat.direction + 3) % 4; // Turn Left (90 degrees counter-clockwise)
+        } else if (action === 'right') {
+            rat.direction = (rat.direction + 1) % 4; // Turn Right (90 degrees clockwise)
+        } else if (action === 'turn') {
+            rat.direction = (rat.direction + 2) % 4; // Turn 180 degrees
+        } else if (action === 'forward') {
+            const currentCell = maze[rat.x][rat.y];
+            let dx = 0, dy = 0;
+            let wallOpen = false;
+
+            // Determine movement vector and check wall status
+            switch (rat.direction) {
+                case DIR_N: dx = 0; dy = -1; wallOpen = !currentCell.walls.top; break;
+                case DIR_E: dx = 1; dy = 0; wallOpen = !currentCell.walls.right; break;
+                case DIR_S: dx = 0; dy = 1; wallOpen = !currentCell.walls.bottom; break;
+                case DIR_W: dx = -1; dy = 0; wallOpen = !currentCell.walls.left; break;
+            }
+
+            const nextX = rat.x + dx;
+            const nextY = rat.y + dy;
+
+            // Check if movement is possible (wall open AND within bounds)
+            if (wallOpen && nextX >= 0 && nextX < cols && nextY >= 0 && nextY < rows) {
+                rat.x = nextX;
+                rat.y = nextY;
+            } else if (!wallOpen) {
+                showMessage("Dead end! Hit a wall.", 'bg-red-700');
+            }
+        }
+        draw();
+    }
+
+    function handleKeyPress(event) {
+        if (!isGameRunning) return;
+        
+        // --- UPDATED KEY MAPPING ---
+        switch (event.key) {
+            case 'ArrowUp':
+                event.preventDefault(); // Prevent scrolling
+                moveRat('forward');
+                break;
+            case 'ArrowLeft':
+                event.preventDefault(); // TURN LEFT
+                moveRat('left');
+                break;
+            case 'ArrowRight':
+                event.preventDefault(); // TURN RIGHT
+                moveRat('right');
+                break;
+            case 'ArrowDown': 
+                event.preventDefault(); // TURN AROUND (180)
+                moveRat('turn');
+                break;
+        }
+    }
+
+    function handleMobileClick(event) {
+        const action = event.currentTarget.dataset.action;
+        if(action) {
+            // Mobile controls already mapped to 'forward', 'left', 'right', 'turn' actions
+            moveRat(action);
+        }
+    }
+
+    function handleWin() {
+        if (!isGameRunning) return; 
+
+        // Mark final cell as visited for persistence
+        rat.visitedCells[`${rat.x},${rat.y}`] = true; 
+
+        isGameRunning = false;
+        currentLevel++;
+        levelDisplay.textContent = currentLevel;
+        showMessage(`Level ${currentLevel - 1} Complete! New Maze generated.`, 'bg-yellow-500');
+        
+        // Wait for a moment, then start the next level
+        setTimeout(() => {
+            startGame(true); 
+        }, 1500);
+    }
+
+    function showMessage(text, className = 'bg-gray-700') {
+        messageBox.textContent = text;
+        messageBox.className = `mt-4 p-3 ${className} text-white font-bold rounded-lg w-full text-center`;
+        messageBox.classList.remove('hidden');
+        setTimeout(() => {
+            messageBox.classList.add('hidden');
+        }, 2000);
+    }
+
+    function startGame(isNextLevel = false) {
+        if (!isNextLevel) {
+            currentLevel = 1;
+            levelDisplay.textContent = currentLevel;
+        }
+        
+        const size = parseInt(difficultySelect.value);
+        setupMaze(size);
+        isGameRunning = true;
+        // Mark the starting cell immediately
+        rat.visitedCells[`${rat.x},${rat.y}`] = true;
+        draw(); // Initial draw includes minimap
+        
+        startButton.textContent = 'Restart Game';
+        showMessage(`Level ${currentLevel}: Find the cheese!`, 'bg-blue-500');
+    }
+    
+    // --- Initialization and Event Listeners ---
+    window.onload = function() {
+        canvas.width = 450;
+        canvas.height = 450;
+        
+        // Ensure minimap canvas is also properly sized and centered (for rotation)
+        minimapCanvas.width = MINIMAP_SIZE;
+        minimapCanvas.height = MINIMAP_SIZE;
+        minimapCtx.textAlign = 'center';
+        minimapCtx.textBaseline = 'middle';
+
+        startGame(false);
+
+        isGameRunning = false; 
+        startButton.textContent = 'Start New Game';
+        levelDisplay.textContent = 1;
+        
+        showMessage("Press 'Start New Game' to begin your first-person maze challenge!", 'bg-gray-700');
+    };
+
+    startButton.addEventListener('click', () => startGame(false));
+    document.addEventListener('keydown', handleKeyPress);
+    mobileControls.forEach(button => {
+        button.addEventListener('click', handleMobileClick);
+    });
+
+</script>
+
+</body>
+</html>
