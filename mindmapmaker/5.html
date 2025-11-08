@@ -73,14 +73,7 @@
             cursor: move;
             transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out; 
             user-select: none; 
-        }
-        
-        /* Shape styles */
-        .node.shape-rectangle {
-            border-radius: 0.5rem; 
-        }
-        .node.shape-ellipse {
-            border-radius: 9999px; 
+            border-radius: 0.5rem; /* All nodes are now rounded rectangles */
         }
 
         .node:hover {
@@ -106,7 +99,7 @@
             box-sizing: border-box; 
             padding: 0.75rem 1rem;
             overflow: auto; 
-            pointer-events: none; 
+            pointer-events: none; /* Disabled by default, enabled on dblclick */
         }
         
         /* Resize Handles */
@@ -170,36 +163,6 @@
             }
         }
         
-        /* D-Pad Container (Adjusted for smaller size) */
-        #d-pad-container {
-            display: grid;
-            grid-template-areas: ". up ." "left center right" ". down .";
-            /* Reduced size from 32px to 24px */
-            grid-template-columns: 24px 24px 24px;
-            grid-template-rows: 24px 24px 24px;
-            padding: 4px;
-            background-color: #d1d5db; /* bg-gray-300 */
-            border-radius: 0.5rem;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        /* D-Pad Buttons */
-        .d-pad-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: #ffffff;
-            color: #4b5563; /* gray-700 */
-            transition: background-color 0.1s;
-            border-radius: 0.25rem;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-            padding: 4px; /* Reduced padding */
-        }
-
-        .d-pad-btn:hover {
-            background-color: #e5e7eb; /* gray-200 */
-        }
-        
         /* Toolbar collapse transition */
         #main-toolbar {
             transition: all 0.3s ease-in-out;
@@ -211,6 +174,37 @@
             height: 48px; /* Height of the header + title/toggle button */
             padding-bottom: 0.5rem; 
         }
+        
+        /* --- NEW JOYSTICK STYLES --- */
+        #joystick-base {
+            width: 80px;  /* 5rem */
+            height: 80px; /* 5rem */
+            background-color: #d1d5db; /* bg-gray-300 */
+            border-radius: 9999px; /* rounded-full */
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+            touch-action: none; /* Disable touch gestures on the joystick */
+        }
+
+        #joystick-handle {
+            width: 40px;  /* 2.5rem */
+            height: 40px; /* 2.5rem */
+            background-color: white;
+            border-radius: 9999px; /* rounded-full */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            cursor: grab;
+            transition: transform 0.1s ease-out; /* For snapping back */
+            touch-action: none;
+        }
+        
+        #joystick-handle:active {
+            cursor: grabbing;
+            transition: none; /* No transition while dragging */
+        }
 
     </style>
 </head>
@@ -219,8 +213,7 @@
     <!-- Toolbar -->
     <header id="main-toolbar" class="bg-white shadow-md z-30 p-2 flex flex-col">
         <div class="flex items-center space-x-2 w-full flex-shrink-0">
-            <h1 class="text-xl font-bold text-gray-800 px-2 flex-shrink-0">Mind Map</h1>
-            
+            <!-- Title Removed -->
             <div class="flex-grow"></div> 
             
             <!-- Collapse/Expand Toggle Button (Always visible) -->
@@ -262,29 +255,14 @@
             <button id="zoom-out-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">Zoom Out</button>
             <button id="zoom-fit-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150">Show All</button>
             
-            <!-- Joystick Panning Controls (D-PAD) -->
+            <!-- NEW Joystick Panning Control -->
             <div class="h-6 w-px bg-gray-300 mx-2"></div>
-            <div id="d-pad-container">
-                <button id="pan-up-btn" class="d-pad-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v10.586l3.293-3.293a1 1 0 011.414 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 111.414-1.414L9 14.586V4a1 1 0 011-1z" transform="rotate(180, 10, 10)"/></svg>
-                </button>
-                <button id="pan-left-btn" class="d-pad-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v10.586l3.293-3.293a1 1 0 011.414 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 111.414-1.414L9 14.586V4a1 1 0 011-1z" transform="rotate(90, 10, 10)"/></svg>
-                </button>
-                <!-- Center spot is left empty for visual D-pad feel -->
-                <button id="pan-right-btn" class="d-pad-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v10.586l3.293-3.293a1 1 0 011.414 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 111.414-1.414L9 14.586V4a1 1 0 011-1z" transform="rotate(-90, 10, 10)"/></svg>
-                </button>
-                <button id="pan-down-btn" class="d-pad-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v10.586l3.293-3.293a1 1 0 011.414 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 111.414-1.414L9 14.586V4a1 1 0 011-1z"/></svg>
-                </button>
+            <div id="joystick-base">
+                <div id="joystick-handle"></div>
             </div>
             <div class="h-6 w-px bg-gray-300 mx-2"></div>
             
-            <!-- Style Buttons -->
-            <button id="toggle-shape-btn" class="style-btn bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg shadow transition duration-150" disabled>Toggle Shape</button>
-
-            <div class="h-6 w-px bg-gray-300 mx-2"></div>
+            <!-- Toggle Shape Button Removed -->
 
             <!-- CLEAR ALL BUTTON (NEW) -->
             <button id="clear-all-btn" class="bg-red-200 hover:bg-red-300 text-red-800 font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
@@ -338,7 +316,7 @@
             
             <h2 class="text-2xl font-bold mb-4">How to Use</h2>
             <ul class="list-disc list-inside space-y-2 text-gray-700">
-                <li><strong class="font-semibold">Pan Canvas:</strong> Use the **D-Pad (joystick)** control in the toolbar to smoothly move the view.</li>
+                <li><strong class="font-semibold">Pan Canvas:</strong> Click and drag the **Joystick** in the toolbar. Pan speed is based on drag distance.</li>
                 <li><strong class="font-semibold">Zoom Canvas:</strong> Use the mouse wheel or "Zoom In" / "Zoom Out" buttons.</li>
                 <li><strong class="font-semibold">Fit Canvas:</strong> Click "Show All" to fit all nodes in view.</li>
                 <li><strong class="font-semibold">Add Node:</strong> Click 'Add Node'. If a node is selected, it branches off.</li>
@@ -371,6 +349,7 @@
     <script>
         // Global references initialized inside DOMContentLoaded (or immediately above it)
         let canvasWrapper, canvas, lineSvg, exportCanvas, instructionsModal, clearAllBtn;
+        let joystickHandle, joystickBase;
         
         let nodes = [];
         let connections = [];
@@ -383,14 +362,20 @@
         let scale = 1.0;
         let translateX = 0;
         let translateY = 0;
-        let panDirection = { x: 0, y: 0 };
+        
+        // Panning state
+        let panDirection = { x: 0, y: 0 }; // This will store the pan vector (e.g., {-5, 2.3})
         let animationFrameId = null;
+        let isJoystickDragging = false;
+        let joystickCenter = { x: 0, y: 0 };
+        let joystickMaxRadius = 0;
+
         
         let interactionMode = 'select';
         let connectionTargetNodes = []; 
         
         const zoomSpeed = 0.001;
-        const panSpeed = 5; 
+        const maxPanSpeed = 10; // The max pixels to move per frame
         const minScale = 0.1;
         const maxScale = 5.0;
         const minNodeWidth = 50;
@@ -410,7 +395,7 @@
         function updateToolbar() {
             const isSelected = selectedNodeId !== null;
             document.getElementById('delete-node-btn').disabled = !isSelected || interactionMode !== 'select';
-            document.getElementById('toggle-shape-btn').disabled = !isSelected || interactionMode !== 'select';
+            // Shape toggle button is removed
             
             const addConnBtn = document.getElementById('add-connection-btn');
             const delConnBtn = document.getElementById('delete-connection-btn');
@@ -547,7 +532,7 @@
 
         function saveMap() {
             const data = {
-                nodes: nodes.map(n => ({ id: n.id, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height, shape: n.shape })),
+                nodes: nodes.map(n => ({ id: n.id, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height, shape: 'rectangle' /* Shape removed */ })),
                 connections: connections,
                 nextNodeId: nextNodeId,
                 transform: { scale, translateX, translateY }
@@ -575,7 +560,7 @@
                 translateX = data.transform?.translateX || 0;
                 translateY = data.transform?.translateY || 0;
                 
-                data.nodes.forEach(n => createNode(n));
+                data.nodes.forEach(n => createNode(n)); // Shape property is ignored
                 connections = data.connections || [];
                 nextNodeId = data.nextNodeId || nextNodeId;
             } else {
@@ -583,7 +568,7 @@
                 scale = 1.0;
                 translateX = 0;
                 translateY = 0;
-                createNode({ text: 'Main Idea', x: 200, y: 200, width: 150, height: 80, shape: 'rectangle' });
+                createNode({ text: 'Main Idea', x: 200, y: 200, width: 150, height: 80 });
             }
             updateTransform();
             renderLinks();
@@ -663,13 +648,13 @@
         }
 
 
-        function createNode({ text, x, y, id, width, height, shape }) {
+        function createNode({ text, x, y, id, width, height }) { // Shape removed
             const nodeId = id || nextNodeId++;
             const nodeDiv = document.createElement('div');
             const textEl = document.createElement('div');
             
             nodeDiv.id = `node-${nodeId}`;
-            nodeDiv.className = `node shape-${shape || 'rectangle'}`;
+            nodeDiv.className = `node`; // Simplified
             textEl.setAttribute('contenteditable', 'true');
             textEl.classList.add('node-text');
             textEl.innerText = text;
@@ -679,7 +664,7 @@
             
             nodeDiv.style.cssText = `left: ${x}px; top: ${y}px; width: ${nodeWidth}px; height: ${nodeHeight}px;`;
 
-            const node = { id: nodeId, text, x, y, width: nodeWidth, height: nodeHeight, shape: shape || 'rectangle', element: nodeDiv };
+            const node = { id: nodeId, text, x, y, width: nodeWidth, height: nodeHeight, element: nodeDiv };
 
             ['tl', 'tr', 'bl', 'br'].forEach(pos => {
                 const handle = document.createElement('div');
@@ -752,14 +737,32 @@
                 document.addEventListener('mouseup', stopDrag);
             });
 
-            textEl.addEventListener('dblclick', (e) => {
+            // *** TEXT EDITING FIX: Listener is on nodeDiv ***
+            nodeDiv.addEventListener('dblclick', (e) => {
+                // Only fire if the click is on the node itself or the text, not a resize handle
                 if (e.target.classList.contains('resize-handle')) return;
-                textEl.style.pointerEvents = 'auto';
-                textEl.focus();
-                document.execCommand('selectAll', false, null);
+                
+                // Find the text element inside this node
+                const textEl = node.element.querySelector('.node-text');
+                if (textEl) {
+                    textEl.style.pointerEvents = 'auto'; // Make it clickable
+                    textEl.focus();
+                    
+                    // Select all text
+                    const range = document.createRange();
+                    range.selectNodeContents(textEl);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
             });
+
             textEl.addEventListener('input', (e) => { node.text = e.target.innerText; renderLinks(); });
-            textEl.addEventListener('blur', () => { renderLinks(); saveMap(); textEl.style.pointerEvents = 'none'; });
+            textEl.addEventListener('blur', () => { 
+                renderLinks(); 
+                saveMap(); 
+                textEl.style.pointerEvents = 'none'; // Disable pointer events again
+            });
 
             nodes.push(node);
             return node;
@@ -808,45 +811,71 @@
         // --- Joystick Panning Logic ---
         function panLoop() {
             if (panDirection.x !== 0 || panDirection.y !== 0) {
-                translateX += panDirection.x * panSpeed;
-                translateY += panDirection.y * panSpeed;
+                translateX += panDirection.x;
+                translateY += panDirection.y;
                 updateTransform();
                 animationFrameId = requestAnimationFrame(panLoop);
-            }
-        }
-
-        function startMovement(dx, dy) {
-            // dx and dy are the movement *direction*. dx/dy = 1 or -1 or 0
-            panDirection.x = dx;
-            panDirection.y = dy;
-            if (animationFrameId === null) {
-                // If animation isn't running, start it
-                panLoop();
-            }
-        }
-
-        function stopMovement() {
-            // Stop animation only if movement in all directions ceases
-            if (panDirection.x === 0 && panDirection.y === 0) {
-                 if (animationFrameId !== null) {
-                    cancelAnimationFrame(animationFrameId);
-                    animationFrameId = null;
-                    saveMap(); 
-                }
+            } else {
+                // No movement, stop the loop
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+                saveMap(); // Save position once panning stops
             }
         }
         
-        // Helper to handle mouseup on directional buttons (clears direction)
-        function createStopListener(directionKey, directionValue) {
-            return (e) => {
-                if (directionKey === 'x') {
-                    if (panDirection.x === directionValue) panDirection.x = 0;
-                } else {
-                    if (panDirection.y === directionValue) panDirection.y = 0;
-                }
-                stopMovement();
-            };
+        function onJoystickMove(clientX, clientY) {
+            if (!isJoystickDragging) return;
+
+            const dx = clientX - joystickCenter.x;
+            const dy = clientY - joystickCenter.y;
+            const distance = Math.min(joystickMaxRadius, Math.sqrt(dx * dx + dy * dy));
+            const angle = Math.atan2(dy, dx);
+            
+            const handleX = distance * Math.cos(angle);
+            const handleY = distance * Math.sin(angle);
+            
+            // Move the handle visually
+            joystickHandle.style.transform = `translate(calc(-50% + ${handleX}px), calc(-50% + ${handleY}px))`;
+            
+            // Calculate pan vector
+            // Invert x and y for natural panning (drag right to move map left, revealing more on the right)
+            panDirection.x = (handleX / joystickMaxRadius) * maxPanSpeed * -1;
+            panDirection.y = (handleY / joystickMaxRadius) * maxPanSpeed * -1;
+            
+            // Start the pan loop if it's not already running
+            if (animationFrameId === null) {
+                panLoop();
+            }
         }
+        
+        function onJoystickEnd(e) {
+            if (!isJoystickDragging) return;
+            isJoystickDragging = false;
+            
+            // Snap handle back to center
+            joystickHandle.style.transform = `translate(-50%, -50%)`;
+            
+            // Stop panning
+            panDirection.x = 0;
+            panDirection.y = 0;
+            
+            // Remove global listeners
+            document.removeEventListener('mousemove', onJoystickDrag);
+            document.removeEventListener('mouseup', onJoystickEnd);
+            document.removeEventListener('touchmove', onJoystickTouch);
+            document.removeEventListener('touchend', onJoystickEnd);
+        }
+        
+        // Wrapper functions for mouse/touch
+        function onJoystickDrag(e) {
+            onJoystickMove(e.clientX, e.clientY);
+        }
+        function onJoystickTouch(e) {
+            if (e.touches.length > 0) {
+                onJoystickMove(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }
+
 
         function handleZoom(factor, clientX, clientY) {
             const oldScale = scale;
@@ -950,12 +979,10 @@
                 const textX = width / 2;
                 
                 svgContent += `<g transform="translate(${x}, ${y})">`;
-                if (shape === 'ellipse') {
-                    svgContent += `<ellipse cx="${width / 2}" cy="${height / 2}" rx="${width / 2}" ry="${height / 2}" fill="#ffffff" stroke="#e5e7eb" stroke-width="1"/>`;
-                } else {
-                    const rx = 8;
-                    svgContent += `<rect x="0" y="0" width="${width}" height="${height}" rx="${rx}" ry="${rx}" fill="#ffffff" stroke="#e5e7eb" stroke-width="1"/>`;
-                }
+                // Shape logic removed, always draw rounded rect
+                const rx = 8;
+                svgContent += `<rect x="0" y="0" width="${width}" height="${height}" rx="${rx}" ry="${rx}" fill="#ffffff" stroke="#e5e7eb" stroke-width="1"/>`;
+                
                 svgContent += `<text fill="#1f2937" font-family="Inter, sans-serif" font-size="${exportFontSize}" text-anchor="middle">`;
                 lines.forEach((line, index) => {
                     svgContent += `<tspan x="${textX}" y="${startY + index * lineHeight}">${line}</tspan>`;
@@ -1002,6 +1029,8 @@
             exportCanvas = document.getElementById('export-canvas'); 
             instructionsModal = document.getElementById('instructions');
             clearAllBtn = document.getElementById('clear-all-btn');
+            joystickHandle = document.getElementById('joystick-handle');
+            joystickBase = document.getElementById('joystick-base');
             
             // Toolbar elements for collapse logic
             const mainToolbar = document.getElementById('main-toolbar');
@@ -1034,16 +1063,8 @@
             });
             document.getElementById('confirm-cancel').addEventListener('click', hideConfirm);
             
-            document.getElementById('toggle-shape-btn').addEventListener('click', () => {
-                const node = nodes.find(n => n.id === selectedNodeId);
-                if (node) {
-                    node.shape = node.shape === 'rectangle' ? 'ellipse' : 'rectangle';
-                    node.element.classList.toggle('shape-ellipse');
-                    node.element.classList.toggle('shape-rectangle');
-                    saveMap();
-                }
-            });
-
+            // Shape toggle listener removed
+            
             document.getElementById('add-node-btn').addEventListener('click', () => {
                 const parentNode = nodes.find(n => n.id === selectedNodeId);
                 const [cx, cy] = [canvas.offsetWidth / 2, canvas.offsetHeight / 2];
@@ -1055,7 +1076,7 @@
                     [x, y] = [(cx - 75 - translateX) / scale, (cy - 40 - translateY) / scale];
                 }
                 
-                const newNode = createNode({ text: 'New Idea', x, y, shape: parentNode?.shape || 'rectangle' });
+                const newNode = createNode({ text: 'New Idea', x, y }); // Shape removed
                 if (parentNode) addConnection(parentNode.id, newNode.id);
                 selectNode(newNode.id);
                 saveMap();
@@ -1085,22 +1106,32 @@
             document.getElementById('close-instructions-btn').addEventListener('click', () => instructionsModal.classList.add('opacity-0', 'pointer-events-none'));
 
             // --- Joystick Panning Bindings ---
-            document.getElementById('pan-up-btn').addEventListener('mousedown', () => startMovement(0, panSpeed));
-            document.getElementById('pan-down-btn').addEventListener('mousedown', () => startMovement(0, -panSpeed));
-            document.getElementById('pan-left-btn').addEventListener('mousedown', () => startMovement(panSpeed, 0));
-            document.getElementById('pan-right-btn').addEventListener('mousedown', () => startMovement(-panSpeed, 0));
+            function onJoystickStart(e) {
+                isJoystickDragging = true;
+                const baseRect = joystickBase.getBoundingClientRect();
+                const handleRect = joystickHandle.getBoundingClientRect();
+                
+                joystickCenter = {
+                    x: baseRect.left + baseRect.width / 2,
+                    y: baseRect.top + baseRect.height / 2
+                };
+                joystickMaxRadius = baseRect.width / 2 - handleRect.width / 2;
 
-            // Stop movement on mouse up, regardless of where it happens
-            document.addEventListener('mouseup', createStopListener('y', panSpeed));
-            document.addEventListener('mouseup', createStopListener('y', -panSpeed));
-            document.addEventListener('mouseup', createStopListener('x', panSpeed));
-            document.addEventListener('mouseup', createStopListener('x', -panSpeed));
-            
-            // Stop movement on mouse leave (for the buttons)
-            document.getElementById('pan-up-btn').addEventListener('mouseleave', createStopListener('y', panSpeed));
-            document.getElementById('pan-down-btn').addEventListener('mouseleave', createStopListener('y', -panSpeed));
-            document.getElementById('pan-left-btn').addEventListener('mouseleave', createStopListener('x', panSpeed));
-            document.getElementById('pan-right-btn').addEventListener('mouseleave', createStopListener('x', -panSpeed));
+                // Add appropriate listeners
+                if (e.type === 'mousedown') {
+                    document.addEventListener('mousemove', onJoystickDrag);
+                    document.addEventListener('mouseup', onJoystickEnd);
+                } else if (e.type === 'touchstart') {
+                    document.addEventListener('touchmove', onJoystickTouch, { passive: false });
+                    document.addEventListener('touchend', onJoystickEnd);
+                }
+                
+                // Prevent default drag behavior
+                e.preventDefault();
+            }
+
+            joystickHandle.addEventListener('mousedown', onJoystickStart);
+            joystickHandle.addEventListener('touchstart', onJoystickStart, { passive: false });
 
 
             // Deselect logic: now just click the background
