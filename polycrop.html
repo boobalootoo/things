@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Polygon Image Cropper</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Set default font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        /* Style for the canvas container to center it */
+        #canvas-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-grow: 1;
+            padding: 1rem;
+        }
+        canvas {
+            border: 2px solid #e5e7eb; /* Subtle border for the canvas */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 100%;
+            height: auto;
+        }
+        .action-button {
+            @apply px-4 py-2 font-semibold text-sm rounded-lg shadow-md transition duration-150 ease-in-out;
+        }
+        .primary {
+            @apply bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed;
+        }
+        .secondary {
+            @apply bg-gray-200 text-gray-800 hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm p-4 sticky top-0 z-10">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-2xl font-bold text-gray-800">Multi-Polygon Image Cropper</h1>
+            <p class="text-sm text-gray-500">Draw multiple areas and batch download the cropped images.</p>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex flex-col lg:flex-row max-w-7xl mx-auto w-full flex-grow">
+        
+        <!-- Controls Panel -->
+        <div class="lg:w-1/4 w-full p-4 bg-white lg:border-r border-b lg:border-b-0 shadow-lg lg:shadow-none">
+            
+            <h2 class="text-lg font-semibold mb-3 text-gray-700">1. Load Image</h2>
+            <input type="file" id="imageLoader" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 mb-6"/>
+
+            <h2 class="text-lg font-semibold mb-3 text-gray-700">2. Draw Polygons</h2>
+            <p id="drawingStatus" class="text-sm text-indigo-600 font-medium mb-2">Click to start drawing...</p>
+            <p class="text-xs text-gray-600 mb-4">
+                Click to add points. Double-click to close and save the polygon.
+            </p>
+
+            <h2 class="text-lg font-semibold mb-3 text-gray-700">3. Actions</h2>
+            <div class="space-y-3">
+                <button id="copyLastImage" class="action-button secondary w-full" disabled>Copy Image of Last Polygon</button>
+                <button id="batchDownload" class="action-button primary w-full" disabled>Download All Polygons (Batch)</button>
+                <button id="clearAll" class="action-button secondary w-full" disabled>Clear All Polygons</button>
+            </div>
+
+            <!-- Removed the Saved Polygons display section -->
+            
+        </div>
+
+        <!-- Canvas Area -->
+        <div id="canvas-container" class="lg:w-3/4 w-full bg-gray-100 flex items-center justify-center p-4">
+            <canvas id="imageCanvas" class="rounded-lg cursor-crosshair"></canvas>
+            <p id="placeholderText" class="text-gray-500 text-center text-lg">Upload an image to start annotating.</p>
+        </div>
+
+    </main>
+
+    <!-- Feedback Message Box (Modal) -->
+    <div id="messageBox" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden items-center justify-center z-50 transition-opacity duration-300">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full transform scale-95 transition-transform duration-300">
+            <h3 id="messageTitle" class="text-xl font-bold mb-3 text-gray-800">Success!</h3>
+            <p id="messageContent" class="text-gray-600 mb-4">Content copied to clipboard.</p>
+            <button id="closeMessage" class="action-button primary w-full">OK</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration & Initialization ---
+        const canvas = document.getElementById('imageCanvas');
+        const ctx = canvas.getContext('2d');
+        const imageLoader = document.getElementById('imageLoader');
+        const placeholderText = document.getElementById('placeholderText');
+        const clearAllBtn = document.getElementById('clearAll');
+        const copyLastImageBtn = document.getElementById('copyLastImage');
+        const batchDownloadBtn = document.getElementById('batchDownload');
+        const drawingStatus = document.getElementById('drawingStatus');
+
+        const messageBox = document.getElementById('messageBox');
+        const closeMessageBtn = document.getElementById('closeMessage');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageContent = document.getElementById('messageContent');
+
+        let originalImage = null;
+        let polygons = []; // Array of closed polygons (array of points)
+        let currentPolygon = []; // Points for the polygon currently being drawn
+        let isDrawing = false;
+
+        // --- Utility: Message Box ---
+        function showMessage(title, content) {
+            messageTitle.textContent = title;
+            messageContent.textContent = content;
+            messageBox.classList.remove('hidden');
+            messageBox.classList.add('flex');
+        }
+
+        closeMessageBtn.addEventListener('click', () => {
+            messageBox.classList.add('hidden');
+            messageBox.classList.remove('flex');
+        });
+
+        // --- Utility: Update UI State ---
+        function updateUI() {
+            const hasImage = originalImage !== null;
+            const hasSavedPolygons = polygons.length > 0;
+
+            // Enable/Disable buttons
+            clearAllBtn.disabled = !hasImage || polygons.length === 0;
+            copyLastImageBtn.disabled = !hasSavedPolygons;
+            batchDownloadBtn.disabled = !hasSavedPolygons;
+
+            // Update drawing status text
+            if (!hasImage) {
+                drawingStatus.textContent = "Upload an image to start.";
+                drawingStatus.classList.remove('text-indigo-600');
+                drawingStatus.classList.add('text-gray-500');
+            } else if (isDrawing) {
+                drawingStatus.textContent = `Drawing... (${polygons.length} saved polygons, ${currentPolygon.length} points)`;
+                drawingStatus.classList.add('text-indigo-600');
+            } else {
+                drawingStatus.textContent = `Ready to draw. (${polygons.length} polygons saved). Click to start drawing a new polygon.`;
+                drawingStatus.classList.remove('text-indigo-600');
+            }
+        }
+
+        // --- Canvas Drawing Logic ---
+
+        function drawPolygon(mousePos = null) {
+            if (!originalImage) return;
+
+            // 1. Redraw the image first
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+
+            // 2. Draw all saved polygons
+            polygons.forEach((poly, index) => {
+                if (poly.length < 3) return;
+                ctx.beginPath();
+                ctx.moveTo(poly[0].x, poly[0].y);
+
+                // Draw lines
+                for (let i = 1; i < poly.length; i++) {
+                    ctx.lineTo(poly[i].x, poly[i].y);
+                }
+                ctx.closePath();
+
+                // Use unique color/style per polygon index (for visual separation)
+                const color = index % 2 === 0 ? 'rgba(0, 150, 255, 0.3)' : 'rgba(255, 100, 0, 0.3)';
+                const borderColor = index % 2 === 0 ? 'blue' : 'orange';
+
+                // Fill and border
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Draw points
+                poly.forEach(p => {
+                    ctx.fillStyle = borderColor;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            });
+
+            // 3. Draw the current, unclosed polygon
+            if (isDrawing && currentPolygon.length > 0) {
+                ctx.beginPath();
+                ctx.moveTo(currentPolygon[0].x, currentPolygon[0].y);
+
+                for (let i = 1; i < currentPolygon.length; i++) {
+                    ctx.lineTo(currentPolygon[i].x, currentPolygon[i].y);
+                }
+
+                // Draw line to the current mouse position (preview)
+                if (mousePos) {
+                    ctx.strokeStyle = 'rgba(255, 0, 0, 0.7)';
+                    ctx.lineWidth = 2;
+                    ctx.lineTo(mousePos.x, mousePos.y);
+                    ctx.stroke();
+                }
+
+                // Draw points for the current polygon
+                currentPolygon.forEach(p => {
+                    ctx.fillStyle = 'red';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+        }
+
+        // --- Event Handlers ---
+
+        function getMousePos(event) {
+            const rect = canvas.getBoundingClientRect();
+            // Calculate mouse position relative to the displayed canvas element
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            // Map the displayed coordinates back to the internal 1:1 canvas coordinates
+            const canvasX = x * (canvas.width / rect.width);
+            const canvasY = y * (canvas.height / rect.height);
+            
+            return { x: canvasX, y: canvasY };
+        }
+
+        canvas.addEventListener('click', (event) => {
+            if (!originalImage) return;
+
+            const pos = getMousePos(event);
+            
+            if (!isDrawing) {
+                // Start a new polygon
+                currentPolygon = [pos];
+                isDrawing = true;
+            } else {
+                // Add a new point to the current polygon
+                currentPolygon.push(pos);
+            }
+            drawPolygon();
+            updateUI();
+        });
+
+        canvas.addEventListener('dblclick', () => {
+            if (currentPolygon.length >= 3) {
+                // Close and save the current polygon
+                polygons.push(currentPolygon);
+                currentPolygon = [];
+                isDrawing = false; 
+                drawPolygon();
+            } else if (currentPolygon.length > 0) {
+                showMessage("Cannot Close", "A polygon requires at least 3 points to be closed and saved.");
+            }
+            updateUI();
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+            if (isDrawing && currentPolygon.length > 0) {
+                drawPolygon(getMousePos(event));
+            }
+        });
+
+        clearAllBtn.addEventListener('click', () => {
+            polygons = [];
+            currentPolygon = [];
+            isDrawing = false;
+            drawPolygon(); // Redraw with no polygons
+            updateUI();
+        });
+
+        // --- Image Loading and Resizing ---
+
+        imageLoader.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        originalImage = img;
+                        polygons = [];
+                        currentPolygon = [];
+                        isDrawing = false;
+
+                        placeholderText.classList.add('hidden');
+
+                        // Set canvas intrinsic size to the image size (1:1 pixel mapping)
+                        canvas.width = originalImage.width;
+                        canvas.height = originalImage.height;
+
+                        // Set canvas display size for responsiveness
+                        const canvasContainer = document.getElementById('canvas-container');
+                        const containerWidth = canvasContainer.offsetWidth - 32; // Container width minus padding
+                        
+                        let displayWidth = originalImage.width;
+                        let displayHeight = originalImage.height;
+                        
+                        // Scale down if image is wider than container
+                        if (originalImage.width > containerWidth) {
+                            displayWidth = containerWidth;
+                            displayHeight = (originalImage.height / originalImage.width) * displayWidth;
+                        }
+                        
+                        // Also limit based on height for better responsiveness
+                        const maxDisplayHeight = window.innerHeight * 0.7;
+                        if (displayHeight > maxDisplayHeight) {
+                            displayHeight = maxDisplayHeight;
+                            displayWidth = (originalImage.width / originalImage.height) * displayHeight;
+                        }
+
+                        canvas.style.width = `${displayWidth}px`;
+                        canvas.style.height = `${displayHeight}px`;
+
+                        drawPolygon();
+                        updateUI();
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // --- Core Function: Crop Polygon to New Canvas ---
+
+        function cropImageAndGetCanvas(points) {
+            // 1. Find Bounding Box
+            let minX = Infinity, minY = Infinity;
+            let maxX = -Infinity, maxY = -Infinity;
+
+            points.forEach(p => {
+                minX = Math.min(minX, p.x);
+                minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x);
+                maxY = Math.max(maxY, p.y);
+            });
+
+            const cropWidth = maxX - minX;
+            const cropHeight = maxY - minY;
+
+            if (cropWidth <= 0 || cropHeight <= 0) {
+                 return null;
+            }
+
+            // 2. Create Temporary Canvas
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = cropWidth;
+            tempCanvas.height = cropHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // 3. Define Clipping Path
+            tempCtx.beginPath();
+            
+            // Translate points so they are relative to the top-left of the bounding box (0,0 of tempCanvas)
+            tempCtx.moveTo(points[0].x - minX, points[0].y - minY);
+            for (let i = 1; i < points.length; i++) {
+                tempCtx.lineTo(points[i].x - minX, points[i].y - minY);
+            }
+            tempCtx.closePath();
+            tempCtx.clip();
+
+            // 4. Draw the original image
+            // We draw the image offset by (-minX, -minY). 
+            // The clipping path ensures only the relevant part of the image is rendered.
+            tempCtx.drawImage(
+                originalImage, 
+                minX, minY, cropWidth, cropHeight, // Source rectangle (x, y, w, h)
+                0, 0, cropWidth, cropHeight      // Destination rectangle (x, y, w, h)
+            );
+            
+            return tempCanvas;
+        }
+
+        // --- Action 1: Batch Download ---
+
+        batchDownloadBtn.addEventListener('click', () => {
+            if (polygons.length === 0) {
+                showMessage("Error", "No polygons have been saved to download.");
+                return;
+            }
+
+            let downloadCount = 0;
+
+            polygons.forEach((poly, index) => {
+                const tempCanvas = cropImageAndGetCanvas(poly);
+                
+                if (tempCanvas) {
+                    const dataURL = tempCanvas.toDataURL('image/png');
+                    const link = document.createElement('a');
+                    link.download = `polygon_crop_${index + 1}.png`;
+                    link.href = dataURL;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    downloadCount++;
+                }
+            });
+
+            showMessage("Batch Download Complete", `${downloadCount} cropped image(s) downloaded successfully.`);
+        });
+        
+        // --- Action 2: Copy Image to Clipboard ---
+
+        copyLastImageBtn.addEventListener('click', () => {
+            if (polygons.length === 0) {
+                showMessage("Error", "No polygons have been saved to copy.");
+                return;
+            }
+
+            const lastPolygon = polygons[polygons.length - 1];
+            const tempCanvas = cropImageAndGetCanvas(lastPolygon);
+
+            if (!tempCanvas) {
+                showMessage("Error", "Could not crop the last polygon.");
+                return;
+            }
+            
+            // Use the modern clipboard API
+            tempCanvas.toBlob((blob) => {
+                if (!blob) {
+                    showMessage("Error", "Failed to convert cropped image to a copyable format.");
+                    return;
+                }
+
+                // Attempt to use the asynchronous Clipboard API
+                try {
+                    const item = new ClipboardItem({ "image/png": blob });
+                    navigator.clipboard.write([item]).then(() => {
+                        showMessage("Success!", "The cropped image of the last polygon was copied to your clipboard (Ctrl+V to paste).");
+                    }).catch(e => {
+                        // Fallback/Error case for browsers that don't support it or security blocks
+                        console.error("Clipboard write error:", e);
+                        showMessage("Copy Error", "Clipboard API failed. Your browser or environment may not support copying images directly to the clipboard.");
+                    });
+                } catch (e) {
+                    console.error("ClipboardItem creation error:", e);
+                    showMessage("Copy Error", "An error occurred while preparing the image for the clipboard.");
+                }
+            }, 'image/png');
+        });
+        
+        // Initial setup
+        updateUI();
+
+    </script>
+</body>
+</html>
