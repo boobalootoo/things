@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Visual Timetable</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Inter:wght@400;600&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: black;
+        }
+        
+        .activity-title {
+            font-family: 'Comic Neue', cursive;
+        }
+        
+        .transition-width {
+            transition-property: flex-grow, width, all;
+            transition-duration: 500ms;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden bg-slate-50">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm z-30 border-b border-slate-200 flex-shrink-0 px-4 py-2 flex justify-between items-center relative">
+        <!-- Left: Title & Date -->
+        <div class="flex items-center space-x-4 z-10">
+            <h1 class="text-xl font-bold text-black activity-title hidden lg:block">Daily Timetable</h1>
+            <p class="text-black text-xs font-semibold" id="current-date">Loading...</p>
+        </div>
+
+        <!-- CENTER: COUNTDOWN TIMER (New Feature) -->
+        <div class="absolute left-1/2 transform -translate-x-1/2 bg-blue-100 border border-blue-300 rounded-full px-6 py-1 flex items-center shadow-inner">
+            <span class="text-[10px] uppercase font-bold text-blue-500 mr-2 tracking-wider">Next in</span>
+            <span id="countdown-display" class="text-xl font-mono font-bold text-blue-700">--:--</span>
+        </div>
+        
+        <!-- Right: Clocks -->
+        <div class="flex items-center gap-4 z-10">
+            <div class="text-right">
+                <div class="text-2xl font-bold text-black font-mono leading-none" id="digital-clock">--:--</div>
+            </div>
+            <canvas id="analogue-clock" width="50" height="50" class="bg-white rounded-full border-2 border-slate-300 shadow-inner"></canvas>
+        </div>
+    </header>
+
+    <!-- NOW & NEXT Board -->
+    <section class="flex-shrink-0 w-full px-2 py-3 bg-blue-50 border-b border-blue-100 flex justify-center items-center gap-2 md:gap-6 h-60 md:h-72 transition-all duration-500">
+        
+        <!-- NOW Card -->
+        <div class="flex flex-col items-center h-full w-5/12 max-w-sm bg-white rounded-2xl border-4 border-green-400 shadow-lg overflow-hidden transform transition-all hover:scale-[1.02]">
+            <div class="w-full bg-green-400 text-white text-center font-bold py-1 text-base md:text-xl tracking-wider shadow-sm z-10">NOW</div>
+            <div class="flex-1 w-full bg-white relative p-4 flex items-center justify-center overflow-hidden">
+                <img id="now-img" src="" alt="Now" class="w-full h-full object-contain drop-shadow-sm">
+            </div>
+            <div class="w-full bg-green-50 py-2 px-2 border-t border-green-100 text-center flex flex-col justify-center min-h-[4.5rem]">
+                <h2 id="now-title" class="text-xl md:text-3xl font-bold text-black activity-title leading-tight line-clamp-1">...</h2>
+                <p id="now-time" class="text-lg md:text-xl text-black font-mono font-bold mt-1">--:--</p>
+            </div>
+        </div>
+
+        <!-- Arrow -->
+        <div class="text-black flex-shrink-0">
+            <svg class="w-8 h-8 md:w-16 md:h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </div>
+
+        <!-- NEXT Card -->
+        <div class="flex flex-col items-center h-full w-5/12 max-w-sm bg-white rounded-2xl border-4 border-slate-300 shadow overflow-hidden opacity-95 transform transition-all hover:opacity-100">
+            <div class="w-full bg-slate-400 text-white text-center font-bold py-1 text-base md:text-xl tracking-wider shadow-sm z-10">NEXT</div>
+            <div class="flex-1 w-full bg-white relative p-4 flex items-center justify-center overflow-hidden">
+                <img id="next-img" src="" alt="Next" class="w-full h-full object-contain grayscale-[20%]">
+            </div>
+            <div class="w-full bg-slate-50 py-2 px-2 border-t border-slate-200 text-center flex flex-col justify-center min-h-[4.5rem]">
+                <h2 id="next-title" class="text-xl md:text-3xl font-bold text-black activity-title leading-tight line-clamp-1">...</h2>
+                <p id="next-time" class="text-lg md:text-xl text-black font-mono font-bold mt-1">--:--</p>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- Main Content (Full Day Timeline) -->
+    <main class="flex-grow flex items-end justify-center w-full px-1 pb-1 pt-2 bg-slate-100 overflow-hidden">
+        <div id="timetable-container" class="flex flex-row w-full gap-0.5 items-end justify-center h-full">
+            <!-- Content will be injected by JavaScript -->
+        </div>
+    </main>
+
+    <footer class="bg-white text-center text-black text-[9px] py-0.5 flex-shrink-0 border-t">
+        <p>Visual Timetable</p>
+    </footer>
+
+    <script>
+        // --- DATA ---
+        const timetableData = [
+            { title: "Soft start and register", time: "8:35-8:55", duration: 20, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/register.png" },
+            { title: "Phonics", time: "8:55-9:15", duration: 20, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/phonics.png" },
+            { title: "Play to learn", time: "9:15-9:45", duration: 30, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/play.png" },
+            { title: "5 minute warning", time: "9:45-9:50", duration: 5, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/warning.png" },
+            { title: "Tidy-up", time: "9:50-10:00", duration: 10, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/tidy.png" },
+            { title: "Snack", time: "10:00-10:15", duration: 15, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/snack.png" },
+            { title: "Play to learn", time: "10:15-10:45", duration: 30, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/play.png" },
+            { title: "5 minute warning", time: "10:45-10:50", duration: 5, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/warning.png" },
+            { title: "Tidy-up", time: "10:50-11:00", duration: 10, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/tidy.png" },
+            { title: "Maths", time: "11:00-11:35", duration: 35, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/maths.png" },
+            { title: "Lunch", time: "11:40-12:30", duration: 50, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/lunch.png" },
+            { title: "Carpet and register", time: "12:30-12:55", duration: 25, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/register.png" },
+            { title: "Playtime", time: "12:55-13:10", duration: 15, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/playtime.png" },
+            { title: "Play to learn", time: "13:10-14:25", duration: 75, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/play.png" },
+            { title: "5 minute warning", time: "14:25-14:30", duration: 5, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/warning.png" },
+            { title: "Tidy-up", time: "14:30-14:40", duration: 10, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/tidy.png" },
+            { title: "Carpet", time: "14:40-15:00", duration: 20, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/carpet.png" },
+            { title: "Story", time: "15:00-15:15", duration: 15, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/story.png" }
+        ];
+
+        // --- HELPERS ---
+        function getMinutesFromMidnight(timeStr) {
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return hours * 60 + minutes;
+        }
+
+        function isTimeInRange(rangeStr) {
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const [startStr, endStr] = rangeStr.split('-');
+            const startMinutes = getMinutesFromMidnight(startStr);
+            const endMinutes = getMinutesFromMidnight(endStr);
+            return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+        }
+
+        // --- ANALOGUE CLOCK ---
+        function drawClock() {
+            const canvas = document.getElementById("analogue-clock");
+            if (!canvas) return;
+            const ctx = canvas.getContext("2d");
+            const radius = canvas.height / 2;
+            ctx.translate(radius, radius);
+            const scale = radius * 0.90;
+
+            // Clear
+            ctx.resetTransform();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.translate(radius, radius);
+
+            // Face
+            ctx.beginPath();
+            ctx.arc(0, 0, scale, 0, 2 * Math.PI);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            
+            // Ticks
+            for(let num = 1; num <= 12; num++){
+                const ang = num * Math.PI / 6;
+                ctx.rotate(ang);
+                ctx.translate(0, -scale * 0.85);
+                ctx.rotate(-ang);
+                ctx.fillStyle = 'black'; 
+                ctx.font = "bold " + (scale*0.3) + "px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(num.toString(), 0, 0);
+                ctx.rotate(ang);
+                ctx.translate(0, scale * 0.85);
+                ctx.rotate(-ang);
+            }
+
+            const now = new Date();
+            let hour = now.getHours();
+            let minute = now.getMinutes();
+            let second = now.getSeconds();
+
+            // Hour
+            hour = hour % 12;
+            hour = (hour*Math.PI/6) + (minute*Math.PI/(6*60)) + (second*Math.PI/(360*60));
+            drawHand(ctx, hour, scale*0.5, scale*0.07, 'black'); 
+
+            // Minute
+            minute = (minute*Math.PI/30) + (second*Math.PI/(30*60));
+            drawHand(ctx, minute, scale*0.8, scale*0.05, 'black'); 
+
+            // Second
+            second = (second*Math.PI/30);
+            drawHand(ctx, second, scale*0.9, scale*0.02, '#e11d48'); 
+
+            // Center dot
+            ctx.beginPath();
+            ctx.arc(0, 0, scale*0.05, 0, 2*Math.PI);
+            ctx.fillStyle = 'black';
+            ctx.fill();
+
+            // Reset for next frame
+            ctx.resetTransform();
+        }
+
+        function drawHand(ctx, pos, length, width, color) {
+            ctx.beginPath();
+            ctx.lineWidth = width;
+            ctx.lineCap = "round";
+            ctx.strokeStyle = color;
+            ctx.moveTo(0,0);
+            ctx.rotate(pos);
+            ctx.lineTo(0, -length);
+            ctx.stroke();
+            ctx.rotate(-pos);
+        }
+
+        // --- TIME & COUNTDOWN LOGIC ---
+        function updateTimeInfo() {
+            const now = new Date();
+            
+            // Date
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('current-date').textContent = now.toLocaleDateString('en-GB', options);
+            
+            // Digital Clock
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+            document.getElementById('digital-clock').textContent = `${hours}:${minutesStr}`;
+
+            // Analogue Clock
+            drawClock();
+
+            // Countdown Logic
+            updateCountdown(now);
+        }
+
+        function updateCountdown(now) {
+            const countdownDisplay = document.getElementById('countdown-display');
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            
+            // Find active item
+            const activeIndex = timetableData.findIndex(item => isTimeInRange(item.time));
+            
+            let targetTime = null;
+            let label = "Next in";
+
+            if (activeIndex !== -1) {
+                // We are IN an activity. Count down to its END (which is start of next).
+                const endTimeStr = timetableData[activeIndex].time.split('-')[1];
+                const [endH, endM] = endTimeStr.split(':').map(Number);
+                
+                targetTime = new Date(now);
+                targetTime.setHours(endH);
+                targetTime.setMinutes(endM);
+                targetTime.setSeconds(0);
+            } else {
+                // No active activity. Check if before school.
+                const firstStartStr = timetableData[0].time.split('-')[0];
+                const firstStartMinutes = getMinutesFromMidnight(firstStartStr);
+
+                if (currentMinutes < firstStartMinutes) {
+                    // Before school, count down to FIRST item
+                    const [startH, startM] = firstStartStr.split(':').map(Number);
+                    targetTime = new Date(now);
+                    targetTime.setHours(startH);
+                    targetTime.setMinutes(startM);
+                    targetTime.setSeconds(0);
+                    label = "Starts in";
+                } else {
+                    // After school
+                    countdownDisplay.textContent = "Finished";
+                    return;
+                }
+            }
+
+            // Calculate difference
+            let diff = targetTime - now; // milliseconds
+            if (diff < 0) diff = 0; // Prevent negative if slightly out of sync
+
+            // Format mm:ss
+            const totalSeconds = Math.floor(diff / 1000);
+            const m = Math.floor(totalSeconds / 60);
+            const s = totalSeconds % 60;
+            const mStr = m < 10 ? "0" + m : m;
+            const sStr = s < 10 ? "0" + s : s;
+
+            // Optional: Format HH:MM:SS if > 1 hour (unlikely given schedule gaps but good for safety)
+            if (m > 60) {
+                 const h = Math.floor(m / 60);
+                 const remM = m % 60;
+                 const remMStr = remM < 10 ? "0" + remM : remM;
+                 countdownDisplay.textContent = `${h}:${remMStr}:${sStr}`;
+            } else {
+                 countdownDisplay.textContent = `${mStr}:${sStr}`;
+            }
+            
+            // Update label context if needed (optional, keeping simple "Next in" or "Starts in")
+            // countdownDisplay.previousElementSibling.textContent = label;
+        }
+
+        // --- RENDER ---
+        function renderTimetable() {
+            const container = document.getElementById('timetable-container');
+            let newHTML = '';
+            let activeIndex = -1;
+
+            // 1. Calculate Active Index & Render Timeline
+            timetableData.forEach((item, index) => {
+                const isActive = isTimeInRange(item.time);
+                if (isActive) activeIndex = index;
+
+                // Timeline Style Logic
+                let containerClass = "transition-width flex flex-col justify-end rounded-t-lg border-x border-t shadow-sm ease-in-out min-w-0 overflow-hidden relative group h-full";
+                let titleClass = "";
+                let imgHeight = ""; 
+                let timeClass = "mt-auto text-center font-mono font-bold text-black border-t border-slate-100 w-full py-0.5 bg-slate-50"; 
+                
+                if (isActive) {
+                    // Active Timeline Item
+                    containerClass += " flex-[4] border-green-400 bg-white ring-2 ring-inset ring-green-200 z-10 pb-0";
+                    titleClass = "text-[9px] md:text-xs text-center font-bold leading-tight px-1 mt-1 text-black line-clamp-2"; 
+                    imgHeight = "h-10 md:h-14"; 
+                    timeClass = "mt-auto text-[9px] md:text-xs text-center font-mono font-bold text-black border-t border-green-100 w-full py-1 bg-green-50"; 
+                } else {
+                    // Inactive Timeline Item
+                    containerClass += " flex-1 border-slate-200 bg-slate-50 pb-0 opacity-80 hover:opacity-100 hover:flex-[1.5] hover:bg-white";
+                    titleClass = "text-[7px] text-black text-center font-semibold leading-[1.1] px-0.5 mt-1 truncate";
+                    imgHeight = "h-6 md:h-8";
+                    timeClass = "mt-auto text-[6px] md:text-[8px] text-center font-mono font-bold text-black border-t border-slate-200 w-full py-0.5 bg-slate-100 opacity-90"; 
+                }
+
+                const statusBadge = isActive 
+                    ? `<div class="absolute top-0 inset-x-0 h-1 bg-green-500"></div>` 
+                    : ``;
+
+                newHTML += `
+                    <div id="item-${index}" class="${containerClass}">
+                        ${statusBadge}
+                        <div class="flex-grow flex items-center justify-center p-0.5 mt-1">
+                            <img src="${item.img}" alt="${item.title}" class="${imgHeight} w-auto object-contain transition-all" onerror="this.src='https://via.placeholder.com/50'">
+                        </div>
+                        <div class="flex items-center justify-center h-6 mb-1">
+                            <h2 class="${titleClass}">${item.title}</h2>
+                        </div>
+                        <div class="${timeClass}">
+                            ${item.time}
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (container.innerHTML !== newHTML) container.innerHTML = newHTML;
+
+            // 2. Update NOW & NEXT Board
+            const nowTitle = document.getElementById('now-title');
+            const nowImg = document.getElementById('now-img');
+            const nowTime = document.getElementById('now-time');
+
+            const nextTitle = document.getElementById('next-title');
+            const nextImg = document.getElementById('next-img');
+            const nextTime = document.getElementById('next-time');
+
+            if (activeIndex !== -1) {
+                // UPDATE NOW
+                const nowItem = timetableData[activeIndex];
+                nowTitle.textContent = nowItem.title;
+                nowImg.src = nowItem.img;
+                nowTime.textContent = nowItem.time;
+
+                // UPDATE NEXT
+                if (activeIndex + 1 < timetableData.length) {
+                    const nextItem = timetableData[activeIndex + 1];
+                    nextTitle.textContent = nextItem.title;
+                    nextImg.src = nextItem.img;
+                    nextTime.textContent = nextItem.time;
+                    nextImg.parentElement.parentElement.classList.remove('opacity-0');
+                } else {
+                    // End of day
+                    nextTitle.textContent = "Home Time";
+                    nextImg.src = "https://cdn-icons-png.flaticon.com/512/25/25694.png"; 
+                    nextTime.textContent = "15:15";
+                }
+            } else {
+                // No active task
+                const now = new Date();
+                const firstStart = getMinutesFromMidnight(timetableData[0].time.split('-')[0]);
+                const currentMins = now.getHours() * 60 + now.getMinutes();
+
+                if (currentMins < firstStart) {
+                    // Before school
+                    nowTitle.textContent = "Before School";
+                    nowImg.src = "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/register.png"; 
+                    nowTime.textContent = "";
+
+                    const nextItem = timetableData[0];
+                    nextTitle.textContent = nextItem.title;
+                    nextImg.src = nextItem.img;
+                    nextTime.textContent = nextItem.time;
+                } else {
+                    // After school
+                    nowTitle.textContent = "Home Time";
+                    nowImg.src = "https://cdn-icons-png.flaticon.com/512/25/25694.png";
+                    nowTime.textContent = "15:15";
+                    
+                    nextTitle.textContent = "See you tomorrow!";
+                    nextImg.src = "";
+                    nextTime.textContent = "";
+                    nextImg.parentElement.parentElement.classList.add('opacity-0');
+                }
+            }
+        }
+
+        // --- INIT & LOOP ---
+        document.addEventListener('DOMContentLoaded', () => {
+            updateTimeInfo();
+            renderTimetable();
+
+            setInterval(updateTimeInfo, 1000); // Clock and countdown needs 1s updates
+            setInterval(renderTimetable, 10000); // Full re-render less frequent is fine
+        });
+
+    </script>
+</body>
+</html>
