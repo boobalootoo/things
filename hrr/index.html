@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="A modern handwriting practice app with replay, trace, and loop features." />
+    <title>Handwriting Repeater</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --secondary: #64748b;
+            --bg-color: #f1f5f9;
+            --panel-bg: #ffffff;
+            --border-color: #cbd5e1;
+            --text-main: #1e293b;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* --- Header --- */
+        header {
+            width: 100%;
+            background-color: var(--panel-bg);
+            padding: 1rem 2rem;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .brand {
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        #dateText {
+            font-size: 0.9rem;
+            color: var(--secondary);
+            margin-top: 0.2rem;
+            font-weight: 500;
+        }
+
+        /* --- Main Layout --- */
+        main {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            padding: 2rem;
+            width: 100%;
+            max-width: 1400px;
+            flex: 1;
+        }
+
+        /* --- Toolbar --- */
+        .toolbar {
+            background: var(--panel-bg);
+            padding: 1rem;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .tool-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding-right: 1rem;
+            border-right: 1px solid var(--border-color);
+        }
+
+        .tool-group:last-child {
+            border-right: none;
+        }
+
+        .label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--secondary);
+            font-weight: 700;
+            margin-right: 0.5rem;
+        }
+
+        /* --- Buttons --- */
+        button {
+            background-color: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button:hover {
+            background-color: #f8fafc;
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button.primary {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        button.primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button.active {
+            background-color: #e0e7ff; /* light indigo */
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* --- Canvas Area --- */
+        .canvas-wrapper {
+            position: relative;
+            background: white;
+            box-shadow: var(--shadow);
+            border-radius: 4px;
+            overflow: hidden;
+            cursor: crosshair;
+            align-self: center;
+            /* Maintain aspect ratio or max width */
+            max-width: 100%;
+            border: 8px solid #333; /* Frame look */
+        }
+
+        canvas {
+            display: block;
+            touch-action: none; /* Critical for touch drawing */
+        }
+
+        #writerMask {
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* pointer-events: none; REMOVED to allow interactions */
+        }
+
+        /* --- Footer Controls (Replay, etc) --- */
+        .playback-controls {
+            background: var(--panel-bg);
+            padding: 1rem;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* --- Inputs --- */
+        input[type="range"] {
+            accent-color: var(--primary);
+            width: 150px;
+        }
+
+        input[type="color"] {
+            border: none;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            background: none;
+        }
+
+        /* --- Mobile Responsiveness --- */
+        @media (max-width: 768px) {
+            header { padding: 1rem; flex-direction: column; gap: 0.5rem; text-align: center; }
+            main { padding: 1rem; }
+            .toolbar { justify-content: center; }
+            .tool-group { border-right: none; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; padding-right: 0; width: 100%; justify-content: center;}
+            .tool-group:last-child { border-bottom: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <h1>Handwriting Repeater</h1>
+            <div id="dateText">Loading Date...</div>
+        </div>
+        <div class="header-actions">
+            <!-- Save/Load moved here for utility feel -->
+            <button id="saveButton" title="Save Session">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save
+            </button>
+            <input type="file" id="loadInput" style="display:none" accept=".json">
+            <button id="loadButton" title="Load Session" style="margin-top: 5px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Load
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <!-- Toolbar -->
+        <div class="toolbar">
+            
+            <!-- Pen Size -->
+            <div class="tool-group">
+                <span class="label">Size</span>
+                <button id="btnSizeSmall" onclick="setPenSize('small')">S</button>
+                <button id="btnSizeMedium" class="active" onclick="setPenSize('medium')">M</button>
+                <button id="btnSizeLarge" onclick="setPenSize('large')">L</button>
+            </div>
+
+            <!-- Color -->
+            <div class="tool-group">
+                <span class="label">Color</span>
+                <input type="color" id="colorPicker" value="#000000">
+            </div>
+
+            <!-- Backgrounds -->
+            <div class="tool-group">
+                <span class="label">Paper</span>
+                <button onclick="setBackground('ruled')" title="Ruled Lines">≡</button>
+                <button onclick="setBackground('graph')" title="Graph Paper">▦</button>
+                <button onclick="setBackground('dotted')" title="Handwriting Dotted">====</button>
+                <button onclick="setBackground('blank')" title="Blank">☐</button>
+            </div>
+
+            <!-- Actions -->
+            <div class="tool-group">
+                <button onclick="undo()" title="Undo">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg>
+                </button>
+                <button onclick="redo()" title="Redo">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"></path></svg>
+                </button>
+                <button onclick="resetCanvas()" title="Clear All" style="color: #ef4444; border-color: #ef44441a;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <!-- Canvas -->
+        <div class="canvas-wrapper" id="canvasContainer">
+            <canvas id="writer"></canvas>
+            <canvas id="writerMask"></canvas>
+        </div>
+
+        <!-- Playback Controls -->
+        <div class="playback-controls">
+            
+            <button id="rewriteButton" class="primary" style="padding: 0.8rem 2rem; font-size: 1.1rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                Re-write!
+            </button>
+
+            <div class="control-item">
+                <label for="speedSlider">Speed:</label>
+                <input type="range" min="1" max="50" value="10" id="speedSlider">
+                <span id="speedDisplay" style="width: 30px; text-align: right;">1.0x</span>
+            </div>
+
+            <div class="control-item">
+                <input type="checkbox" id="loopCheckbox">
+                <label for="loopCheckbox">Loop</label>
+            </div>
+
+            <div class="control-item">
+                <input type="checkbox" id="traceCheckbox">
+                <label for="traceCheckbox">Trace Mode</label>
+            </div>
+
+            <div class="control-item">
+                <input type="checkbox" id="showPenCheckbox" checked>
+                <label for="showPenCheckbox">Show Pen</label>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- Configuration & State ---
+        const CONFIG = {
+            width: 1200, // Logical width
+            height: 600, // Logical height
+            penSizes: { small: 4, medium: 8, large: 16 }
+        };
+
+        const state = {
+            isDrawing: false,
+            isReplaying: false,
+            points: [], // Buffer for smoothing
+            lines: [], // All completed lines: { points: [], color, width }
+            deletedLines: [], // For redo
+            currentPenColor: '#000000',
+            currentPenSize: CONFIG.penSizes.medium,
+            backgroundType: 'ruled', // ruled, graph, dotted, blank
+            replaySpeed: 1.0,
+            isLooping: false,
+            isTracing: false,
+            showPen: true
+        };
+
+        // --- DOM Elements ---
+        const canvas = document.getElementById('writer');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const maskCanvas = document.getElementById('writerMask');
+        const maskCtx = maskCanvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+
+        // --- Initialization ---
+        function init() {
+            // Set canvas resolution for High DPI
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Set display size (css)
+            canvas.style.width = CONFIG.width + 'px';
+            canvas.style.height = CONFIG.height + 'px';
+            maskCanvas.style.width = CONFIG.width + 'px';
+            maskCanvas.style.height = CONFIG.height + 'px';
+
+            // Set actual size in memory (scaled)
+            canvas.width = CONFIG.width * dpr;
+            canvas.height = CONFIG.height * dpr;
+            maskCanvas.width = CONFIG.width * dpr;
+            maskCanvas.height = CONFIG.height * dpr;
+
+            // Normalize coordinate system to logical size
+            ctx.scale(dpr, dpr);
+            maskCtx.scale(dpr, dpr);
+
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            maskCtx.lineCap = 'round';
+            maskCtx.lineJoin = 'round';
+
+            // Set Date
+            const d = new Date();
+            document.getElementById('dateText').textContent = d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            drawBackground();
+            setupEventListeners();
+        }
+
+        // --- Drawing Engine (Smoothing) ---
+        // Instead of lineTo, we use quadratic curves between midpoints of captured mouse moves
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            // Handle touch or mouse
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            // Calculate scale factor in case canvas is CSS-scaled down by browser
+            const scaleX = CONFIG.width / rect.width;
+            const scaleY = CONFIG.height / rect.height;
+
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        function startStroke(e) {
+            if (state.isReplaying) return;
+            if (e.type === 'touchstart') e.preventDefault(); // Prevent scroll
+
+            state.isDrawing = true;
+            state.deletedLines = []; // Clear redo stack
+            const pos = getPos(e);
+            
+            // Start a new line object
+            state.points = [pos]; // Reset buffer
+            state.currentLine = {
+                color: state.currentPenColor,
+                width: state.currentPenSize,
+                points: [pos] // Store raw points for replay
+            };
+
+            // Draw a dot in case it's just a tap
+            ctx.beginPath();
+            ctx.fillStyle = state.currentPenColor;
+            ctx.arc(pos.x, pos.y, state.currentPenSize / 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function moveStroke(e) {
+            if (!state.isDrawing || state.isReplaying) return;
+            if (e.type === 'touchmove') e.preventDefault();
+
+            const pos = getPos(e);
+            state.points.push(pos);
+            state.currentLine.points.push(pos);
+
+            // Smooth drawing using the buffer
+            if (state.points.length > 2) {
+                const lastTwo = state.points.slice(-2);
+                const p1 = state.points[state.points.length - 3];
+                const p2 = state.points[state.points.length - 2];
+                const p3 = state.points[state.points.length - 1];
+
+                const mid1 = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+                const mid2 = { x: (p2.x + p3.x) / 2, y: (p2.y + p3.y) / 2 };
+
+                ctx.beginPath();
+                ctx.strokeStyle = state.currentPenColor;
+                ctx.lineWidth = state.currentPenSize;
+                ctx.moveTo(mid1.x, mid1.y);
+                ctx.quadraticCurveTo(p2.x, p2.y, mid2.x, mid2.y);
+                ctx.stroke();
+            }
+        }
+
+        function endStroke(e) {
+            if (!state.isDrawing) return;
+            state.isDrawing = false;
+            
+            // Finalize stroke
+            if (state.points.length > 2) {
+                // Draw last segment
+                const p2 = state.points[state.points.length - 2];
+                const p3 = state.points[state.points.length - 1];
+                const mid1 = { x: (state.points[state.points.length - 3].x + p2.x) / 2, y: (state.points[state.points.length - 3].y + p2.y) / 2 };
+                
+                ctx.beginPath();
+                ctx.moveTo(mid1.x, mid1.y);
+                ctx.quadraticCurveTo(p2.x, p2.y, p3.x, p3.y);
+                ctx.stroke();
+            }
+
+            state.lines.push(state.currentLine);
+            state.points = [];
+        }
+
+        // --- Background Generation ---
+        function drawBackground() {
+            // Clear entire canvas
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
+            maskCtx.clearRect(0, 0, CONFIG.width, CONFIG.height); // Clear mask too
+
+            const type = state.backgroundType;
+
+            ctx.save();
+            ctx.lineWidth = 1;
+
+            if (type === 'ruled') {
+                const spacing = 40;
+                ctx.strokeStyle = '#a5b4fc'; // Light indigo
+                ctx.beginPath();
+                for (let y = spacing; y < CONFIG.height; y += spacing) {
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(CONFIG.width, y);
+                }
+                ctx.stroke();
+                // Red margin
+                ctx.strokeStyle = '#fca5a5';
+                ctx.beginPath();
+                ctx.moveTo(80, 0);
+                ctx.lineTo(80, CONFIG.height);
+                ctx.stroke();
+            } 
+            else if (type === 'graph') {
+                const spacing = 30;
+                ctx.strokeStyle = '#e2e8f0'; // Light gray
+                ctx.beginPath();
+                for (let x = 0; x < CONFIG.width; x += spacing) {
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, CONFIG.height);
+                }
+                for (let y = 0; y < CONFIG.height; y += spacing) {
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(CONFIG.width, y);
+                }
+                ctx.stroke();
+            }
+            else if (type === 'dotted') {
+                const groupHeight = 100;
+                const margin = 20;
+                
+                for(let y = margin; y < CONFIG.height; y+= groupHeight) {
+                    // Top solid
+                    ctx.strokeStyle = '#cbd5e1';
+                    ctx.setLineDash([]);
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CONFIG.width, y); ctx.stroke();
+                    
+                    // Middle dotted
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath(); ctx.moveTo(0, y + groupHeight/3); ctx.lineTo(CONFIG.width, y + groupHeight/3); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(0, y + (groupHeight/3)*2); ctx.lineTo(CONFIG.width, y + (groupHeight/3)*2); ctx.stroke();
+
+                    // Bottom solid
+                    ctx.setLineDash([]);
+                    ctx.strokeStyle = '#94a3b8';
+                    ctx.beginPath(); ctx.moveTo(0, y + groupHeight); ctx.lineTo(CONFIG.width, y + groupHeight); ctx.stroke();
+                }
+            }
+
+            ctx.restore();
+
+            // Re-draw all existing lines
+            if (!state.isReplaying) {
+                redrawLines();
+            }
+        }
+
+        function redrawLines(limitIndex = state.lines.length) {
+            // Helper to draw saved lines instantly
+            for (let i = 0; i < limitIndex; i++) {
+                const line = state.lines[i];
+                if (line.points.length < 1) continue;
+
+                ctx.strokeStyle = line.color;
+                ctx.lineWidth = line.width;
+                ctx.beginPath();
+                
+                // Simple recreation of smoothing logic for static draw
+                if (line.points.length === 1) {
+                    ctx.fillStyle = line.color;
+                    ctx.arc(line.points[0].x, line.points[0].y, line.width/2, 0, Math.PI*2);
+                    ctx.fill();
+                    continue;
+                }
+
+                ctx.moveTo(line.points[0].x, line.points[0].y);
+                for (let j = 1; j < line.points.length - 1; j++) {
+                    const p1 = line.points[j];
+                    const p2 = line.points[j+1];
+                    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+                    ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
+                }
+                // Connect last point
+                const last = line.points[line.points.length-1];
+                const prev = line.points[line.points.length-2];
+                 // Note: The loop handles up to length-2. We just connect the rest. 
+                 // For exact visual parity with input, we can just lineTo the end or curve.
+                 ctx.lineTo(last.x, last.y);
+                
+                ctx.stroke();
+            }
+        }
+
+        // --- Tools & Actions ---
+        window.setPenSize = (sizeName) => {
+            state.currentPenSize = CONFIG.penSizes[sizeName];
+            // UI Toggle
+            document.querySelectorAll('.tool-group button').forEach(b => {
+                if (b.textContent === sizeName[0].toUpperCase()) b.classList.add('active');
+                else if (['S','M','L'].includes(b.textContent)) b.classList.remove('active');
+            });
+            document.getElementById('btnSize' + sizeName.charAt(0).toUpperCase() + sizeName.slice(1)).classList.add('active');
+        };
+
+        window.setBackground = (type) => {
+            state.backgroundType = type;
+            drawBackground();
+        };
+
+        window.undo = () => {
+            if (state.lines.length > 0 && !state.isReplaying) {
+                state.deletedLines.push(state.lines.pop());
+                drawBackground(); // This triggers redrawLines
+            }
+        };
+
+        window.redo = () => {
+            if (state.deletedLines.length > 0 && !state.isReplaying) {
+                state.lines.push(state.deletedLines.pop());
+                drawBackground();
+            }
+        };
+
+        window.resetCanvas = () => {
+            if(confirm("Clear the entire canvas?")) {
+                state.lines = [];
+                state.deletedLines = [];
+                drawBackground();
+            }
+        };
+
+        // --- Replay Logic ---
+        let animationFrameId;
+        
+        async function playRewrite() {
+            if (state.isReplaying || state.lines.length === 0) return;
+            state.isReplaying = true;
+
+            // 1. Prepare Canvas
+            // If Tracing is ON: Draw lines in faint color first
+            // If Tracing is OFF: Clear lines, show background only
+            drawBackgroundForReplay();
+
+            const allPointsFlat = [];
+            state.lines.forEach(line => {
+                // Break line into segments for animation
+                // We store: {x, y, color, width, isStart, isEnd}
+                line.points.forEach((p, index) => {
+                    allPointsFlat.push({
+                        ...p,
+                        color: line.color,
+                        width: line.width,
+                        isStart: index === 0,
+                        isLastInLine: index === line.points.length - 1
+                    });
+                });
+                // Add a "pause" marker between lines
+                allPointsFlat.push({ isPause: true });
+            });
+
+            let index = 0;
+            
+            function animate() {
+                if (!state.isReplaying) return;
+
+                // Calculate how many points to draw per frame based on speed
+                // Base speed: 1 point per frame. Multiplier increases this.
+                let pointsPerFrame = Math.max(1, Math.floor(state.replaySpeed)); 
+                // Note: Logic simplification. Real handwriting speed varies, but uniform speed is smoother for replay.
+
+                for (let k = 0; k < pointsPerFrame; k++) {
+                    if (index >= allPointsFlat.length) {
+                        endReplay();
+                        return;
+                    }
+
+                    const pt = allPointsFlat[index];
+
+                    if (pt.isPause) {
+                        // Small pause between strokes
+                        // We can simulate this by returning and not incrementing K, 
+                        // but skipping frames might be easier.
+                        // For now, just skip marker
+                    } else {
+                        // Draw segment
+                        // We need the previous point to draw a line/curve
+                        // Find previous point in this specific line
+                        // If isStart, just draw dot
+                        
+                        // Clear mask (pen cursor)
+                        maskCtx.clearRect(0, 0, CONFIG.width, CONFIG.height);
+
+                        if (state.showPen) {
+                            drawPenCursor(pt.x, pt.y);
+                        }
+
+                        if (pt.isStart) {
+                            ctx.beginPath();
+                            ctx.fillStyle = pt.color;
+                            ctx.arc(pt.x, pt.y, pt.width / 2, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.beginPath(); // Start path for next movements
+                            ctx.moveTo(pt.x, pt.y);
+                        } else {
+                            // Because we flattened the array, we need to be careful not to connect 
+                            // the end of one line to the start of another.
+                            // The 'isStart' check handles the gap.
+                            // Here we just lineTo. For pure replay visual, lineTo is fast and fine 
+                            // since points are captured frequently (every mousemove).
+                            ctx.lineCap = 'round';
+                            ctx.lineJoin = 'round';
+                            ctx.lineWidth = pt.width;
+                            ctx.strokeStyle = pt.color;
+                            
+                            // To make it robust, we should really track the path.
+                            // But since we just moveTo on start, the context cursor is at previous point.
+                            ctx.lineTo(pt.x, pt.y);
+                            ctx.stroke();
+                            
+                            // Reset path to current point to avoid long connected paths
+                            ctx.beginPath();
+                            ctx.moveTo(pt.x, pt.y);
+                        }
+                    }
+                    index++;
+                }
+
+                animationFrameId = requestAnimationFrame(animate);
+            }
+
+            animate();
+        }
+
+        function endReplay() {
+            if (state.isLooping && state.isReplaying) {
+                setTimeout(() => {
+                    playRewrite();
+                }, 1000);
+            } else {
+                state.isReplaying = false;
+                maskCtx.clearRect(0, 0, CONFIG.width, CONFIG.height);
+                drawBackground(); // Restore full fidelity drawing
+            }
+        }
+
+        function drawBackgroundForReplay() {
+            // Clear
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
+            
+            // Draw Paper Pattern
+            // We temporarily set state to backgroundType (it is already set)
+            // But we need to call the internal drawing logic of drawBackground without the "redrawLines" part.
+            // Let's copy that logic briefly or refactor. 
+            // Refactoring drawBackground to not always redraw lines:
+            // Actually, we can just clear lines from state temporarily? No, risky.
+            // Let's just manually draw the grid again here.
+            
+            const type = state.backgroundType;
+            ctx.save();
+            ctx.lineWidth = 1;
+            if (type === 'ruled') {
+                const spacing = 40;
+                ctx.strokeStyle = '#a5b4fc'; ctx.beginPath();
+                for (let y = spacing; y < CONFIG.height; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(CONFIG.width, y); } ctx.stroke();
+                ctx.strokeStyle = '#fca5a5'; ctx.beginPath(); ctx.moveTo(80, 0); ctx.lineTo(80, CONFIG.height); ctx.stroke();
+            } else if (type === 'graph') {
+                const spacing = 30; ctx.strokeStyle = '#e2e8f0'; ctx.beginPath();
+                for (let x = 0; x < CONFIG.width; x += spacing) { ctx.moveTo(x, 0); ctx.lineTo(x, CONFIG.height); }
+                for (let y = 0; y < CONFIG.height; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(CONFIG.width, y); } ctx.stroke();
+            } else if (type === 'dotted') {
+                // Reuse dotted logic or simplify
+                const groupHeight = 100; const margin = 20;
+                for(let y = margin; y < CONFIG.height; y+= groupHeight) {
+                    ctx.strokeStyle = '#cbd5e1'; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CONFIG.width, y); ctx.stroke();
+                    ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(0, y + groupHeight/3); ctx.lineTo(CONFIG.width, y + groupHeight/3); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(0, y + (groupHeight/3)*2); ctx.lineTo(CONFIG.width, y + (groupHeight/3)*2); ctx.stroke();
+                    ctx.setLineDash([]); ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(0, y + groupHeight); ctx.lineTo(CONFIG.width, y + groupHeight); ctx.stroke();
+                }
+            }
+            ctx.restore();
+
+            // Trace Mode
+            if (state.isTracing) {
+                ctx.save();
+                ctx.globalAlpha = 0.2; // Faint
+                redrawLines();
+                ctx.restore();
+            }
+        }
+
+        function drawPenCursor(x, y) {
+            // Draw a simple vector pen tip
+            maskCtx.save();
+            maskCtx.translate(x, y);
+            maskCtx.fillStyle = '#1e293b';
+            maskCtx.shadowColor = 'rgba(0,0,0,0.3)';
+            maskCtx.shadowBlur = 5;
+            
+            // Hand holding pen shape (simplified)
+            maskCtx.beginPath();
+            maskCtx.moveTo(0, 0); // Tip
+            maskCtx.lineTo(15, 40);
+            maskCtx.lineTo(25, 35);
+            maskCtx.lineTo(0, 0);
+            maskCtx.fill();
+            
+            maskCtx.restore();
+        }
+
+
+        // --- Event Listeners ---
+        function setupEventListeners() {
+            // Canvas Mouse/Touch
+            maskCanvas.addEventListener('mousedown', startStroke);
+            window.addEventListener('mousemove', moveStroke);
+            window.addEventListener('mouseup', endStroke);
+
+            maskCanvas.addEventListener('touchstart', startStroke, { passive: false });
+            window.addEventListener('touchmove', moveStroke, { passive: false });
+            window.addEventListener('touchend', endStroke);
+
+            // Controls
+            document.getElementById('colorPicker').addEventListener('input', (e) => state.currentPenColor = e.target.value);
+            
+            document.getElementById('rewriteButton').addEventListener('click', () => {
+                state.isReplaying = false; // Stop current if any
+                setTimeout(playRewrite, 100);
+            });
+
+            document.getElementById('speedSlider').addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                state.replaySpeed = val * 0.5; // Map 1-50 to 0.5 - 25 speed
+                document.getElementById('speedDisplay').textContent = (state.replaySpeed / 5).toFixed(1) + "x";
+            });
+
+            document.getElementById('loopCheckbox').addEventListener('change', (e) => state.isLooping = e.target.checked);
+            document.getElementById('traceCheckbox').addEventListener('change', (e) => state.isTracing = e.target.checked);
+            document.getElementById('showPenCheckbox').addEventListener('change', (e) => state.showPen = e.target.checked);
+
+            // Save/Load
+            document.getElementById('saveButton').onclick = saveSession;
+            document.getElementById('loadButton').onclick = () => document.getElementById('loadInput').click();
+            document.getElementById('loadInput').onchange = loadSession;
+        }
+
+        // --- Save/Load Logic ---
+        function saveSession() {
+            if (state.lines.length === 0) {
+                alert("Canvas is empty!");
+                return;
+            }
+            const data = JSON.stringify(state.lines);
+            const blob = new Blob([data], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const d = new Date();
+            link.download = `handwriting-${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}.json`;
+            link.href = url;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadSession(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const loaded = JSON.parse(evt.target.result);
+                    if (Array.isArray(loaded)) {
+                        state.lines = loaded;
+                        state.deletedLines = [];
+                        drawBackground();
+                    } else {
+                        alert("Invalid file format.");
+                    }
+                } catch(err) {
+                    alert("Error loading file: " + err);
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        }
+
+        // Start
+        window.onload = init;
+
+    </script>
+</body>
+</html>
