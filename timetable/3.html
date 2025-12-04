@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Visual Timetable</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Inter:wght@400;600&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: black;
+        }
+        
+        .activity-title {
+            font-family: 'Comic Neue', cursive;
+        }
+        
+        .transition-width {
+            transition-property: flex-grow, width, all;
+            transition-duration: 500ms;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden bg-slate-50 relative">
+
+    <!-- CONNECTION LINES SVG LAYER -->
+    <!-- Z-index 10: Sits behind the card content but needs to blend with card background -->
+    <svg id="connection-layer" class="absolute inset-0 w-full h-full pointer-events-none z-10" style="overflow: visible;">
+        <!-- Polygons will be injected here -->
+    </svg>
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm z-30 border-b border-slate-200 flex-shrink-0 px-4 py-2 flex justify-between items-center relative">
+        <div class="flex items-center space-x-4 z-10">
+            <h1 class="text-xl font-bold text-black activity-title hidden lg:block">Daily Timetable</h1>
+            <p class="text-black text-xs font-semibold" id="current-date">Loading...</p>
+        </div>
+
+        <div class="absolute left-1/2 transform -translate-x-1/2 bg-blue-100 border border-blue-300 rounded-full px-6 py-1 flex items-center shadow-inner">
+            <span class="text-[10px] uppercase font-bold text-blue-500 mr-2 tracking-wider">Next in</span>
+            <span id="countdown-display" class="text-xl font-mono font-bold text-blue-700">--:--</span>
+        </div>
+        
+        <div class="flex items-center gap-4 z-10">
+            <div class="text-right">
+                <div class="text-2xl font-bold text-black font-mono leading-none" id="digital-clock">--:--</div>
+            </div>
+            <canvas id="analogue-clock" width="50" height="50" class="bg-white rounded-full border-2 border-slate-300 shadow-inner"></canvas>
+        </div>
+    </header>
+
+    <!-- NOW & NEXT Board -->
+    <section class="flex-shrink-0 w-full px-2 py-3 bg-blue-50 border-b border-blue-100 flex justify-center items-center gap-2 md:gap-6 h-60 md:h-72 transition-all duration-500 z-20 relative bg-opacity-95">
+        
+        <!-- NOW Card -->
+        <div class="flex flex-col items-center h-full w-5/12 max-w-sm bg-white rounded-2xl border-4 border-green-400 shadow-lg overflow-hidden transform transition-all hover:scale-[1.02]">
+            <div class="w-full bg-green-400 text-white text-center font-bold py-1 text-base md:text-xl tracking-wider shadow-sm z-10">NOW</div>
+            <div class="flex-1 w-full bg-white relative p-4 flex items-center justify-center overflow-hidden">
+                <img id="now-img" src="" alt="Now" class="w-full h-full object-contain drop-shadow-sm">
+            </div>
+            <div class="w-full bg-green-50 py-2 px-2 border-t border-green-100 text-center flex flex-col justify-center min-h-[4.5rem]">
+                <h2 id="now-title" class="text-xl md:text-3xl font-bold text-black activity-title leading-tight line-clamp-1">...</h2>
+                <p id="now-time" class="text-lg md:text-xl text-black font-mono font-bold mt-1">--:--</p>
+            </div>
+        </div>
+
+        <!-- Arrow -->
+        <div class="text-black flex-shrink-0">
+            <svg class="w-8 h-8 md:w-16 md:h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </div>
+
+        <!-- NEXT Card -->
+        <div class="flex flex-col items-center h-full w-5/12 max-w-sm bg-white rounded-2xl border-4 border-slate-300 shadow overflow-hidden opacity-95 transform transition-all hover:opacity-100">
+            <div class="w-full bg-slate-400 text-white text-center font-bold py-1 text-base md:text-xl tracking-wider shadow-sm z-10">NEXT</div>
+            <div class="flex-1 w-full bg-white relative p-4 flex items-center justify-center overflow-hidden">
+                <img id="next-img" src="" alt="Next" class="w-full h-full object-contain grayscale-[20%]">
+            </div>
+            <div class="w-full bg-slate-50 py-2 px-2 border-t border-slate-200 text-center flex flex-col justify-center min-h-[4.5rem]">
+                <h2 id="next-title" class="text-xl md:text-3xl font-bold text-black activity-title leading-tight line-clamp-1">...</h2>
+                <p id="next-time" class="text-lg md:text-xl text-black font-mono font-bold mt-1">--:--</p>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- COLOUR CODED DURATION BAR -->
+    <div class="w-full px-2 pt-1 bg-slate-50 overflow-visible z-20 relative pb-0">
+        <div class="flex justify-between text-[9px] text-slate-500 font-semibold mb-0.5 px-0.5">
+            <span>START (8:35)</span>
+            <span>DAY PROGRESS</span>
+            <span>END (15:15)</span>
+        </div>
+        <!-- Removed border and rounded bottom to merge with funnels -->
+        <div id="duration-bar" class="flex w-full h-8 bg-white relative overflow-visible rounded-t-md shadow-sm">
+            <!-- Progress Indicator Line (Day) -->
+            <div id="progress-indicator" class="absolute top-0 -bottom-1 w-0.5 bg-red-600 z-50 shadow-[0_0_6px_rgba(220,38,38,0.8)] transition-all duration-1000 ease-linear pointer-events-none" style="left: 0%">
+                <div class="w-2 h-2 bg-red-600 transform -translate-x-[3px] -translate-y-1 rotate-45"></div>
+                <div id="progress-time-label" class="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">
+                    --:--
+                </div>
+            </div>
+            <!-- Duration segments injected here by JS -->
+        </div>
+    </div>
+
+    <!-- Main Content (Full Day Timeline) -->
+    <!-- pt-16 provides space for the SVG funnels to exist between the top bar and the cards -->
+    <main class="flex-grow flex items-end justify-center w-full px-1 pb-1 pt-16 overflow-hidden relative z-20">
+        <div id="timetable-container" class="flex flex-row w-full gap-0.5 items-end justify-center h-full">
+            <!-- Content will be injected by JavaScript -->
+        </div>
+    </main>
+
+    <footer class="bg-white text-center text-black text-[9px] py-0.5 flex-shrink-0 border-t z-20 relative">
+        <p>Visual Timetable</p>
+    </footer>
+
+    <script>
+        // --- DATA ---
+        const timetableData = [
+            { title: "Soft start and register", time: "8:35-8:55", duration: 20, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/register.png" },
+            { title: "Phonics", time: "8:55-9:15", duration: 20, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/phonics.png" },
+            { title: "Play to learn", time: "9:15-9:45", duration: 30, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/play.png" },
+            { title: "5 minute warning", time: "9:45-9:50", duration: 5, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/warning.png" },
+            { title: "Tidy-up", time: "9:50-10:00", duration: 10, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/tidy.png" },
+            { title: "Snack", time: "10:00-10:15", duration: 15, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/snack.png" },
+            { title: "Play to learn", time: "10:15-10:45", duration: 30, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/play.png" },
+            { title: "5 minute warning", time: "10:45-10:50", duration: 5, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/warning.png" },
+            { title: "Tidy-up", time: "10:50-11:00", duration: 10, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/tidy.png" },
+            { title: "Maths", time: "11:00-11:35", duration: 35, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/maths.png" },
+            { title: "Lunch", time: "11:40-12:30", duration: 50, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/lunch.png" },
+            { title: "Carpet and register", time: "12:30-12:55", duration: 25, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/register.png" },
+            { title: "Playtime", time: "12:55-13:10", duration: 15, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/playtime.png" },
+            { title: "Play to learn", time: "13:10-14:25", duration: 75, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/play.png" },
+            { title: "5 minute warning", time: "14:25-14:30", duration: 5, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/warning.png" },
+            { title: "Tidy-up", time: "14:30-14:40", duration: 10, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/tidy.png" },
+            { title: "Carpet", time: "14:40-15:00", duration: 20, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/carpet.png" },
+            { title: "Story", time: "15:00-15:15", duration: 15, img: "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/story.png" }
+        ];
+
+        // --- HELPERS ---
+        function getMinutesFromMidnight(timeStr) {
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return hours * 60 + minutes;
+        }
+
+        function isTimeInRange(rangeStr) {
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const [startStr, endStr] = rangeStr.split('-');
+            const startMinutes = getMinutesFromMidnight(startStr);
+            const endMinutes = getMinutesFromMidnight(endStr);
+            return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+        }
+
+        // --- COLORS & STYLES ---
+        function getActivityColorClass(title) {
+            const lowerTitle = title.toLowerCase();
+            // Solid colors matching the Hex values below
+            if (lowerTitle.includes("warning")) return "bg-red-500";
+            if (lowerTitle.includes("tidy")) return "bg-yellow-400";
+            if (lowerTitle.includes("play")) return "bg-green-400";
+            if (lowerTitle.includes("snack") || lowerTitle.includes("lunch")) return "bg-orange-400";
+            if (lowerTitle.includes("maths") || lowerTitle.includes("phonics") || lowerTitle.includes("story")) return "bg-blue-400";
+            if (lowerTitle.includes("register") || lowerTitle.includes("carpet")) return "bg-purple-400";
+            return "bg-slate-300"; 
+        }
+
+        function getActivityHexColor(title) {
+            const lowerTitle = title.toLowerCase();
+            // Matching Tailwind 400/500 shades
+            if (lowerTitle.includes("warning")) return "#ef4444"; // red-500
+            if (lowerTitle.includes("tidy")) return "#facc15"; // yellow-400
+            if (lowerTitle.includes("play")) return "#4ade80"; // green-400
+            if (lowerTitle.includes("snack") || lowerTitle.includes("lunch")) return "#fb923c"; // orange-400
+            if (lowerTitle.includes("maths") || lowerTitle.includes("phonics") || lowerTitle.includes("story")) return "#60a5fa"; // blue-400
+            if (lowerTitle.includes("register") || lowerTitle.includes("carpet")) return "#c084fc"; // purple-400
+            return "#cbd5e1"; // slate-300
+        }
+
+        function getTextColorClass(title) {
+            const lowerTitle = title.toLowerCase();
+            // White text for dark backgrounds, Black for light
+            if (lowerTitle.includes("warning")) return "text-white"; // Red is dark
+            if (lowerTitle.includes("tidy")) return "text-black"; // Yellow is light
+            if (lowerTitle.includes("play")) return "text-black"; // Green 400 is mid, black is safer
+            if (lowerTitle.includes("snack") || lowerTitle.includes("lunch")) return "text-black"; // Orange 400 is mid
+            if (lowerTitle.includes("maths") || lowerTitle.includes("phonics") || lowerTitle.includes("story")) return "text-black"; // Blue 400 is mid
+            if (lowerTitle.includes("register") || lowerTitle.includes("carpet")) return "text-white"; // Purple 400 is darker
+            return "text-black";
+        }
+
+        // --- ANALOGUE CLOCK ---
+        function drawClock() {
+            const canvas = document.getElementById("analogue-clock");
+            if (!canvas) return;
+            const ctx = canvas.getContext("2d");
+            const radius = canvas.height / 2;
+            ctx.translate(radius, radius);
+            const scale = radius * 0.90;
+
+            ctx.resetTransform();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.translate(radius, radius);
+
+            ctx.beginPath();
+            ctx.arc(0, 0, scale, 0, 2 * Math.PI);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            
+            for(let num = 1; num <= 12; num++){
+                const ang = num * Math.PI / 6;
+                ctx.rotate(ang);
+                ctx.translate(0, -scale * 0.85);
+                ctx.rotate(-ang);
+                ctx.fillStyle = 'black'; 
+                ctx.font = "bold " + (scale*0.3) + "px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(num.toString(), 0, 0);
+                ctx.rotate(ang);
+                ctx.translate(0, scale * 0.85);
+                ctx.rotate(-ang);
+            }
+
+            const now = new Date();
+            let hour = now.getHours();
+            let minute = now.getMinutes();
+            let second = now.getSeconds();
+
+            hour = hour % 12;
+            hour = (hour*Math.PI/6) + (minute*Math.PI/(6*60)) + (second*Math.PI/(360*60));
+            drawHand(ctx, hour, scale*0.5, scale*0.07, 'black'); 
+
+            minute = (minute*Math.PI/30) + (second*Math.PI/(30*60));
+            drawHand(ctx, minute, scale*0.8, scale*0.05, 'black'); 
+
+            second = (second*Math.PI/30);
+            drawHand(ctx, second, scale*0.9, scale*0.02, '#e11d48'); 
+
+            ctx.beginPath();
+            ctx.arc(0, 0, scale*0.05, 0, 2*Math.PI);
+            ctx.fillStyle = 'black';
+            ctx.fill();
+
+            ctx.resetTransform();
+        }
+
+        function drawHand(ctx, pos, length, width, color) {
+            ctx.beginPath();
+            ctx.lineWidth = width;
+            ctx.lineCap = "round";
+            ctx.strokeStyle = color;
+            ctx.moveTo(0,0);
+            ctx.rotate(pos);
+            ctx.lineTo(0, -length);
+            ctx.stroke();
+            ctx.rotate(-pos);
+        }
+
+        // --- TIME & COUNTDOWN LOGIC ---
+        function updateTimeInfo() {
+            const now = new Date();
+            
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('current-date').textContent = now.toLocaleDateString('en-GB', options);
+            
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+            document.getElementById('digital-clock').textContent = `${hours}:${minutesStr}`;
+
+            drawClock();
+            updateCountdown(now);
+            updateDurationBar(now);
+            updateActivityProgress(now);
+            updateConnections(); 
+        }
+
+        function updateCountdown(now) {
+            const countdownDisplay = document.getElementById('countdown-display');
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            
+            const activeIndex = timetableData.findIndex(item => isTimeInRange(item.time));
+            
+            let targetTime = null;
+
+            if (activeIndex !== -1) {
+                const endTimeStr = timetableData[activeIndex].time.split('-')[1];
+                const [endH, endM] = endTimeStr.split(':').map(Number);
+                
+                targetTime = new Date(now);
+                targetTime.setHours(endH);
+                targetTime.setMinutes(endM);
+                targetTime.setSeconds(0);
+            } else {
+                const firstStartStr = timetableData[0].time.split('-')[0];
+                const firstStartMinutes = getMinutesFromMidnight(firstStartStr);
+
+                if (currentMinutes < firstStartMinutes) {
+                    const [startH, startM] = firstStartStr.split(':').map(Number);
+                    targetTime = new Date(now);
+                    targetTime.setHours(startH);
+                    targetTime.setMinutes(startM);
+                    targetTime.setSeconds(0);
+                } else {
+                    const [startH, startM] = firstStartStr.split(':').map(Number);
+                    targetTime = new Date(now);
+                    targetTime.setDate(targetTime.getDate() + 1);
+                    targetTime.setHours(startH);
+                    targetTime.setMinutes(startM);
+                    targetTime.setSeconds(0);
+                }
+            }
+
+            let diff = targetTime - now; 
+            if (diff < 0) diff = 0; 
+
+            const totalSeconds = Math.floor(diff / 1000);
+            let m = Math.floor(totalSeconds / 60);
+            const s = totalSeconds % 60;
+            const sStr = s < 10 ? "0" + s : s;
+
+            if (m > 60) {
+                 const h = Math.floor(m / 60);
+                 const remM = m % 60;
+                 const remMStr = remM < 10 ? "0" + remM : remM;
+                 countdownDisplay.textContent = `${h}:${remMStr}:${sStr}`;
+            } else {
+                 const mStr = m < 10 ? "0" + m : m;
+                 countdownDisplay.textContent = `${mStr}:${sStr}`;
+            }
+        }
+
+        // --- DURATION BAR ---
+        let durationBarInitialized = false;
+
+        function initDurationBar() {
+            if (durationBarInitialized) return;
+            const barContainer = document.getElementById('duration-bar');
+            barContainer.innerHTML = ''; 
+            
+            barContainer.innerHTML = `
+            <div id="progress-indicator" class="absolute top-0 -bottom-1 w-0.5 bg-red-600 z-50 shadow-[0_0_6px_rgba(220,38,38,0.8)] transition-all duration-1000 ease-linear pointer-events-none" style="left: 0%">
+                <div class="w-2 h-2 bg-red-600 transform -translate-x-[3px] -translate-y-1 rotate-45"></div>
+                <div id="progress-time-label" class="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">--:--</div>
+            </div>`;
+
+            const totalMinutes = timetableData.reduce((acc, item) => acc + item.duration, 0);
+
+            timetableData.forEach((item, index) => {
+                const widthPercent = (item.duration / totalMinutes) * 100;
+                const colorClass = getActivityColorClass(item.title);
+                
+                const segment = document.createElement('div');
+                segment.id = `segment-${index}`;
+                // Remove rounded corners or borders to make it seamless
+                segment.className = `${colorClass} h-full relative group hover:brightness-110 transition-all overflow-visible border-r border-white/10`;
+                segment.style.width = `${widthPercent}%`;
+                
+                segment.innerHTML = `
+                    <div class="opacity-0 group-hover:opacity-100 absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 rounded pointer-events-none whitespace-nowrap z-40 font-bold shadow-lg">
+                        ${item.title} (${item.time})
+                    </div>
+                `;
+                
+                barContainer.appendChild(segment);
+            });
+            durationBarInitialized = true;
+        }
+
+        function updateDurationBar(now) {
+            if (!durationBarInitialized) initDurationBar();
+
+            const indicator = document.getElementById('progress-indicator');
+            const timeLabel = document.getElementById('progress-time-label');
+            const currentMins = now.getHours() * 60 + now.getMinutes() + (now.getSeconds() / 60);
+            
+            const startStr = timetableData[0].time.split('-')[0];
+            const endStr = timetableData[timetableData.length - 1].time.split('-')[1];
+            
+            const dayStartMins = getMinutesFromMidnight(startStr);
+            const dayEndMins = getMinutesFromMidnight(endStr);
+            
+            let percent = 0;
+            if (currentMins < dayStartMins) {
+                percent = 0;
+            } else if (currentMins > dayEndMins) {
+                percent = 100;
+            } else {
+                const totalDayDuration = dayEndMins - dayStartMins;
+                const elapsed = currentMins - dayStartMins;
+                percent = (elapsed / totalDayDuration) * 100;
+            }
+
+            indicator.style.left = `${percent}%`;
+            
+            let h = now.getHours();
+            let m = now.getMinutes();
+            let mStr = m < 10 ? '0' + m : m;
+            timeLabel.textContent = `${h}:${mStr}`;
+        }
+        
+        function updateActivityProgress(now) {
+            const activeBar = document.getElementById('active-activity-progress');
+            if (!activeBar) return;
+            
+            const activeIndex = timetableData.findIndex(item => isTimeInRange(item.time));
+            if (activeIndex === -1) {
+                activeBar.style.left = '0%';
+                return;
+            }
+            
+            const item = timetableData[activeIndex];
+            const startStr = item.time.split('-')[0];
+            const [startH, startM] = startStr.split(':').map(Number);
+            const startMins = startH * 60 + startM;
+            const currentMins = now.getHours() * 60 + now.getMinutes() + (now.getSeconds() / 60);
+            
+            const elapsed = currentMins - startMins;
+            const duration = item.duration;
+            
+            let percent = (elapsed / duration) * 100;
+            percent = Math.max(0, Math.min(100, percent));
+            
+            activeBar.style.left = `${percent}%`;
+        }
+
+        // --- CONNECTION FUNNEL LOGIC ---
+        function updateConnections() {
+            const svg = document.getElementById('connection-layer');
+            svg.innerHTML = ''; 
+
+            timetableData.forEach((item, index) => {
+                const segment = document.getElementById(`segment-${index}`);
+                const card = document.getElementById(`item-${index}`);
+
+                if (segment && card) {
+                    const segRect = segment.getBoundingClientRect();
+                    const cardRect = card.getBoundingClientRect();
+                    const svgRect = svg.getBoundingClientRect();
+
+                    const topLeftX = segRect.left - svgRect.left;
+                    const topLeftY = segRect.bottom - svgRect.top;
+                    const topRightX = segRect.right - svgRect.left;
+                    const topRightY = segRect.bottom - svgRect.top;
+                    
+                    const bottomLeftX = cardRect.left - svgRect.left;
+                    const bottomLeftY = cardRect.top - svgRect.top;
+                    const bottomRightX = cardRect.right - svgRect.left;
+                    const bottomRightY = cardRect.top - svgRect.top;
+
+                    const hexColor = getActivityHexColor(item.title);
+                    
+                    const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                    const points = `${topLeftX},${topLeftY} ${topRightX},${topRightY} ${bottomRightX},${bottomRightY} ${bottomLeftX},${bottomLeftY}`;
+
+                    polygon.setAttribute('points', points);
+                    polygon.setAttribute('fill', hexColor);
+                    polygon.setAttribute('opacity', '1.0'); // Full opacity for single shape look
+                    polygon.setAttribute('stroke', 'none'); 
+                    
+                    svg.appendChild(polygon);
+                }
+            });
+        }
+
+        // --- RENDER ---
+        function renderTimetable() {
+            const container = document.getElementById('timetable-container');
+            let newHTML = '';
+            let activeIndex = -1;
+
+            timetableData.forEach((item, index) => {
+                const isActive = isTimeInRange(item.time);
+                if (isActive) activeIndex = index;
+
+                // Match card background to category
+                const colorClass = getActivityColorClass(item.title);
+                const textColorClass = getTextColorClass(item.title);
+
+                // No borders or rounding at top to ensure connection with funnel
+                let containerClass = `transition-width flex flex-col justify-end shadow-sm ease-in-out min-w-0 overflow-hidden relative group h-full ${colorClass} ${textColorClass}`;
+                
+                let titleClass = "";
+                let imgHeight = ""; 
+                // Footer bar for time
+                let timeClass = "mt-auto text-center font-mono font-bold w-full py-0.5 bg-black/10"; 
+                let progressBar = "";
+                
+                if (isActive) {
+                    // Active Item styles
+                    containerClass += " flex-[4] z-10 pb-0 shadow-md ring-2 ring-black/20";
+                    titleClass = "text-[9px] md:text-xs text-center font-bold leading-tight px-1 mt-1 line-clamp-2"; 
+                    imgHeight = "h-10 md:h-14"; 
+                    timeClass = "mt-auto text-[9px] md:text-xs text-center font-mono font-bold w-full py-1 bg-black/20"; 
+                    progressBar = `<div id="active-activity-progress" class="absolute top-0 bottom-0 w-1 bg-white z-20 shadow-[0_0_4px_rgba(255,255,255,0.8)]" style="left: 0%"></div>`;
+                } else {
+                    // Inactive Item styles
+                    containerClass += " flex-1 pb-0 opacity-95 hover:opacity-100 hover:flex-[1.5]";
+                    titleClass = "text-[7px] text-center font-semibold leading-[1.1] px-0.5 mt-1 truncate";
+                    imgHeight = "h-6 md:h-8";
+                    timeClass = "mt-auto text-[6px] md:text-[8px] text-center font-mono font-bold w-full py-0.5 bg-black/10"; 
+                }
+
+                newHTML += `
+                    <div id="item-${index}" class="${containerClass}">
+                        ${progressBar}
+                        <!-- Image Container: Add white glow or bg if dark background? -->
+                        <div class="flex-grow flex items-center justify-center p-0.5 mt-1">
+                            <img src="${item.img}" alt="${item.title}" class="${imgHeight} w-auto object-contain transition-all" onerror="this.src='https://via.placeholder.com/50'">
+                        </div>
+                        <div class="flex items-center justify-center h-6 mb-1">
+                            <h2 class="${titleClass}">${item.title}</h2>
+                        </div>
+                        <div class="${timeClass}">
+                            ${item.time}
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (container.innerHTML !== newHTML) container.innerHTML = newHTML;
+
+            // Update NOW & NEXT logic
+            const nowTitle = document.getElementById('now-title');
+            const nowImg = document.getElementById('now-img');
+            const nowTime = document.getElementById('now-time');
+            const nextTitle = document.getElementById('next-title');
+            const nextImg = document.getElementById('next-img');
+            const nextTime = document.getElementById('next-time');
+
+            if (activeIndex !== -1) {
+                const nowItem = timetableData[activeIndex];
+                nowTitle.textContent = nowItem.title;
+                nowImg.src = nowItem.img;
+                nowTime.textContent = nowItem.time;
+
+                if (activeIndex + 1 < timetableData.length) {
+                    const nextItem = timetableData[activeIndex + 1];
+                    nextTitle.textContent = nextItem.title;
+                    nextImg.src = nextItem.img;
+                    nextTime.textContent = nextItem.time;
+                    nextImg.parentElement.parentElement.classList.remove('opacity-0');
+                } else {
+                    nextTitle.textContent = "Home Time";
+                    nextImg.src = "https://cdn-icons-png.flaticon.com/512/25/25694.png"; 
+                    nextTime.textContent = "15:15";
+                }
+            } else {
+                const now = new Date();
+                const firstStart = getMinutesFromMidnight(timetableData[0].time.split('-')[0]);
+                const currentMins = now.getHours() * 60 + now.getMinutes();
+
+                if (currentMins < firstStart) {
+                    nowTitle.textContent = "Before School";
+                    nowImg.src = "https://raw.githubusercontent.com/boobalootoo/things/refs/heads/main/timetable/pics/register.png"; 
+                    nowTime.textContent = "";
+                    
+                    const nextItem = timetableData[0];
+                    nextTitle.textContent = nextItem.title;
+                    nextImg.src = nextItem.img;
+                    nextTime.textContent = nextItem.time;
+                } else {
+                    nowTitle.textContent = "Home Time";
+                    nowImg.src = "https://cdn-icons-png.flaticon.com/512/25/25694.png";
+                    nowTime.textContent = "15:15";
+                    
+                    const nextItem = timetableData[0];
+                    nextTitle.textContent = nextItem.title;
+                    nextImg.src = nextItem.img;
+                    nextTime.textContent = nextItem.time;
+                    nextImg.parentElement.parentElement.classList.remove('opacity-0');
+                }
+            }
+        }
+
+        // --- INIT & LOOP ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initDurationBar();
+            updateTimeInfo();
+            renderTimetable();
+            setTimeout(updateConnections, 500); 
+
+            setInterval(updateTimeInfo, 1000); 
+            setInterval(renderTimetable, 10000); 
+            window.addEventListener('resize', updateConnections); 
+        });
+
+    </script>
+</body>
+</html>
