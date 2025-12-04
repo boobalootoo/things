@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A web app that can be used to effectively demonstrate correct handwriting technique. With useful features such as Loop and Trace, stand back and watch the handwriting teach itself!" />
+    <title>Handwriting Repeater</title>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+        }
+
+
+        body {
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            margin: 0;
+            background-color: lightskyblue;
+        }
+
+        .title-container {
+            display: flex;
+            padding: 0;
+            margin: 0;
+            padding-top: 1vh;
+            padding-bottom: 2vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+            background-color: royalblue;
+            white-space: nowrap;
+        }
+
+        .title-text {
+            font-family:Verdana, Geneva, Tahoma, sans-serif;
+            color: white;
+            text-shadow: 4px 4px blue;
+            font-size: 2.5vw;
+            padding-block: 0.5vh;
+        }
+
+        .date-text {
+            font-family:Verdana, Geneva, Tahoma, sans-serif;
+            color: rgb(255, 208, 0);
+            text-shadow: 2px 2px black;
+            font-size: 1.3vw;
+            text-decoration: underline;
+            text-decoration-skip-ink: none;
+        }
+
+        button {
+            background-color: royalblue; /* Green */
+            border: solid 2px rgb(0, 0, 255);
+            border-radius: 10px;
+            color: white;
+            text-shadow: 0.1vw 0.1vw blue;
+            font-family: Arial, Helvetica, sans-serif;
+            font-weight: bold;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 1.2vw;
+            outline: none;
+            cursor: pointer;
+        }
+
+        button:active {
+            box-shadow: 0 5px #666;
+            transform: translateY(4px);
+        }
+
+        .main-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-block: 20px;
+        }
+
+        .writer-container {
+            display: flex;
+            touch-action: none;
+            overflow-x: scroll;
+            position: relative;
+            flex-basis: 60%;
+            justify-content: flex-start;
+            max-width: fit-content;
+        }
+
+
+        #writerMask {
+            display: flex;
+            touch-action: none;
+            position: absolute;
+        }
+
+        .pen-options {
+            display: flex;
+            flex-basis: 20%;
+            flex-direction: column;
+            flex-grow: 1;
+            white-space: nowrap;
+            width: 100%;
+            align-items: center;
+
+        }
+
+        .pen-options button {
+            padding-block: 2rem;
+            margin-block: 2rem;
+            width: 70%;
+        }
+
+        .page-options {
+            display: flex;
+            flex-basis: 20%;
+            flex-direction: column;
+            flex-grow: 1;
+            white-space: nowrap;
+            width: 100%;
+            align-items: center;
+        }
+
+        .page-options button {
+            padding-block: 2.4rem;
+            margin-bottom: 2rem;
+            justify-content: space-around;
+            width: 70%;
+        }
+
+        .controls-container {
+            display: flex;
+        }
+
+        .reset-do-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            align-content: center;
+            flex-basis: 25%;
+        }
+
+        #resetButton {
+            padding-block: 20px;
+            margin-bottom: 10px;
+            width: 55%;
+        }
+
+        .undo-redo-container {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .undo-redo-container button {
+            margin-inline: 0.5vw;
+            padding: 15px;
+            min-width: 80px;
+        }
+        
+        /* New Styles for Save/Load */
+        .save-load-container {
+            display: flex;
+            justify-content: space-between;
+            width: 55%;
+        }
+        
+        .save-load-container button {
+            padding: 10px;
+            width: 48%;
+            font-size: 1vw;
+            background-color: #4169e1; /* Slightly lighter royalblue */
+        }
+
+        .slider {
+            -webkit-appearance: none;
+            width: 40%;
+            height: 20px;
+            border-radius: 50px;
+            border: 2px solid grey;
+            background: white;
+            outline: none;
+            opacity: 0.7;
+            -webkit-transition: .2s;
+            transition: opacity .2s;
+        }
+        
+        .slider:hover {
+            opacity: 1;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%; 
+            border: 3px solid blue;
+            background: royalblue;
+            cursor: pointer;
+        }
+
+        .slider::-moz-range-thumb {
+            width: 50x;
+            height: 50px;
+            border-radius: 50%; 
+            background: royalblue;
+            border: 3px solid blue;
+            cursor: pointer;
+        }
+
+        .write-speed-container {
+            z-index: 1;
+            display: flex;
+            flex-basis: 50%;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+        }
+
+        #writeSpeedText {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 20px;
+            font-weight: bold;
+            color: blue;
+            text-shadow: 1px 1px white;
+            padding: 20px;
+        }
+
+        .colour-picker-container {
+            display: flex;
+            background-color: rgb(139, 161, 226);
+            padding: 3px;
+            border-radius: 10px;
+            border: 3px solid blue;
+        }
+
+        .rewrite-container {
+            display: flex;
+            flex-basis: 25%;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #rewriteButton {
+            padding-block: 10px;
+            padding-inline: 3vw;
+            white-space: nowrap;
+            margin-bottom: 10px;
+            background-color: darkblue;
+            color: white;
+            text-shadow: 2px 2px black;
+            border: 3px solid white;
+            font-size: 2vw;
+            border-radius: 50px;
+        }
+
+        .checkboxes-container {
+            display: flex;
+            flex-direction: column;
+            border: 2px solid blue;
+            border-radius: 12px;
+            padding-inline: 2vw;
+        }
+
+        .loop-container {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            justify-content: flex-end;
+            margin-block: 0.2vw;
+
+            font-family: Arial, Helvetica, sans-serif;
+            font-weight: bold;
+            font-size: calc(12px + 0.2vw);
+            text-shadow: 1px 1px white;   
+            color: blue;
+        }
+
+        .loop-container input {
+            margin-left: 20px;
+        }
+
+
+
+        .disable-select {
+            user-select: none; /* supported by Chrome and Opera */
+        -webkit-user-select: none; /* Safari */
+        -khtml-user-select: none; /* Konqueror HTML */
+        -moz-user-select: none; /* Firefox */
+        -ms-user-select: none; /* Internet Explorer/Edge */
+        }
+
+        .footer-banner {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        overflow-x: hidden;
+        background-color: rgb(0, 0, 0, 0.8);
+        color: rgb(255, 255, 255);
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        padding-block: 2vh;
+        font-family: Arial, Helvetica, sans-serif;
+        font-weight: bold;
+        text-decoration: none;
+        font-size: 1.2vw;  
+        }
+
+        .footer-banner a {
+        color: rgb(193, 186, 252);
+        font-weight: bold;
+        text-decoration: underline;
+        }
+
+        .footer-close {
+        padding: 5px 15px;
+        }
+
+        .footer-close:hover {
+        color: grey;
+        }
+
+        .footer-hidden {
+        display: none;
+        }
+    </style>
+  </head>
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-3JNFQ0E16S"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+  
+    gtag('config', 'G-3JNFQ0E16S');
+  </script>
+  
+  <body>
+    <div class="title-container disable-select">
+      <h1 class="title-text">Handwriting Repeater</h1>
+      <h1 class="date-text" id="dateText">DATE</h1>
+    </div>
+    <div class="main-container disable-select">
+      <div class="pen-options">
+        <button id="smallPenButton">Small Pen</button>
+        <button id="mediumPenButton">Medium Pen</button>
+        <button id="largePenButton">Large Pen</button>
+      </div>
+      <div class="writer-container">
+        <canvas id="writer" width="1400" height="540"></canvas>
+        <canvas id="writerMask" width="1400" height="540"></canvas>
+      </div>
+      <div class="page-options">
+        <button id="backgroundButton1">Background 1</button>
+        <button id="backgroundButton2">Background 2</button>
+        <button id="backgroundButton3">Background 3</button>
+        <button id="backgroundButton4">Background 4</button>
+      </div>
+    </div>
+
+    <div class="controls-container disable-select">
+      <div class="reset-do-container">
+        <button id="resetButton">Reset Canvas</button>
+        <div class="undo-redo-container">
+            <button id="undoButton">Undo</button>
+            <button id="redoButton">Redo</button>
+        </div>
+        
+        <!-- NEW SAVE/LOAD CONTAINER -->
+        <div class="save-load-container">
+            <button id="saveButton">Save Session</button>
+            <button id="loadButton">Load Session</button>
+            <input type="file" id="loadInput" style="display:none" accept=".json">
+        </div>
+
+      </div>
+      <div class="write-speed-container">
+        <input type="range" min="1" max="100" value="20" class="slider" id="speedSlider">
+        <p id="writeSpeedText">Write Speed:</p>
+        <div class="colour-picker-container">
+        <canvas id="colourPickerCanvas"></canvas>
+        </div>
+      </div>
+      <div class="rewrite-container">
+        <button id="rewriteButton">Re-write!</button>
+        <div class="checkboxes-container">
+          <div class="loop-container">
+            <p id="loopText">Loop</p>
+            <input type="checkbox" id="loopCheckbox">
+          </div>
+          <div class="loop-container">
+            <p id="traceText">Trace</p>
+            <input type="checkbox" id="traceCheckbox">
+          </div>
+          <div class="loop-container">
+            <p id="penText">Pen</p>
+            <input type="checkbox" id="penCheckbox" checked>
+          </div>
+          <div class="loop-container">
+            <p id="quillText">Quill</p>
+            <input type="checkbox" id="quillCheckbox">
+          </div> 
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-banner" id="footerBanner">
+      <img src="/logo.svg" width="50px"/>
+      <span>
+        We're moving site! Come and check out our new redesign - with all the features you already love and more: <a href="https://handwritingrepeater.app/">https://handwritingrepeater.app</a>
+        <br>
+        <br>
+        Some users may encounter connectivity issues to the new website during the move.
+      </span>
+      <button class="footer-close" onclick="window.location.href='https://handwritingrepeater.app/';">Visit Now!</button>
+      <button class="footer-close" onclick="closeFooter()">Close</button>
+    </div>
+
+    <script>
+      function closeFooter() {
+        document.getElementById('footerBanner').classList.add('footer-hidden');
+      }
+
+      // Selects canvasWriter element to draw on from page 
+      var canvasWriter = document.getElementById("writer");
+
+      // 
+      var canvasWriterMask = document.getElementById("writerMask");
+
+      let date = new Date();
+
+      let weekday = new Array(7);
+      weekday[0] = "Sunday";
+      weekday[1] = "Monday";
+      weekday[2] = "Tuesday";
+      weekday[3] = "Wednesday";
+      weekday[4] = "Thursday";
+      weekday[5] = "Friday";
+      weekday[6] = "Saturday";
+
+      let month = new Array(12);
+      month[0] = "January";
+      month[1] = "February";
+      month[2] = "March";
+      month[3] = "April";
+      month[4] = "May";
+      month[5] = "June";
+      month[6] = "July";
+      month[7] = "August";
+      month[8] = "September";
+      month[9] = "October";
+      month[10] = "November";
+      month[11] = "December";
+
+      let dateString = "";
+
+      dateString += weekday[date.getDay()];
+      dateString += ", ";
+
+      let monthDay = date.getDate().toString();
+      monthDay = dateSuffix(monthDay);
+
+      dateString += monthDay;
+      dateString += " ";
+      dateString += month[date.getMonth()];
+      dateString += " ";
+      dateString += date.getFullYear();
+
+
+      dateText.innerHTML = dateString;
+
+      // Selects colour picker canvasWriter and draws colour picker image
+      var canvasColour = document.getElementById("colourPickerCanvas");
+      var ctxColourPicker = canvasColour.getContext('2d');
+      let colourPickerImage = new Image();
+      colourPickerImage.src = "colour-picker.png";
+
+
+      colourPickerImage.addEventListener('load', event => 
+      {
+          canvasColour.width = colourPickerImage.width;
+          canvasColour.height = colourPickerImage.height;
+          ctxColourPicker.drawImage(colourPickerImage, 0, 0);
+
+          ctxColourPicker.fillStyle = colourArrayToRGBString([100,100,100]);
+          ctxColourPicker.clearRect(0, 0, 1000, 1000)
+          
+          ctxColourPicker.fillRect(0, 0, 36, 38);
+          ctxColourPicker.fillStyle = colourArrayToRGBString([135,206,250]);
+          ctxColourPicker.fillRect(2, 2, 32, 34);
+          ctxColourPicker.drawImage(colourPickerImage, 0, 0);
+      });
+
+      // 
+      var resetButton = document.getElementById("resetButton");
+      var rewriteButton = document.getElementById("rewriteButton");
+      var speedSlider = document.getElementById("speedSlider");
+      var writeSpeedText = document.getElementById("writeSpeedText");
+      var loopCheckbox = document.getElementById("loopCheckbox");
+      var traceCheckbox = document.getElementById("traceCheckbox");
+      var undoButton = document.getElementById("undoButton");
+      var redoButton = document.getElementById("redoButton");
+      var penCheckbox = document.getElementById("penCheckbox");
+      var quillCheckbox = document.getElementById("quillCheckbox");
+      
+      // NEW BUTTONS
+      var saveButton = document.getElementById("saveButton");
+      var loadButton = document.getElementById("loadButton");
+      var loadInput = document.getElementById("loadInput");
+
+
+      var ctx = canvasWriter.getContext('2d');
+      var ctxMask = canvasWriterMask.getContext('2d');
+
+
+      function mod(n, m) 
+      {
+          return ((n % m) + m) % m;
+      }
+
+
+      // Colours
+      let defaultColour = colourArrayToRGBString([240, 240, 240]);
+
+      let selectedPageColour = defaultColour;
+
+
+      ctx.fillStyle = selectedPageColour;
+      ctx.fillRect(0, 0, canvasWriter.width, canvasWriter.height)
+      ctx.strokeStyle = colourArrayToRGBString([100, 110, 10]);
+
+      // Load images
+      let greyLineImage = new Image();
+      greyLineImage.src = "grey-lines.png";
+      let blueLineImage = new Image();
+      blueLineImage.src = "blue-dotted-lines.png";
+      let redBlueLineImage = new Image();
+      redBlueLineImage.src = "red-blue-lines.png";
+      let greyDottedLineImage = new Image();
+      greyDottedLineImage.src = "grey-dotted-lines.png";
+
+      let quillImage = new Image();
+      quillImage.src = "quill.svg";
+
+      let penImage = new Image();
+      penImage.src = "pen.svg";
+
+      let selectedBackground = blueLineImage;
+
+
+      selectedBackground.onload = () => { ctx.drawImage(selectedBackground, 0, 0); };
+      // Fallback in case images are missing in this environment
+      selectedBackground.onerror = () => {
+          // If image fails, just ensure background color is correct, logic continues
+          console.log("Image resource missing, using default canvas");
+      };
+
+      // Pen 
+      let smallPenWidth = "5";
+      let mediumPenWidth = "10";
+      let largePenWidth = "20";
+
+      let selectedPenWidth = mediumPenWidth;
+
+      ctx.lineWidth = selectedPenWidth;
+      ctx.lineCap = "round";
+      let selectedPenColour = [0, 0, 0];
+
+      let isShowingTrace = false;
+      let isShowingPen = true;
+      let selectedPenImage = penImage;
+      //
+
+      let mouseX = 0;
+      let mouseY = 0;
+      let mouseHeld = false;
+
+      let isRewriting = false;
+
+      let isLooping = false;
+
+      let originX = 0;
+      let originY = 0; 
+
+      //
+      let currentLine = [];
+      let storedLines = [];
+      let deletedLines = [];
+      //
+
+      let rewriteSpeed = speedSlider.value;
+
+      let speedMultiplier = 0.1 * rewriteSpeed;
+
+      writeSpeedText.textContent = "Write Speed: " + speedMultiplier + ".0";
+
+      function getMousePos(e)
+      {
+          let bound = canvasWriter.getBoundingClientRect();
+
+          let x = e.clientX - bound.left - canvasWriter.clientLeft;
+          let y = e.clientY - bound.top - canvasWriter.clientTop;
+
+          return [x, y];
+      }
+
+      function resetcanvasWriter(ctx)
+      {
+          ctx.strokeStyle = selectedPageColour;
+          ctx.fillRect(0, 0, canvasWriter.width, canvasWriter.height);
+          ctxMask.clearRect(0, 0, canvasWriter.width, canvasWriter.height);
+          ctx.strokeStyle = colourArrayToRGBString(selectedPenColour);
+          try {
+              ctx.drawImage(selectedBackground, 0, 0);
+          } catch(e) { }
+          isRewriting = false;
+          deletedLines = [];
+      }
+
+      // Pen options buttons
+      let selectedPenButton = 1;
+      document.getElementById("mediumPenButton").innerHTML = "<u>Medium Pen</u>";
+
+
+      smallPenButton.onclick = function()
+      {
+          selectedPenWidth = smallPenWidth;
+          selectedPenButton = 0;
+          selectPenButton();
+      }
+      mediumPenButton.onclick = function()
+      {
+          selectedPenWidth = mediumPenWidth;
+          selectedPenButton = 1;
+          selectPenButton();
+      }
+      largePenButton.onclick = function()
+      {
+          selectedPenWidth = largePenWidth;
+          selectedPenButton = 2;
+          selectPenButton();
+      }
+
+      function selectPenButton() 
+      {
+          if (selectedPenButton == 0)
+          {
+              document.getElementById("smallPenButton").innerHTML = "<u>Small Pen</u>";
+              document.getElementById("mediumPenButton").innerHTML = "Medium Pen";
+              document.getElementById("largePenButton").innerHTML = "Large Pen";
+          }
+          else if (selectedPenButton == 1)
+          {
+              document.getElementById("smallPenButton").innerHTML = "Small Pen";
+              document.getElementById("mediumPenButton").innerHTML = "<u>Medium Pen</u>";
+              document.getElementById("largePenButton").innerHTML = "Large Pen";
+          }
+          else if (selectedPenButton == 2)
+          {
+              document.getElementById("smallPenButton").innerHTML = "Small Pen";
+              document.getElementById("mediumPenButton").innerHTML = "Medium Pen";
+              document.getElementById("largePenButton").innerHTML = "<u>Large Pen</u>";
+          }
+      }
+
+      // Page background buttons
+      let selectedPageButton = 0;
+      document.getElementById("backgroundButton1").innerHTML = "<u>Background 1</u>";
+
+      backgroundButton1.onclick = function()
+      {
+          selectedBackground = blueLineImage;
+          resetcanvasWriter(ctx);
+          storedLines = [];
+          selectedPageButton = 0;
+          selectPageButton();
+      }
+      backgroundButton2.onclick = function()
+      {
+          selectedBackground = greyDottedLineImage;
+          resetcanvasWriter(ctx);
+          storedLines = [];
+          selectedPageButton = 1;
+          selectPageButton();
+      }
+      backgroundButton3.onclick = function()
+      {
+          selectedBackground = redBlueLineImage;
+          resetcanvasWriter(ctx);
+          storedLines = [];
+          selectedPageButton = 2;
+          selectPageButton();
+      }
+      backgroundButton4.onclick = function()
+      {
+          selectedBackground = greyLineImage;
+          resetcanvasWriter(ctx);
+          storedLines = [];
+          selectedPageButton = 3;
+          selectPageButton();
+      }
+
+      function selectPageButton() 
+      {
+          if (selectedPageButton == 0)
+          {
+              document.getElementById("backgroundButton1").innerHTML = "<u>Background 1</u>";
+              document.getElementById("backgroundButton2").innerHTML = "Background 2";
+              document.getElementById("backgroundButton3").innerHTML = "Background 3";
+              document.getElementById("backgroundButton4").innerHTML = "Background 4";
+          }
+          else if (selectedPageButton == 1)
+          {
+              document.getElementById("backgroundButton1").innerHTML = "Background 1";
+              document.getElementById("backgroundButton2").innerHTML = "<u>Background 2</u>";
+              document.getElementById("backgroundButton3").innerHTML = "Background 3";
+              document.getElementById("backgroundButton4").innerHTML = "Background 4";
+          }
+          else if (selectedPageButton == 2)
+          {
+              document.getElementById("backgroundButton1").innerHTML = "Background 1";
+              document.getElementById("backgroundButton2").innerHTML = "Background 2";
+              document.getElementById("backgroundButton3").innerHTML = "<u>Background 3</u>";
+              document.getElementById("backgroundButton4").innerHTML = "Background 4";
+          }
+          else if (selectedPageButton == 3)
+          {
+              document.getElementById("backgroundButton1").innerHTML = "Background 1";
+              document.getElementById("backgroundButton2").innerHTML = "Background 2";
+              document.getElementById("backgroundButton3").innerHTML = "Background 3";
+              document.getElementById("backgroundButton4").innerHTML = "<u>Background 4</u>";
+          }
+      }
+
+      // Helper function to redraw the canvas from storedLines
+      function redrawCanvas() {
+          ctx.fillStyle = selectedPageColour;
+          ctx.fillRect(0, 0, canvasWriter.width, canvasWriter.height);
+          try {
+              ctx.drawImage(selectedBackground, 0, 0);
+          } catch(e) { /* ignore if image missing */ }
+          
+          ctx.strokeStyle = colourArrayToRGBString(selectedPenColour);
+          ctx.lineWidth = selectedPenWidth;
+
+          for (let i = 0; i < storedLines.length; i++)
+          {
+              for(let j = 0; j < storedLines[i].length; j++)
+              {
+                  ctx.beginPath();  
+                  ctx.lineWidth = storedLines[i][j][4];
+                  ctx.strokeStyle = colourArrayToRGBString(storedLines[i][j][5]);
+                  ctx.moveTo(storedLines[i][j][0], storedLines[i][j][1]);
+                  ctx.lineTo(storedLines[i][j][2], storedLines[i][j][3]);
+                  ctx.stroke();   
+              }
+          } 
+      }
+
+      // Bottom controls
+      resetButton.onclick = function()
+      {
+          resetcanvasWriter(ctx);
+          storedLines = [];
+      }
+
+      undoButton.onclick = function()
+      {
+          if (!isRewriting && deletedLines.length < 100 && storedLines.length > 0)
+          {
+              deletedLines.push(storedLines.pop());
+              redrawCanvas();
+          }
+      }
+
+      redoButton.onclick = function()
+      {
+          if (!isRewriting && deletedLines.length != 0)
+          {
+              storedLines.push(deletedLines.pop());
+              redrawCanvas();
+          }
+      }
+
+      // --- NEW SAVE/LOAD FUNCTIONALITY ---
+
+      saveButton.onclick = function() {
+          if (storedLines.length === 0) {
+              alert("Nothing to save!");
+              return;
+          }
+          const sessionData = JSON.stringify(storedLines);
+          const blob = new Blob([sessionData], {type: 'application/json'});
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          
+          // Generate simple filename with date
+          const date = new Date();
+          const dateStr = date.getFullYear() + "-" + (date.getMonth()+1) + "-" + date.getDate();
+          link.download = `handwriting-session-${dateStr}.json`;
+          
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+      }
+
+      loadButton.onclick = function() {
+          loadInput.click();
+      }
+
+      loadInput.onchange = function(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = function(e) {
+              try {
+                  const data = JSON.parse(e.target.result);
+                  if (Array.isArray(data)) {
+                      storedLines = data;
+                      deletedLines = []; // Clear redo stack
+                      resetcanvasWriter(ctx); // Clear current screen
+                      redrawCanvas(); // Draw loaded lines
+                  } else {
+                      alert("Invalid session file. Expected an array of lines.");
+                  }
+              } catch (err) {
+                  console.error(err);
+                  alert("Error reading file: " + err.message);
+              }
+          };
+          reader.readAsText(file);
+          loadInput.value = ''; // Reset so the same file can be loaded again if needed
+      }
+
+      // ------------------------------------
+
+      rewriteButton.onclick = async function()
+      {
+          
+          if (!isRewriting && storedLines.length != 0)
+          {
+              gtag('event', 'activate_rewrite', {
+                  'loop_on': isLooping,
+                  'trace_on': isShowingTrace,
+                  'selected_background': selectedBackground.src,
+                  'show_pen': isShowingPen,
+                  'write_speed_multiplier': speedMultiplier
+              });
+
+              isRewriting = true;
+              
+              do 
+              {
+                  ctx.strokeStyle = selectedPageColour;
+                  ctx.fillRect(0, 0, canvasWriter.width, canvasWriter.height);
+                  
+                  if (isShowingTrace)
+                  {
+                      for (let i = 0; i < storedLines.length; i++)
+                      {
+                          for(let j = 0; j < storedLines[i].length; j++)
+                          {
+                              ctxMask.clearRect(0, 0, canvasWriterMask.width, canvasWriterMask.height);
+                              ctx.lineWidth = storedLines[i][j][4];
+                              let baseColour = storedLines[i][j][5];
+                              ctx.strokeStyle = colourArrayToRGBString(faintColourArray(baseColour));
+                              ctx.beginPath();        
+                              ctx.moveTo(storedLines[i][j][0], storedLines[i][j][1]);
+                              ctx.lineTo(storedLines[i][j][2], storedLines[i][j][3]);
+                              ctx.stroke();
+                          }
+                      }
+                  }
+
+                  try {
+                      ctx.drawImage(selectedBackground, 0, 0);
+                  } catch (e) {}
+
+                  for (let i = 0; i < storedLines.length; i++)
+                  {
+                      for(let j = 0; j < storedLines[i].length; j++)
+                      {
+                          ctxMask.clearRect(0, 0, canvasWriterMask.width, canvasWriterMask.height);
+                          ctx.lineWidth = storedLines[i][j][4];
+                          ctx.strokeStyle = colourArrayToRGBString(storedLines[i][j][5]);
+                          ctx.beginPath();        
+                          ctx.moveTo(storedLines[i][j][0], storedLines[i][j][1]);
+                          ctx.lineTo(storedLines[i][j][2], storedLines[i][j][3]);
+                          if (isShowingPen)
+                          {
+                              try {
+                                  ctxMask.drawImage(selectedPenImage, storedLines[i][j][2], storedLines[i][j][3] - selectedPenImage.height);
+                              } catch(e) {}
+                          }
+                          ctx.stroke();   
+                  
+                          await new Promise(r => setTimeout(r, 50 / speedMultiplier));
+                      }
+
+                      await new Promise(r => setTimeout(r, 500 / speedMultiplier));
+                  }
+                  
+                  ctxMask.clearRect(0, 0, canvasWriterMask.width, canvasWriterMask.height);
+
+
+                  if (isLooping)
+                  {
+                      await new Promise(r => setTimeout(r, 1000));
+                  }
+              } while (isLooping & isRewriting);
+
+              isRewriting = false;
+          }
+      }
+
+
+      speedSlider.oninput = function()
+      {
+          rewriteSpeed = speedSlider.value;
+          speedMultiplier = 0.1 * rewriteSpeed;
+          speedMultiplier = speedMultiplier.toFixed(1);
+
+          writeSpeedText.textContent = "Write Speed: " + speedMultiplier;
+      }
+
+      loopCheckbox.onchange = function()
+      {
+          if (loopCheckbox.checked)
+          {
+              isLooping = true;
+          }
+          else
+          {
+              isLooping = false;
+          }
+      }
+
+      traceCheckbox.onchange = function()
+      {
+          if (traceCheckbox.checked)
+          {
+              isShowingTrace = true;
+          }
+          else
+          {
+              isShowingTrace = false;
+          }
+      }
+
+      penCheckbox.onchange = function()
+      {
+          if (penCheckbox.checked)
+          {
+              selectedPenImage = penImage;
+              isShowingPen = true;
+              quillCheckbox.checked = false;
+          }
+          else 
+          {
+              if (!quillCheckbox.check)
+              {
+                  isShowingPen = false;
+              }
+          }
+      }
+
+      quillCheckbox.onchange = function()
+      {
+          if (quillCheckbox.checked)
+          {
+              selectedPenImage = quillImage;
+              isShowingPen = true;
+              penCheckbox.checked = false;
+          }
+          else 
+          {
+              if (!penCheckbox.check)
+              {
+                  isShowingPen = false;
+              }
+          }
+      }
+
+      // When mouse clicked, draws line on click and sets mouseHeld to true for 'mousemove' events. 
+      document.addEventListener('touchstart', event => 
+      {
+          event = event.touches[0];
+
+          if (!isRewriting)
+          {        
+              let bound = canvasWriter.getBoundingClientRect();
+              mouseX = event.clientX - bound.left - canvasWriter.clientLeft;
+              mouseY = event.clientY - bound.top - canvasWriter.clientTop;
+
+              if (mouseX > 0 && mouseX < canvasWriter.width && mouseY > 0 && mouseY < canvasWriter.height)
+              {
+                  deletedLines = [];
+
+                  ctx.strokeStyle = colourArrayToRGBString(selectedPenColour);
+                  ctx.beginPath();        
+                  ctx.lineWidth = selectedPenWidth;
+
+                  ctx.moveTo(mouseX, mouseY);
+                  ctx.lineTo(mouseX, mouseY);
+                  ctx.stroke();
+
+                  currentLine.push([mouseX, mouseY, mouseX, mouseY, selectedPenWidth, selectedPenColour]);
+
+                  originX = mouseX;
+                  originY = mouseY;
+
+                  mouseHeld = true;
+              }
+          }
+          
+          return false;
+      });
+
+      document.addEventListener('mousedown', event => 
+      {   
+          if (!isRewriting)
+          {        
+              let bound = canvasWriter.getBoundingClientRect();
+              mouseX = event.clientX - bound.left - canvasWriter.clientLeft;
+              mouseY = event.clientY - bound.top - canvasWriter.clientTop;
+
+              if (mouseX > 0 && mouseX < canvasWriter.width && mouseY > 0 && mouseY < canvasWriter.height)
+              {
+                  deletedLines = [];
+
+                  ctx.beginPath();   
+                  ctx.strokeStyle = colourArrayToRGBString(selectedPenColour);
+          
+                  ctx.lineWidth = selectedPenWidth;
+
+                  ctx.moveTo(mouseX, mouseY);
+                  ctx.lineTo(mouseX, mouseY);
+                  ctx.stroke();
+
+                  currentLine.push([mouseX, mouseY, mouseX, mouseY, selectedPenWidth, selectedPenColour]);
+
+                  originX = mouseX;
+                  originY = mouseY;
+
+                  mouseHeld = true;
+              }
+          }
+      });
+
+      document.addEventListener('touchend', event => 
+      {
+          if (mouseHeld)
+          {
+          event = event.touches[0];
+          storedLines.push(currentLine.slice());
+          currentLine = [];
+          mouseHeld = false;
+          }
+      });
+
+      document.addEventListener('mouseup', event => 
+      {
+          if (mouseHeld)
+          {
+              storedLines.push(currentLine.slice());
+              currentLine = [];
+              mouseHeld = false;
+          }
+      });
+
+      document.addEventListener('touchmove', event => 
+      {
+
+          event = event.touches[0];
+
+          if (mouseHeld)
+          {
+              ctx.beginPath();        
+              ctx.lineWidth = selectedPenWidth;
+              ctx.strokeStyle = colourArrayToRGBString(selectedPenColour);
+              ctx.moveTo(originX, originY);
+              let bound = canvasWriter.getBoundingClientRect();
+
+              mouseX = event.clientX - bound.left - canvasWriter.clientLeft;
+              mouseY = event.clientY - bound.top - canvasWriter.clientTop;
+
+              currentLine.push([originX, originY, mouseX, mouseY, selectedPenWidth, selectedPenColour]);
+
+              ctx.lineTo(mouseX, mouseY);
+              ctx.stroke();
+
+              originX = mouseX;
+              originY = mouseY;
+              
+          }
+      });
+
+      document.addEventListener('mousemove', event => 
+      {
+
+          if (mouseHeld)
+          {
+              ctx.strokeStyle = colourArrayToRGBString(selectedPenColour);
+              ctx.beginPath();        
+              ctx.lineWidth = selectedPenWidth;
+
+              ctx.moveTo(originX, originY);
+              let bound = canvasWriter.getBoundingClientRect();
+
+              mouseX = event.clientX - bound.left - canvasWriter.clientLeft;
+              mouseY = event.clientY - bound.top - canvasWriter.clientTop;
+
+              currentLine.push([originX, originY, mouseX, mouseY, selectedPenWidth, selectedPenColour]);
+
+              ctx.lineTo(mouseX, mouseY);
+              ctx.stroke();
+
+              originX = mouseX;
+              originY = mouseY;
+              
+          }
+      });
+
+      // Colour picker click
+      colourPickerCanvas.addEventListener('mousedown', event => 
+      {
+          changePenColour(event);
+      });
+
+      colourPickerCanvas.addEventListener('touchstart', event => 
+      {
+          event = event.touches[0];
+          changePenColour(event);
+      });
+
+      function changePenColour(event)
+      {
+          ctxColourPicker.clearRect(0, 0, 1000, 1000)
+          try {
+              ctxColourPicker.drawImage(colourPickerImage, 0, 0);
+              let pickedColour = Array.from(ctxColourPicker.getImageData(event.offsetX, colourPickerImage.height / 2, 1, 1).data);
+              if (pickedColour.length != 0)
+              {
+                  selectedPenColour = pickedColour; 
+                  ctxColourPicker.fillStyle = colourArrayToRGBString([100,100,100]);
+                  ctxColourPicker.clearRect(0, 0, 1000, 1000)
+                  
+                  ctxColourPicker.fillRect(Math.floor(event.offsetX/36) * 36, 0, 36, 38);
+                  ctxColourPicker.fillStyle = colourArrayToRGBString([135,206,250]);
+                  ctxColourPicker.fillRect(Math.floor(event.offsetX/36) * 36 + 2, 2, 32, 34);
+                  ctxColourPicker.drawImage(colourPickerImage, 0, 0);
+              }
+          } catch(e) {}
+      }
+
+      function colourArrayToRGBString(colourArray)
+      {
+          return "rgb(" + colourArray[0] + "," + colourArray[1] + "," + colourArray[2] + ")";
+      }
+
+      function faintColourArray(colourArray)
+      {
+          return colourArray.map(x => x + 3 * (255 - x) / 4);
+      }
+
+      function dateSuffix(dayString)
+      {
+          if (dayString.length == 2 && dayString[0] == '1')
+          {
+              return (dayString += "th");
+
+          }
+          else if (dayString[dayString.length - 1] == '1')
+          {
+              return (dayString += "st");
+          }
+          else if (dayString[dayString.length - 1] == '2')
+          {
+              return (dayString += "nd");
+          }
+          else if (dayString[dayString.length - 1] == '3')
+          {
+              return (dayString += "rd");
+          }
+          else
+          {
+              return (dayString += "th");
+          }
+
+      }
+    </script>
+  </body>
+
+</html>
