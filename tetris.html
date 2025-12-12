@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Motion Tetris</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            touch-action: none; /* Prevent pull-to-refresh on mobile */
+            overscroll-behavior: none;
+            background-color: #0f172a;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        .neon-text {
+            text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            pointer-events: auto;
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center">
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas" width="320" height="640" class="bg-slate-900 border-2 border-slate-700"></canvas>
+
+    <!-- UI Layer -->
+    <div id="ui-layer">
+        <div class="flex justify-between items-start w-full max-w-md mx-auto">
+            <div class="text-left">
+                <div class="text-xs text-slate-400 uppercase tracking-widest">Score</div>
+                <div id="scoreDisplay" class="text-3xl font-bold font-mono text-cyan-400">0</div>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-slate-400 uppercase tracking-widest">Level</div>
+                <div id="levelDisplay" class="text-3xl font-bold font-mono text-purple-400">1</div>
+            </div>
+        </div>
+        
+        <!-- Debug info for motion (optional, good for user feedback) -->
+        <div id="debugInfo" class="text-[10px] text-slate-600 font-mono text-center mb-2 opacity-50">
+            Tilt to Move | Twist to Turn
+        </div>
+    </div>
+
+    <!-- Start / Permission Screen -->
+    <div id="startScreen" class="overlay">
+        <h1 class="text-5xl font-black italic mb-2 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 neon-text">TETRIS</h1>
+        <p class="text-slate-300 mb-8 text-center px-6">
+            <span class="block text-xl mb-2 font-bold text-white">Motion Controls</span>
+            <span class="block mb-1">↔️ <b class="text-cyan-300">Tilt</b> phone to Move</span>
+            <span class="block mb-1">🔄 <b class="text-purple-300">Twist</b> phone to Rotate</span>
+            <span class="block">👇 <b class="text-yellow-300">Tap</b> screen to Drop</span>
+        </p>
+        <button id="startBtn" class="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full font-bold text-xl shadow-lg shadow-cyan-500/50 active:scale-95 transition-transform">
+            Start Game
+        </button>
+        <p class="mt-4 text-xs text-slate-500">Requires Device Motion Permission</p>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen" class="overlay hidden">
+        <h2 class="text-4xl font-bold text-red-500 mb-2 neon-text">GAME OVER</h2>
+        <p class="text-xl text-white mb-6">Score: <span id="finalScore">0</span></p>
+        <button id="restartBtn" class="px-8 py-3 bg-white text-slate-900 rounded-full font-bold text-lg shadow-lg active:scale-95 transition-transform">
+            Try Again
+        </button>
+    </div>
+
+    <script>
+        // --- Game Constants & Variables ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const debugInfo = document.getElementById('debugInfo');
+
+        // Responsive Sizing
+        function resizeCanvas() {
+            const aspectRatio = 10 / 20; // Tetris standard
+            let w = window.innerWidth * 0.95;
+            let h = window.innerHeight * 0.85;
+            
+            if (w / h > aspectRatio) {
+                w = h * aspectRatio;
+            } else {
+                h = w / aspectRatio;
+            }
+            
+            canvas.style.width = `${w}px`;
+            canvas.style.height = `${h}px`;
+            // Keep internal resolution high for sharpness
+            canvas.width = 320; 
+            canvas.height = 640;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const COLS = 10;
+        const ROWS = 20;
+        const BLOCK_SIZE = 32; // Internal logic size (320 / 10)
+        
+        // Colors
+        const COLORS = [
+            null,
+            '#FF0D72', // T - Magenta
+            '#0DC2FF', // I - Cyan
+            '#0DFF72', // S - Green
+            '#F538FF', // Z - Purple (Custom variation)
+            '#FF8E0D', // L - Orange
+            '#FFE138', // O - Yellow
+            '#3877FF', // J - Blue
+        ];
+
+        // Tetromino shapes
+        const PIECES = [
+            [],
+            [[0, 1, 0], [1, 1, 1], [0, 0, 0]], // T
+            [[0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0]], // I
+            [[0, 1, 1], [1, 1, 0], [0, 0, 0]], // S
+            [[1, 1, 0], [0, 1, 1], [0, 0, 0]], // Z
+            [[0, 0, 1], [1, 1, 1], [0, 0, 0]], // L
+            [[1, 1], [1, 1]], // O
+            [[1, 0, 0], [1, 1, 1], [0, 0, 0]], // J
+        ];
+
+        // Game State
+        let grid = createGrid();
+        let player = {
+            pos: {x: 0, y: 0},
+            matrix: null,
+            score: 0,
+            level: 1,
+            lines: 0
+        };
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+        let isPaused = false;
+        let isGameOver = false;
+        let animationId = null;
+
+        // Motion State
+        let lastMotionTime = 0;
+        let moveDelay = 150; // ms between tilt moves
+        let lastRotateTime = 0;
+        let rotateCooldown = 400; // ms between twists
+        let tiltSensitivity = 10; // Degrees tilt to trigger move
+        let twistSensitivity = 200; // Deg/s rotation rate to trigger turn
+
+        // --- Core Logic ---
+
+        function createGrid() {
+            return Array.from({length: ROWS}, () => Array(COLS).fill(0));
+        }
+
+        function collide(arena, player) {
+            const [m, o] = [player.matrix, player.pos];
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                        (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function drawMatrix(matrix, offset) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        // Draw block body
+                        ctx.fillStyle = COLORS[value];
+                        ctx.fillRect((x + offset.x) * BLOCK_SIZE, (y + offset.y) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                        
+                        // Draw neon highlight/border
+                        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect((x + offset.x) * BLOCK_SIZE, (y + offset.y) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                        
+                        // Inner glow
+                        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                        ctx.fillRect((x + offset.x) * BLOCK_SIZE + 4, (y + offset.y) * BLOCK_SIZE + 4, BLOCK_SIZE - 8, BLOCK_SIZE - 8);
+                    }
+                });
+            });
+        }
+
+        function draw() {
+            // Background
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Grid Lines (subtle)
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            for(let i=0; i<=COLS; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i*BLOCK_SIZE, 0);
+                ctx.lineTo(i*BLOCK_SIZE, canvas.height);
+                ctx.stroke();
+            }
+
+            drawMatrix(grid, {x: 0, y: 0});
+            drawMatrix(player.matrix, player.pos);
+        }
+
+        function merge(arena, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        arena[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function rotate(matrix, dir) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            if (dir > 0) {
+                matrix.forEach(row => row.reverse());
+            } else {
+                matrix.reverse();
+            }
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(grid, player)) {
+                player.pos.y--;
+                merge(grid, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+            }
+            dropCounter = 0;
+        }
+
+        function playerMove(dir) {
+            player.pos.x += dir;
+            if (collide(grid, player)) {
+                player.pos.x -= dir;
+            }
+        }
+
+        function playerRotate(dir) {
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+            while (collide(grid, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+
+        function playerReset() {
+            const pieces = 'ILJOTSZ';
+            player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+            player.pos.y = 0;
+            player.pos.x = (grid[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
+            
+            if (collide(grid, player)) {
+                isGameOver = true;
+                gameOverScreen.classList.remove('hidden');
+                finalScoreDisplay.innerText = player.score;
+            }
+        }
+
+        function createPiece(type) {
+            if (type === 'I') return PIECES[2];
+            if (type === 'L') return PIECES[5];
+            if (type === 'J') return PIECES[7];
+            if (type === 'O') return PIECES[6];
+            if (type === 'Z') return PIECES[4];
+            if (type === 'S') return PIECES[3];
+            if (type === 'T') return PIECES[1];
+        }
+
+        function arenaSweep() {
+            let rowCount = 1;
+            outer: for (let y = grid.length - 1; y > 0; --y) {
+                for (let x = 0; x < grid[y].length; ++x) {
+                    if (grid[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+                const row = grid.splice(y, 1)[0].fill(0);
+                grid.unshift(row);
+                ++y;
+                player.score += rowCount * 10;
+                player.lines++;
+                rowCount *= 2;
+                
+                // Level up every 10 lines
+                player.level = Math.floor(player.lines / 10) + 1;
+                dropInterval = Math.max(100, 1000 - (player.level - 1) * 100);
+            }
+        }
+
+        function updateScore() {
+            scoreDisplay.innerText = player.score;
+            levelDisplay.innerText = player.level;
+        }
+
+        function update(time = 0) {
+            if (isGameOver || isPaused) return;
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+
+            draw();
+            animationId = requestAnimationFrame(update);
+        }
+
+        // --- Controls ---
+
+        // 1. Touch Controls (Tap to rotate/drop fallback)
+        canvas.addEventListener('touchstart', (e) => {
+            // If user taps specifically, treat as hard drop or rotate? 
+            // Let's make tap = Soft Drop/Accelerate
+            e.preventDefault(); 
+            playerDrop();
+            playerDrop(); // Double speed
+        }, {passive: false});
+
+
+        // 2. Motion Controls
+        function handleOrientation(event) {
+            // Gamma is the left-to-right tilt in degrees (-90 to 90)
+            const tilt = event.gamma; 
+            const now = Date.now();
+
+            // Deadzone check (-10 to 10 is 'flat')
+            if (Math.abs(tilt) > tiltSensitivity) {
+                if (now - lastMotionTime > moveDelay) {
+                    if (tilt < -tiltSensitivity) {
+                        playerMove(-1); // Tilt Left
+                    } else if (tilt > tiltSensitivity) {
+                        playerMove(1); // Tilt Right
+                    }
+                    lastMotionTime = now;
+                }
+            }
+        }
+
+        function handleMotion(event) {
+            if (!event.rotationRate) return;
+            
+            // Alpha is rotation around Z axis (perpendicular to screen)
+            // Ideally captures "steering wheel" motion
+            const twistSpeed = event.rotationRate.alpha;
+            
+            // If unavailable (some androids), try beta (forward/back tilt) as a fallback
+            // const fallbackTwist = event.rotationRate.beta; 
+            
+            const now = Date.now();
+
+            if (now - lastRotateTime > rotateCooldown) {
+                // Check if twist speed exceeds threshold
+                if (Math.abs(twistSpeed) > twistSensitivity) {
+                    // Rotate Clockwise for positive twist, Counter for negative (or just always clockwise)
+                    playerRotate(1);
+                    lastRotateTime = now;
+                    
+                    // Visual feedback
+                    debugInfo.style.color = '#0ff';
+                    setTimeout(() => debugInfo.style.color = '', 200);
+                }
+            }
+        }
+
+        // 3. Keyboard Fallback (for debugging on PC)
+        document.addEventListener('keydown', event => {
+            if (isGameOver) return;
+            if (event.keyCode === 37) playerMove(-1);
+            else if (event.keyCode === 39) playerMove(1);
+            else if (event.keyCode === 40) playerDrop();
+            else if (event.keyCode === 81) playerRotate(-1);
+            else if (event.keyCode === 87 || event.keyCode === 38) playerRotate(1);
+        });
+
+        // --- Initialization ---
+
+        function initGame() {
+            // Reset state
+            grid = createGrid();
+            player.score = 0;
+            player.level = 1;
+            player.lines = 0;
+            isGameOver = false;
+            updateScore();
+            playerReset();
+            
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            
+            if (animationId) cancelAnimationFrame(animationId);
+            update();
+        }
+
+        async function requestPermissions() {
+            // Check if DeviceMotionEvent is defined and has the requestPermission method (iOS 13+)
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permissionState = await DeviceMotionEvent.requestPermission();
+                    if (permissionState === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        window.addEventListener('devicemotion', handleMotion);
+                        initGame();
+                    } else {
+                        alert("Motion permission is required to play!");
+                    }
+                } catch (error) {
+                    console.error(error);
+                    alert("Error requesting motion permissions. Ensure you are on HTTPS.");
+                }
+            } else {
+                // Non-iOS 13+ devices (Android, older iOS, Desktop)
+                window.addEventListener('deviceorientation', handleOrientation);
+                window.addEventListener('devicemotion', handleMotion);
+                initGame();
+            }
+        }
+
+        document.getElementById('startBtn').addEventListener('click', requestPermissions);
+        document.getElementById('restartBtn').addEventListener('click', initGame);
+
+        // Prevent dragging on document
+        document.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+
+    </script>
+</body>
+</html>
+
