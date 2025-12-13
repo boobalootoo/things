@@ -3,172 +3,265 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Motion Tetris</title>
+    <title>Motion Tetris: Perfect Square</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
-            touch-action: none; /* Prevent pull-to-refresh on mobile */
+            touch-action: none;
             overscroll-behavior: none;
-            background-color: #0f172a;
+            background-color: #0f172a; /* Slate 900 */
             color: white;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            width: 100vw;
+            margin: 0;
         }
-        canvas {
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
-            border-radius: 4px;
+
+        /* THE CONSOLE: STRICTLY SQUARE */
+        #game-console {
+            /* Use vmin to ensure it fits on screen regardless of orientation, but stays square */
+            width: 95vmin;
+            height: 95vmin;
+            max-width: 600px;
+            max-height: 600px;
+            
+            background: #1e293b; /* Slate 800 */
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5), inset 0 0 0 2px #334155;
+            
+            position: relative;
+            display: flex; /* Flex row layout */
+            overflow: hidden; /* Cut off anything that sticks out */
         }
-        .neon-text {
-            text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff;
-        }
-        #ui-layer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
+
+        /* 3-Column Layout */
+        .col-side {
+            width: 25%;
             height: 100%;
-            pointer-events: none;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
-            padding: 20px;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            gap: 20px;
         }
+
+        .col-center {
+            width: 50%;
+            height: 100%;
+            background: #000;
+            position: relative;
+            border-left: 2px solid #334155;
+            border-right: 2px solid #334155;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #020617;
+        }
+
+        /* UI Elements */
+        .stat-box {
+            background: #0f172a;
+            padding: 8px 4px;
+            border-radius: 12px;
+            text-align: center;
+            width: 100%;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+
+        .stat-label {
+            font-size: 0.6rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+        }
+
+        .stat-value {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .neon-text { text-shadow: 0 0 10px rgba(6, 182, 212, 0.5); }
+
+        /* Settings & Overlays */
+        #settings-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 60;
+            background: rgba(51, 65, 85, 0.8);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+        }
+
         .overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(15, 23, 42, 0.9);
+            background: rgba(15, 23, 42, 0.96);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 50;
-            pointer-events: auto;
+            padding: 20px;
+            text-align: center;
         }
-        .hidden {
-            display: none !important;
-        }
+
+        .hidden { display: none !important; }
+
+        input[type=range] { width: 100%; accent-color: #06b6d4; height: 6px; border-radius: 3px; }
+        .control-row { width: 90%; margin-bottom: 25px; }
+
     </style>
 </head>
-<body class="h-screen w-screen flex flex-col items-center justify-center">
+<body>
 
-    <!-- Game Canvas -->
-    <canvas id="gameCanvas" width="320" height="640" class="bg-slate-900 border-2 border-slate-700"></canvas>
+    <div id="game-console">
+        <!-- Settings Toggle (Absolute) -->
+        <div id="settings-btn" onclick="toggleSettings()">
+            <i class="fas fa-cog text-slate-300"></i>
+        </div>
 
-    <!-- UI Layer -->
-    <div id="ui-layer">
-        <div class="flex justify-between items-start w-full max-w-md mx-auto">
-            <div class="text-left">
-                <div class="text-xs text-slate-400 uppercase tracking-widest">Score</div>
-                <div id="scoreDisplay" class="text-3xl font-bold font-mono text-cyan-400">0</div>
+        <!-- Left Column -->
+        <div class="col-side">
+            <div class="stat-box">
+                <div class="stat-label">Score</div>
+                <div id="scoreDisplay" class="stat-value text-cyan-400">0</div>
             </div>
-            <div class="text-right">
-                <div class="text-xs text-slate-400 uppercase tracking-widest">Level</div>
-                <div id="levelDisplay" class="text-3xl font-bold font-mono text-purple-400">1</div>
+            <div class="stat-box">
+                <div class="stat-label">Level</div>
+                <div id="levelDisplay" class="stat-value text-purple-400">1</div>
             </div>
         </div>
-        
-        <!-- Debug info for motion (optional, good for user feedback) -->
-        <div id="debugInfo" class="text-[10px] text-slate-600 font-mono text-center mb-2 opacity-50">
-            Tilt to Move | Twist to Turn
+
+        <!-- Center Column (The Game) -->
+        <div class="col-center">
+            <!-- Canvas is 100% width/height of this column. Since column is 50% of square, aspect ratio is 1:2 -->
+            <canvas id="gameCanvas" width="200" height="400"></canvas>
         </div>
-    </div>
 
-    <!-- Start / Permission Screen -->
-    <div id="startScreen" class="overlay">
-        <h1 class="text-5xl font-black italic mb-2 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 neon-text">TETRIS</h1>
-        <p class="text-slate-300 mb-8 text-center px-6">
-            <span class="block text-xl mb-2 font-bold text-white">Motion Controls</span>
-            <span class="block mb-1">↔️ <b class="text-cyan-300">Tilt</b> phone to Move</span>
-            <span class="block mb-1">🔄 <b class="text-purple-300">Twist</b> phone to Rotate</span>
-            <span class="block">👇 <b class="text-yellow-300">Tap</b> screen to Drop</span>
-        </p>
-        <button id="startBtn" class="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full font-bold text-xl shadow-lg shadow-cyan-500/50 active:scale-95 transition-transform">
-            Start Game
-        </button>
-        <p class="mt-4 text-xs text-slate-500">Requires Device Motion Permission</p>
-    </div>
+        <!-- Right Column -->
+        <div class="col-side">
+            <div class="stat-box">
+                <div class="stat-label">Lines</div>
+                <div id="linesDisplay" class="stat-value text-green-400">0</div>
+            </div>
+            
+            <!-- Tilt Visualizer -->
+            <div class="stat-box" style="height: 80px; position: relative; overflow: hidden;">
+                <div class="stat-label">Balance</div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                     <div class="w-full h-[1px] bg-slate-700"></div>
+                     <div class="h-full w-[1px] bg-slate-700 absolute"></div>
+                </div>
+                <!-- Moving dot for tilt -->
+                <div id="tilt-dot" class="absolute w-3 h-3 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] transition-transform duration-75" style="top: 50%; left: 50%; margin-left: -6px; margin-top: -6px;"></div>
+            </div>
+        </div>
 
-    <!-- Game Over Screen -->
-    <div id="gameOverScreen" class="overlay hidden">
-        <h2 class="text-4xl font-bold text-red-500 mb-2 neon-text">GAME OVER</h2>
-        <p class="text-xl text-white mb-6">Score: <span id="finalScore">0</span></p>
-        <button id="restartBtn" class="px-8 py-3 bg-white text-slate-900 rounded-full font-bold text-lg shadow-lg active:scale-95 transition-transform">
-            Try Again
-        </button>
+        <!-- START SCREEN -->
+        <div id="startScreen" class="overlay">
+            <h1 class="text-5xl font-black italic mb-2 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 neon-text">TETRIS</h1>
+            <div class="text-slate-400 mb-8 text-sm">
+                <p class="mb-2"><i class="fas fa-mobile-alt mr-2"></i>Hold Phone Upright</p>
+                <p>↔️ Tilt to Move</p>
+                <p>🔄 Twist to Rotate</p>
+            </div>
+            <button id="startBtn" class="w-full max-w-[200px] py-4 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl font-bold text-xl shadow-lg shadow-cyan-900/50 active:scale-95 transition-transform text-white border border-cyan-400/30">
+                PLAY
+            </button>
+        </div>
+
+        <!-- GAME OVER -->
+        <div id="gameOverScreen" class="overlay hidden">
+            <h2 class="text-3xl font-bold text-red-500 mb-4 neon-text">GAME OVER</h2>
+            <p class="text-2xl text-white mb-8 font-mono">Score: <span id="finalScore">0</span></p>
+            <button id="restartBtn" class="px-8 py-3 bg-white text-slate-900 rounded-full font-bold text-lg shadow-lg active:scale-95 transition-transform">
+                Replay
+            </button>
+        </div>
+
+        <!-- SETTINGS -->
+        <div id="settingsScreen" class="overlay hidden">
+            <h2 class="text-2xl font-bold text-white mb-8">Controls</h2>
+            
+            <div class="control-row">
+                <div class="flex justify-between mb-2">
+                    <label class="text-sm font-bold text-cyan-300">Tilt Sensitivity</label>
+                    <span id="tiltVal" class="text-xs font-mono text-white bg-slate-700 px-2 py-1 rounded">15°</span>
+                </div>
+                <input type="range" id="tiltRange" min="5" max="45" step="1" value="15">
+                <p class="text-[10px] text-slate-500 mt-2 text-left">Lower = More Sensitive</p>
+            </div>
+
+            <div class="control-row">
+                <div class="flex justify-between mb-2">
+                    <label class="text-sm font-bold text-purple-300">Twist Sensitivity</label>
+                    <span id="twistVal" class="text-xs font-mono text-white bg-slate-700 px-2 py-1 rounded">200</span>
+                </div>
+                <input type="range" id="twistRange" min="50" max="600" step="10" value="200">
+                <p class="text-[10px] text-slate-500 mt-2 text-left">How fast you rotate the phone</p>
+            </div>
+
+            <button onclick="toggleSettings()" class="mt-4 px-8 py-3 bg-slate-700 text-white rounded-xl font-bold text-sm hover:bg-slate-600">
+                Save & Close
+            </button>
+        </div>
     </div>
 
     <script>
-        // --- Game Constants & Variables ---
+        // --- Setup ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        
+        // Screens
         const startScreen = document.getElementById('startScreen');
         const gameOverScreen = document.getElementById('gameOverScreen');
+        const settingsScreen = document.getElementById('settingsScreen');
+        
+        // UI
         const scoreDisplay = document.getElementById('scoreDisplay');
         const levelDisplay = document.getElementById('levelDisplay');
+        const linesDisplay = document.getElementById('linesDisplay');
         const finalScoreDisplay = document.getElementById('finalScore');
-        const debugInfo = document.getElementById('debugInfo');
+        const tiltDot = document.getElementById('tilt-dot');
 
-        // Responsive Sizing
-        function resizeCanvas() {
-            const aspectRatio = 10 / 20; // Tetris standard
-            let w = window.innerWidth * 0.95;
-            let h = window.innerHeight * 0.85;
-            
-            if (w / h > aspectRatio) {
-                w = h * aspectRatio;
-            } else {
-                h = w / aspectRatio;
-            }
-            
-            canvas.style.width = `${w}px`;
-            canvas.style.height = `${h}px`;
-            // Keep internal resolution high for sharpness
-            canvas.width = 320; 
-            canvas.height = 640;
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
+        // Logic
         const COLS = 10;
         const ROWS = 20;
-        const BLOCK_SIZE = 32; // Internal logic size (320 / 10)
-        
+        const BLOCK_SIZE = 20; // Logical size, scaled by canvas CSS
+
         // Colors
         const COLORS = [
             null,
-            '#FF0D72', // T - Magenta
-            '#0DC2FF', // I - Cyan
-            '#0DFF72', // S - Green
-            '#F538FF', // Z - Purple (Custom variation)
-            '#FF8E0D', // L - Orange
-            '#FFE138', // O - Yellow
-            '#3877FF', // J - Blue
+            '#FF0D72', '#0DC2FF', '#0DFF72', '#F538FF', 
+            '#FF8E0D', '#FFE138', '#3877FF',
         ];
 
-        // Tetromino shapes
-        const PIECES = [
-            [],
-            [[0, 1, 0], [1, 1, 1], [0, 0, 0]], // T
-            [[0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0]], // I
-            [[0, 1, 1], [1, 1, 0], [0, 0, 0]], // S
-            [[1, 1, 0], [0, 1, 1], [0, 0, 0]], // Z
-            [[0, 0, 1], [1, 1, 1], [0, 0, 0]], // L
-            [[1, 1], [1, 1]], // O
-            [[1, 0, 0], [1, 1, 1], [0, 0, 0]], // J
-        ];
-
-        // Game State
         let grid = createGrid();
-        let player = {
-            pos: {x: 0, y: 0},
-            matrix: null,
-            score: 0,
-            level: 1,
-            lines: 0
-        };
+        let player = { pos: {x: 0, y: 0}, matrix: null, score: 0, level: 1, lines: 0 };
+        
+        // Timing
         let dropCounter = 0;
         let dropInterval = 1000;
         let lastTime = 0;
@@ -176,26 +269,62 @@
         let isGameOver = false;
         let animationId = null;
 
-        // Motion State
+        // Motion Variables
         let lastMotionTime = 0;
-        let moveDelay = 150; // ms between tilt moves
+        let moveDelay = 120;
         let lastRotateTime = 0;
-        let rotateCooldown = 400; // ms between twists
-        let tiltSensitivity = 10; // Degrees tilt to trigger move
-        let twistSensitivity = 200; // Deg/s rotation rate to trigger turn
+        let rotateCooldown = 350;
+        let tiltThreshold = 15;
+        let twistThreshold = 200;
 
-        // --- Core Logic ---
+        // --- Settings Logic ---
+        const tiltRange = document.getElementById('tiltRange');
+        const twistRange = document.getElementById('twistRange');
+        
+        tiltRange.addEventListener('input', (e) => {
+            tiltThreshold = parseInt(e.target.value);
+            document.getElementById('tiltVal').innerText = tiltThreshold + "°";
+        });
+        
+        twistRange.addEventListener('input', (e) => {
+            twistThreshold = parseInt(e.target.value);
+            document.getElementById('twistVal').innerText = twistThreshold;
+        });
 
+        function toggleSettings() {
+            if (settingsScreen.classList.contains('hidden')) {
+                isPaused = true;
+                settingsScreen.classList.remove('hidden');
+            } else {
+                settingsScreen.classList.add('hidden');
+                if (!isGameOver && player.matrix) {
+                    isPaused = false;
+                    lastTime = performance.now();
+                    requestAnimationFrame(update);
+                }
+            }
+        }
+
+        // --- Game Core ---
         function createGrid() {
             return Array.from({length: ROWS}, () => Array(COLS).fill(0));
+        }
+
+        function createPiece(type) {
+            if (type === 'I') return [[0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0]];
+            if (type === 'L') return [[0, 0, 1], [1, 1, 1], [0, 0, 0]];
+            if (type === 'J') return [[1, 0, 0], [1, 1, 1], [0, 0, 0]];
+            if (type === 'O') return [[1, 1], [1, 1]];
+            if (type === 'Z') return [[1, 1, 0], [0, 1, 1], [0, 0, 0]];
+            if (type === 'S') return [[0, 1, 1], [1, 1, 0], [0, 0, 0]];
+            if (type === 'T') return [[0, 1, 0], [1, 1, 1], [0, 0, 0]];
         }
 
         function collide(arena, player) {
             const [m, o] = [player.matrix, player.pos];
             for (let y = 0; y < m.length; ++y) {
                 for (let x = 0; x < m[y].length; ++x) {
-                    if (m[y][x] !== 0 &&
-                        (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+                    if (m[y][x] !== 0 && (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
                         return true;
                     }
                 }
@@ -203,52 +332,59 @@
             return false;
         }
 
-        function drawMatrix(matrix, offset) {
-            matrix.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) {
-                        // Draw block body
-                        ctx.fillStyle = COLORS[value];
-                        ctx.fillRect((x + offset.x) * BLOCK_SIZE, (y + offset.y) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-                        
-                        // Draw neon highlight/border
-                        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect((x + offset.x) * BLOCK_SIZE, (y + offset.y) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-                        
-                        // Inner glow
-                        ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                        ctx.fillRect((x + offset.x) * BLOCK_SIZE + 4, (y + offset.y) * BLOCK_SIZE + 4, BLOCK_SIZE - 8, BLOCK_SIZE - 8);
-                    }
-                });
-            });
-        }
-
         function draw() {
-            // Background
-            ctx.fillStyle = '#0f172a';
+            // Clear
+            ctx.fillStyle = '#020617';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Grid Lines (subtle)
+            // Grid Lines
             ctx.strokeStyle = '#1e293b';
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 0.5;
             for(let i=0; i<=COLS; i++) {
                 ctx.beginPath();
                 ctx.moveTo(i*BLOCK_SIZE, 0);
                 ctx.lineTo(i*BLOCK_SIZE, canvas.height);
                 ctx.stroke();
             }
+            for(let j=0; j<=ROWS; j++) {
+                ctx.beginPath();
+                ctx.moveTo(0, j*BLOCK_SIZE);
+                ctx.lineTo(canvas.width, j*BLOCK_SIZE);
+                ctx.stroke();
+            }
 
-            drawMatrix(grid, {x: 0, y: 0});
-            drawMatrix(player.matrix, player.pos);
+            drawMatrix(grid, {x:0, y:0});
+            if (player.matrix) drawMatrix(player.matrix, player.pos);
+        }
+
+        function drawMatrix(matrix, offset) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        const px = (x + offset.x) * BLOCK_SIZE;
+                        const py = (y + offset.y) * BLOCK_SIZE;
+                        
+                        // Main Block
+                        ctx.fillStyle = COLORS[value];
+                        ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                        
+                        // Bevel/Highlight
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                        ctx.strokeRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                        
+                        // Inner
+                        ctx.fillStyle = 'rgba(0,0,0,0.1)';
+                        ctx.fillRect(px+4, py+4, BLOCK_SIZE-8, BLOCK_SIZE-8);
+                    }
+                });
+            });
         }
 
         function merge(arena, player) {
             player.matrix.forEach((row, y) => {
                 row.forEach((value, x) => {
-                    if (value !== 0) {
-                        arena[y + player.pos.y][x + player.pos.x] = value;
-                    }
+                    if (value !== 0) arena[y + player.pos.y][x + player.pos.x] = value;
                 });
             });
         }
@@ -259,11 +395,8 @@
                     [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
                 }
             }
-            if (dir > 0) {
-                matrix.forEach(row => row.reverse());
-            } else {
-                matrix.reverse();
-            }
+            if (dir > 0) matrix.forEach(row => row.reverse());
+            else matrix.reverse();
         }
 
         function playerDrop() {
@@ -273,16 +406,14 @@
                 merge(grid, player);
                 playerReset();
                 arenaSweep();
-                updateScore();
             }
             dropCounter = 0;
+            updateUI();
         }
 
         function playerMove(dir) {
             player.pos.x += dir;
-            if (collide(grid, player)) {
-                player.pos.x -= dir;
-            }
+            if (collide(grid, player)) player.pos.x -= dir;
         }
 
         function playerRotate(dir) {
@@ -313,23 +444,11 @@
             }
         }
 
-        function createPiece(type) {
-            if (type === 'I') return PIECES[2];
-            if (type === 'L') return PIECES[5];
-            if (type === 'J') return PIECES[7];
-            if (type === 'O') return PIECES[6];
-            if (type === 'Z') return PIECES[4];
-            if (type === 'S') return PIECES[3];
-            if (type === 'T') return PIECES[1];
-        }
-
         function arenaSweep() {
             let rowCount = 1;
             outer: for (let y = grid.length - 1; y > 0; --y) {
                 for (let x = 0; x < grid[y].length; ++x) {
-                    if (grid[y][x] === 0) {
-                        continue outer;
-                    }
+                    if (grid[y][x] === 0) continue outer;
                 }
                 const row = grid.splice(y, 1)[0].fill(0);
                 grid.unshift(row);
@@ -337,16 +456,16 @@
                 player.score += rowCount * 10;
                 player.lines++;
                 rowCount *= 2;
-                
-                // Level up every 10 lines
+                // Speed up
                 player.level = Math.floor(player.lines / 10) + 1;
-                dropInterval = Math.max(100, 1000 - (player.level - 1) * 100);
+                dropInterval = Math.max(100, 1000 - (player.level - 1) * 80);
             }
         }
 
-        function updateScore() {
+        function updateUI() {
             scoreDisplay.innerText = player.score;
             levelDisplay.innerText = player.level;
+            linesDisplay.innerText = player.lines;
         }
 
         function update(time = 0) {
@@ -356,131 +475,74 @@
             lastTime = time;
 
             dropCounter += deltaTime;
-            if (dropCounter > dropInterval) {
-                playerDrop();
-            }
+            if (dropCounter > dropInterval) playerDrop();
 
             draw();
             animationId = requestAnimationFrame(update);
         }
 
-        // --- Controls ---
+        // --- Inputs ---
 
-        // 1. Touch Controls (Tap to rotate/drop fallback)
-        canvas.addEventListener('touchstart', (e) => {
-            // If user taps specifically, treat as hard drop or rotate? 
-            // Let's make tap = Soft Drop/Accelerate
-            e.preventDefault(); 
-            playerDrop();
-            playerDrop(); // Double speed
-        }, {passive: false});
-
-
-        // 2. Motion Controls
+        // Motion Handlers
         function handleOrientation(event) {
-            // Gamma is the left-to-right tilt in degrees (-90 to 90)
-            const tilt = event.gamma; 
-            const now = Date.now();
+            if (isPaused || isGameOver) return;
+            
+            const tilt = event.gamma; // Left/Right
+            
+            // Visualizer Dot Logic
+            // Map -45 to 45 degrees to -30px to 30px translation
+            const clampTilt = Math.max(-45, Math.min(45, tilt));
+            const xOffset = (clampTilt / 45) * 30; 
+            tiltDot.style.transform = `translate(${xOffset}px, -50%)`;
 
-            // Deadzone check (-10 to 10 is 'flat')
-            if (Math.abs(tilt) > tiltSensitivity) {
+            // Movement Logic
+            const now = Date.now();
+            if (Math.abs(tilt) > tiltThreshold) {
                 if (now - lastMotionTime > moveDelay) {
-                    if (tilt < -tiltSensitivity) {
-                        playerMove(-1); // Tilt Left
-                    } else if (tilt > tiltSensitivity) {
-                        playerMove(1); // Tilt Right
-                    }
+                    if (tilt < -tiltThreshold) playerMove(-1);
+                    else if (tilt > tiltThreshold) playerMove(1);
                     lastMotionTime = now;
                 }
             }
         }
 
         function handleMotion(event) {
-            if (!event.rotationRate) return;
-            
-            // Alpha is rotation around Z axis (perpendicular to screen)
-            // Ideally captures "steering wheel" motion
-            const twistSpeed = event.rotationRate.alpha;
-            
-            // If unavailable (some androids), try beta (forward/back tilt) as a fallback
-            // const fallbackTwist = event.rotationRate.beta; 
-            
+            if (isPaused || isGameOver || !event.rotationRate) return;
+            const twist = event.rotationRate.alpha; 
             const now = Date.now();
 
             if (now - lastRotateTime > rotateCooldown) {
-                // Check if twist speed exceeds threshold
-                if (Math.abs(twistSpeed) > twistSensitivity) {
-                    // Rotate Clockwise for positive twist, Counter for negative (or just always clockwise)
+                if (Math.abs(twist) > twistThreshold) {
                     playerRotate(1);
                     lastRotateTime = now;
-                    
-                    // Visual feedback
-                    debugInfo.style.color = '#0ff';
-                    setTimeout(() => debugInfo.style.color = '', 200);
+                    // Flash the console border or something for feedback?
                 }
             }
         }
 
-        // 3. Keyboard Fallback (for debugging on PC)
-        document.addEventListener('keydown', event => {
-            if (isGameOver) return;
-            if (event.keyCode === 37) playerMove(-1);
-            else if (event.keyCode === 39) playerMove(1);
-            else if (event.keyCode === 40) playerDrop();
-            else if (event.keyCode === 81) playerRotate(-1);
-            else if (event.keyCode === 87 || event.keyCode === 38) playerRotate(1);
+        // Touch for Drop
+        const consoleEl = document.getElementById('game-console');
+        consoleEl.addEventListener('touchstart', (e) => {
+            // Prevent drop if tapping buttons
+            if(e.target.tagName === 'BUTTON' || e.target.closest('#settings-btn')) return;
+            e.preventDefault();
+            playerDrop();
+            playerDrop(); // Double drop speed
+        }, {passive: false});
+
+        // Debug Keys
+        document.addEventListener('keydown', e => {
+            if(isPaused || isGameOver) return;
+            if (e.keyCode === 37) playerMove(-1);
+            else if (e.keyCode === 39) playerMove(1);
+            else if (e.keyCode === 40) playerDrop();
+            else if (e.keyCode === 38) playerRotate(1);
         });
 
-        // --- Initialization ---
-
-        function initGame() {
-            // Reset state
+        // Init
+        async function initGame() {
             grid = createGrid();
-            player.score = 0;
-            player.level = 1;
+            player.score = 0; 
+            player.level = 1; 
             player.lines = 0;
-            isGameOver = false;
-            updateScore();
-            playerReset();
-            
-            startScreen.classList.add('hidden');
-            gameOverScreen.classList.add('hidden');
-            
-            if (animationId) cancelAnimationFrame(animationId);
-            update();
-        }
-
-        async function requestPermissions() {
-            // Check if DeviceMotionEvent is defined and has the requestPermission method (iOS 13+)
-            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-                try {
-                    const permissionState = await DeviceMotionEvent.requestPermission();
-                    if (permissionState === 'granted') {
-                        window.addEventListener('deviceorientation', handleOrientation);
-                        window.addEventListener('devicemotion', handleMotion);
-                        initGame();
-                    } else {
-                        alert("Motion permission is required to play!");
-                    }
-                } catch (error) {
-                    console.error(error);
-                    alert("Error requesting motion permissions. Ensure you are on HTTPS.");
-                }
-            } else {
-                // Non-iOS 13+ devices (Android, older iOS, Desktop)
-                window.addEventListener('deviceorientation', handleOrientation);
-                window.addEventListener('devicemotion', handleMotion);
-                initGame();
-            }
-        }
-
-        document.getElementById('startBtn').addEventListener('click', requestPermissions);
-        document.getElementById('restartBtn').addEventListener('click', initGame);
-
-        // Prevent dragging on document
-        document.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
-
-    </script>
-</body>
-</html>
-
+       
