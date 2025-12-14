@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Motion Tetris: 90 Degree Rotation</title>
+    <title>Motion Tetris: Universal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -22,24 +22,19 @@
             margin: 0;
         }
 
-        /* THE CONSOLE: STRICTLY SQUARE */
         #game-console {
-            /* Use vmin to ensure it fits on screen regardless of orientation, but stays square */
             width: 95vmin;
             height: 95vmin;
             max-width: 600px;
             max-height: 600px;
-            
-            background: #1e293b; /* Slate 800 */
+            background: #1e293b;
             border-radius: 24px;
             box-shadow: 0 20px 50px rgba(0,0,0,0.5), inset 0 0 0 2px #334155;
-            
             position: relative;
-            display: flex; /* Flex row layout */
-            overflow: hidden; /* Cut off anything that sticks out */
+            display: flex;
+            overflow: hidden;
         }
 
-        /* 3-Column Layout */
         .col-side {
             width: 25%;
             height: 100%;
@@ -67,7 +62,6 @@
             background: #020617;
         }
 
-        /* UI Elements */
         .stat-box {
             background: #0f172a;
             padding: 8px 4px;
@@ -94,7 +88,6 @@
 
         .neon-text { text-shadow: 0 0 10px rgba(6, 182, 212, 0.5); }
 
-        /* Settings & Overlays */
         #settings-btn {
             position: absolute;
             top: 15px;
@@ -117,7 +110,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(15, 23, 42, 0.96);
+            background: rgba(15, 23, 42, 0.98);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -132,7 +125,6 @@
         input[type=range] { width: 100%; accent-color: #06b6d4; height: 6px; border-radius: 3px; }
         .control-row { width: 90%; margin-bottom: 25px; }
 
-        /* Rotate Indicators */
         .rotate-indicator {
             width: 40px; 
             height: 40px; 
@@ -150,13 +142,28 @@
             box-shadow: 0 0 15px rgba(217, 70, 239, 0.4);
             transform: scale(1.1);
         }
+        
+        #sensor-status {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #ef4444; /* Red default */
+            z-index: 60;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
 
     </style>
 </head>
 <body>
 
     <div id="game-console">
-        <!-- Settings Toggle (Absolute) -->
+        <!-- Sensor Status Light -->
+        <div id="sensor-status" title="Sensor Status"></div>
+
+        <!-- Settings Toggle -->
         <div id="settings-btn" onclick="toggleSettings()">
             <i class="fas fa-cog text-slate-300"></i>
         </div>
@@ -167,16 +174,13 @@
                 <div class="stat-label">Score</div>
                 <div id="scoreDisplay" class="stat-value text-cyan-400">0</div>
             </div>
-            
-            <!-- Rotate Left Indicator -->
             <div id="rot-left" class="rotate-indicator">
                 <i class="fas fa-undo"></i>
             </div>
         </div>
 
-        <!-- Center Column (The Game) -->
+        <!-- Center Column -->
         <div class="col-center">
-            <!-- Canvas is 100% width/height of this column. Since column is 50% of square, aspect ratio is 1:2 -->
             <canvas id="gameCanvas" width="200" height="400"></canvas>
         </div>
 
@@ -186,20 +190,15 @@
                 <div class="stat-label">Lines</div>
                 <div id="linesDisplay" class="stat-value text-green-400">0</div>
             </div>
-            
-            <!-- Rotate Right Indicator -->
             <div id="rot-right" class="rotate-indicator">
                 <i class="fas fa-redo"></i>
             </div>
-            
-            <!-- Tilt Visualizer -->
             <div class="stat-box" style="height: 60px; position: relative; overflow: hidden;">
                 <div class="stat-label">Move</div>
                 <div class="absolute inset-0 flex items-center justify-center">
                      <div class="w-full h-[1px] bg-slate-700"></div>
                      <div class="h-full w-[1px] bg-slate-700 absolute"></div>
                 </div>
-                <!-- Moving dot for tilt -->
                 <div id="tilt-dot" class="absolute w-3 h-3 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] transition-transform duration-75" style="top: 50%; left: 50%; margin-left: -6px; margin-top: -6px;"></div>
             </div>
         </div>
@@ -214,8 +213,9 @@
                 </div>
                 <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
                     <p class="font-bold text-purple-300 mb-1">🔄 Rotate</p>
-                    <p>Turn phone 90° sideways</p>
+                    <p>Turn phone ~70° sideways</p>
                 </div>
+                <p class="text-xs text-slate-500 mt-2">Hold phone comfortable & click Play</p>
             </div>
             <button id="startBtn" class="w-full max-w-[200px] py-4 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl font-bold text-xl shadow-lg shadow-cyan-900/50 active:scale-95 transition-transform text-white border border-cyan-400/30">
                 PLAY
@@ -234,22 +234,13 @@
         <!-- SETTINGS -->
         <div id="settingsScreen" class="overlay hidden">
             <h2 class="text-2xl font-bold text-white mb-8">Controls</h2>
-            
             <div class="control-row">
                 <div class="flex justify-between mb-2">
                     <label class="text-sm font-bold text-cyan-300">Move Sensitivity</label>
                     <span id="tiltVal" class="text-xs font-mono text-white bg-slate-700 px-2 py-1 rounded">15°</span>
                 </div>
                 <input type="range" id="tiltRange" min="5" max="35" step="1" value="15">
-                <p class="text-[10px] text-slate-500 mt-2 text-left">Angle needed to start moving</p>
             </div>
-
-            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 mb-4 text-xs text-slate-400 text-left">
-                <p class="font-bold text-purple-300 mb-1">Rotation:</p>
-                Turn phone 90° to trigger rotation.<br>
-                Return to center to move again.
-            </div>
-
             <button onclick="toggleSettings()" class="mt-4 px-8 py-3 bg-slate-700 text-white rounded-xl font-bold text-sm hover:bg-slate-600">
                 Save & Close
             </button>
@@ -260,36 +251,24 @@
         // --- Setup ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        
-        // Screens
         const startScreen = document.getElementById('startScreen');
         const gameOverScreen = document.getElementById('gameOverScreen');
         const settingsScreen = document.getElementById('settingsScreen');
-        
-        // UI
         const scoreDisplay = document.getElementById('scoreDisplay');
         const linesDisplay = document.getElementById('linesDisplay');
         const finalScoreDisplay = document.getElementById('finalScore');
         const tiltDot = document.getElementById('tilt-dot');
         const rotLeftIcon = document.getElementById('rot-left');
         const rotRightIcon = document.getElementById('rot-right');
+        const sensorStatus = document.getElementById('sensor-status');
 
-        // Logic
         const COLS = 10;
         const ROWS = 20;
-        const BLOCK_SIZE = 20; 
-
-        // Colors
-        const COLORS = [
-            null,
-            '#FF0D72', '#0DC2FF', '#0DFF72', '#F538FF', 
-            '#FF8E0D', '#FFE138', '#3877FF',
-        ];
+        const BLOCK_SIZE = 20;
+        const COLORS = [null,'#FF0D72', '#0DC2FF', '#0DFF72', '#F538FF', '#FF8E0D', '#FFE138', '#3877FF'];
 
         let grid = createGrid();
         let player = { pos: {x: 0, y: 0}, matrix: null, score: 0, level: 1, lines: 0 };
-        
-        // Timing
         let dropCounter = 0;
         let dropInterval = 1000;
         let lastTime = 0;
@@ -297,42 +276,20 @@
         let isGameOver = false;
         let animationId = null;
 
-        // Motion Variables
+        // Motion & Calibration
         let lastMotionTime = 0;
         let moveDelay = 120;
         let tiltThreshold = 15;
+        let calibrationOffset = 0; // Stores the 'zero' point
+        let hasSensorData = false;
         
-        // Rotation Logic State
-        let rotZone = 0; // 0: Neutral, 1: Right (CW), -1: Left (CCW)
-        const ROTATE_TRIGGER_ANGLE = 80;
-        const ROTATE_RESET_ANGLE = 60;
+        // Rotation Logic
+        let rotZone = 0; 
+        const ROTATE_TRIGGER_ANGLE = 65; 
+        const ROTATE_RESET_ANGLE = 45;   
 
-        // --- Settings Logic ---
-        const tiltRange = document.getElementById('tiltRange');
-        
-        tiltRange.addEventListener('input', (e) => {
-            tiltThreshold = parseInt(e.target.value);
-            document.getElementById('tiltVal').innerText = tiltThreshold + "°";
-        });
-
-        function toggleSettings() {
-            if (settingsScreen.classList.contains('hidden')) {
-                isPaused = true;
-                settingsScreen.classList.remove('hidden');
-            } else {
-                settingsScreen.classList.add('hidden');
-                if (!isGameOver && player.matrix) {
-                    isPaused = false;
-                    lastTime = performance.now();
-                    requestAnimationFrame(update);
-                }
-            }
-        }
-
-        // --- Game Core ---
-        function createGrid() {
-            return Array.from({length: ROWS}, () => Array(COLS).fill(0));
-        }
+        // --- Core ---
+        function createGrid() { return Array.from({length: ROWS}, () => Array(COLS).fill(0)); }
 
         function createPiece(type) {
             if (type === 'I') return [[0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0]];
@@ -348,9 +305,7 @@
             const [m, o] = [player.matrix, player.pos];
             for (let y = 0; y < m.length; ++y) {
                 for (let x = 0; x < m[y].length; ++x) {
-                    if (m[y][x] !== 0 && (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
-                        return true;
-                    }
+                    if (m[y][x] !== 0 && (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) return true;
                 }
             }
             return false;
@@ -359,23 +314,11 @@
         function draw() {
             ctx.fillStyle = '#020617';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Grid
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 0.5;
+            for(let i=0; i<=COLS; i++) { ctx.beginPath(); ctx.moveTo(i*BLOCK_SIZE, 0); ctx.lineTo(i*BLOCK_SIZE, canvas.height); ctx.stroke(); }
+            for(let j=0; j<=ROWS; j++) { ctx.beginPath(); ctx.moveTo(0, j*BLOCK_SIZE); ctx.lineTo(canvas.width, j*BLOCK_SIZE); ctx.stroke(); }
             
-            // Grid Lines
-            ctx.strokeStyle = '#1e293b';
-            ctx.lineWidth = 0.5;
-            for(let i=0; i<=COLS; i++) {
-                ctx.beginPath();
-                ctx.moveTo(i*BLOCK_SIZE, 0);
-                ctx.lineTo(i*BLOCK_SIZE, canvas.height);
-                ctx.stroke();
-            }
-            for(let j=0; j<=ROWS; j++) {
-                ctx.beginPath();
-                ctx.moveTo(0, j*BLOCK_SIZE);
-                ctx.lineTo(canvas.width, j*BLOCK_SIZE);
-                ctx.stroke();
-            }
-
             drawMatrix(grid, {x:0, y:0});
             if (player.matrix) drawMatrix(player.matrix, player.pos);
         }
@@ -384,16 +327,10 @@
             matrix.forEach((row, y) => {
                 row.forEach((value, x) => {
                     if (value !== 0) {
-                        const px = (x + offset.x) * BLOCK_SIZE;
-                        const py = (y + offset.y) * BLOCK_SIZE;
-                        
                         ctx.fillStyle = COLORS[value];
-                        ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
-                        ctx.lineWidth = 2;
-                        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-                        ctx.strokeRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
-                        ctx.fillStyle = 'rgba(0,0,0,0.1)';
-                        ctx.fillRect(px+4, py+4, BLOCK_SIZE-8, BLOCK_SIZE-8);
+                        ctx.fillRect((x+offset.x)*BLOCK_SIZE, (y+offset.y)*BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                        ctx.strokeRect((x+offset.x)*BLOCK_SIZE, (y+offset.y)*BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
                     }
                 });
             });
@@ -401,32 +338,23 @@
 
         function merge(arena, player) {
             player.matrix.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) arena[y + player.pos.y][x + player.pos.x] = value;
-                });
+                row.forEach((value, x) => { if (value !== 0) arena[y + player.pos.y][x + player.pos.x] = value; });
             });
         }
 
         function rotate(matrix, dir) {
             for (let y = 0; y < matrix.length; ++y) {
-                for (let x = 0; x < y; ++x) {
-                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
-                }
+                for (let x = 0; x < y; ++x) { [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]]; }
             }
-            if (dir > 0) matrix.forEach(row => row.reverse());
-            else matrix.reverse();
+            if (dir > 0) matrix.forEach(row => row.reverse()); else matrix.reverse();
         }
 
         function playerDrop() {
             player.pos.y++;
             if (collide(grid, player)) {
-                player.pos.y--;
-                merge(grid, player);
-                playerReset();
-                arenaSweep();
+                player.pos.y--; merge(grid, player); playerReset(); arenaSweep();
             }
-            dropCounter = 0;
-            updateUI();
+            dropCounter = 0; updateUI();
         }
 
         function playerMove(dir) {
@@ -435,17 +363,11 @@
         }
 
         function playerRotate(dir) {
-            const pos = player.pos.x;
-            let offset = 1;
+            const pos = player.pos.x; let offset = 1;
             rotate(player.matrix, dir);
             while (collide(grid, player)) {
-                player.pos.x += offset;
-                offset = -(offset + (offset > 0 ? 1 : -1));
-                if (offset > player.matrix[0].length) {
-                    rotate(player.matrix, -dir);
-                    player.pos.x = pos;
-                    return;
-                }
+                player.pos.x += offset; offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) { rotate(player.matrix, -dir); player.pos.x = pos; return; }
             }
         }
 
@@ -454,99 +376,129 @@
             player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
             player.pos.y = 0;
             player.pos.x = (grid[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
-            
-            if (collide(grid, player)) {
-                isGameOver = true;
-                gameOverScreen.classList.remove('hidden');
-                finalScoreDisplay.innerText = player.score;
-            }
+            if (collide(grid, player)) { isGameOver = true; gameOverScreen.classList.remove('hidden'); finalScoreDisplay.innerText = player.score; }
         }
 
         function arenaSweep() {
             let rowCount = 1;
             outer: for (let y = grid.length - 1; y > 0; --y) {
-                for (let x = 0; x < grid[y].length; ++x) {
-                    if (grid[y][x] === 0) continue outer;
-                }
-                const row = grid.splice(y, 1)[0].fill(0);
-                grid.unshift(row);
-                ++y;
-                player.score += rowCount * 10;
-                player.lines++;
-                rowCount *= 2;
+                for (let x = 0; x < grid[y].length; ++x) { if (grid[y][x] === 0) continue outer; }
+                const row = grid.splice(y, 1)[0].fill(0); grid.unshift(row); ++y;
+                player.score += rowCount * 10; player.lines++; rowCount *= 2;
                 player.level = Math.floor(player.lines / 10) + 1;
                 dropInterval = Math.max(100, 1000 - (player.level - 1) * 80);
             }
         }
 
-        function updateUI() {
-            scoreDisplay.innerText = player.score;
-            linesDisplay.innerText = player.lines;
-        }
+        function updateUI() { scoreDisplay.innerText = player.score; linesDisplay.innerText = player.lines; }
 
         function update(time = 0) {
             if (isGameOver || isPaused) return;
-
-            const deltaTime = time - lastTime;
-            lastTime = time;
-
+            const deltaTime = time - lastTime; lastTime = time;
             dropCounter += deltaTime;
             if (dropCounter > dropInterval) playerDrop();
-
             draw();
             animationId = requestAnimationFrame(update);
         }
 
-        // --- Inputs ---
+        // --- Motion Handlers ---
 
         function handleOrientation(event) {
             if (isPaused || isGameOver) return;
             
-            // Gamma: -90 (Left/CCW) to 90 (Right/CW)
-            const tilt = event.gamma; 
-            
-            // --- 1. Rotation Logic (Angle based) ---
-            
-            // Check Right (CW) Zone
-            if (tilt > ROTATE_TRIGGER_ANGLE) {
-                if (rotZone !== 1) {
-                    // Trigger CW Rotate
-                    playerRotate(1);
-                    rotZone = 1;
-                    rotRightIcon.classList.add('active');
-                }
-            }
-            // Check Left (CCW) Zone
-            else if (tilt < -ROTATE_TRIGGER_ANGLE) {
-                if (rotZone !== -1) {
-                    // Trigger CCW Rotate
-                    playerRotate(-1);
-                    rotZone = -1;
-                    rotLeftIcon.classList.add('active');
-                }
-            }
-            // Check Reset Zone (Center)
-            else if (Math.abs(tilt) < ROTATE_RESET_ANGLE) {
-                if (rotZone !== 0) {
-                    rotZone = 0;
-                    rotLeftIcon.classList.remove('active');
-                    rotRightIcon.classList.remove('active');
-                }
+            // Show sensor is working
+            if (!hasSensorData && event.gamma !== null) {
+                hasSensorData = true;
+                sensorStatus.style.backgroundColor = '#22c55e'; // Green
             }
 
-            // --- 2. Move Logic ---
-            // Visualizer logic (0 to 45 deg range)
+            // Raw tilt value
+            let rawTilt = event.gamma; 
+            if (rawTilt === null) return;
+
+            // Apply Calibration (center the game where the user is currently holding it)
+            // But only clamp to valid -90 to 90 range
+            let tilt = rawTilt - calibrationOffset;
+            
+            // Wrap handling for extreme angles to avoid jumping
+            if (tilt > 90) tilt = 90;
+            if (tilt < -90) tilt = -90;
+
+            // 1. Rotation Logic
+            if (tilt > ROTATE_TRIGGER_ANGLE) {
+                if (rotZone !== 1) { playerRotate(1); rotZone = 1; rotRightIcon.classList.add('active'); }
+            } else if (tilt < -ROTATE_TRIGGER_ANGLE) {
+                if (rotZone !== -1) { playerRotate(-1); rotZone = -1; rotLeftIcon.classList.add('active'); }
+            } else if (Math.abs(tilt) < ROTATE_RESET_ANGLE) {
+                if (rotZone !== 0) { rotZone = 0; rotLeftIcon.classList.remove('active'); rotRightIcon.classList.remove('active'); }
+            }
+
+            // 2. Move Logic & Vis
             const clampTilt = Math.max(-45, Math.min(45, tilt));
             const xOffset = (clampTilt / 45) * 30; 
             tiltDot.style.transform = `translate(${xOffset}px, -50%)`;
+            tiltDot.style.backgroundColor = (rotZone !== 0) ? '#d946ef' : '#22d3ee';
+
+            const now = Date.now();
+            if (Math.abs(tilt) > tiltThreshold) {
+                if (now - lastMotionTime > moveDelay) {
+                    if (tilt < -tiltThreshold) playerMove(-1);
+                    else if (tilt > tiltThreshold) playerMove(1);
+                    lastMotionTime = now;
+                }
+            }
+        }
+
+        // --- Start Logic ---
+
+        async function initGame() {
+            // 1. Reset Game State
+            grid = createGrid();
+            player = { pos: {x: 0, y: 0}, matrix: null, score: 0, level: 1, lines: 0 };
+            dropInterval = 1000;
+            isGameOver = false;
+            updateUI();
+            playerReset();
             
-            // Visual feedback for Mode
-            if (rotZone !== 0) {
-                // In Rotation Mode - Dot turns Purple
-                tiltDot.style.backgroundColor = '#d946ef'; 
+            // 2. UI Updates
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            lastTime = performance.now();
+            update();
+
+            // 3. Setup Sensors (Universal Approach)
+            
+            // iOS 13+ Check
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', (e) => {
+                            // First event sets calibration
+                            if (!hasSensorData && e.gamma !== null) calibrationOffset = e.gamma; 
+                            handleOrientation(e);
+                        });
+                    } else {
+                        alert("Permission denied. Game will not react to motion.");
+                    }
+                } catch (e) { console.error(e); }
             } else {
-                // In Move Mode - Dot is Cyan
-                tiltDot.style.backgroundColor = '#22d3ee'; 
-                
-                // Only Allow Moving in Neutral Zone
-                const no
+                // Android / Standard
+                window.addEventListener('deviceorientation', (e) => {
+                    // First event sets calibration (simplified)
+                    // We check if it's the first reliable data point near 0 (portrait)
+                    if (!hasSensorData && e.gamma !== null) {
+                         // Only calibrate if holding somewhat upright, otherwise trust 0
+                         if(Math.abs(e.gamma) < 45) calibrationOffset = e.gamma;
+                    }
+                    handleOrientation(e);
+                });
+            }
+        }
+
+        // Settings
+        const tiltRange = document.getElementById('tiltRange');
+        tiltRange.addEventListener('input', (e) => {
+            tiltThreshold = parseInt(e.target.value);
+            document.getElementById('tiltVal').innerText = tiltThreshold + "°";
+       
