@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Motion Tetris: Perfect Square</title>
+    <title>Motion Tetris: 90 Degree Rotation</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -132,6 +132,25 @@
         input[type=range] { width: 100%; accent-color: #06b6d4; height: 6px; border-radius: 3px; }
         .control-row { width: 90%; margin-bottom: 25px; }
 
+        /* Rotate Indicators */
+        .rotate-indicator {
+            width: 40px; 
+            height: 40px; 
+            border-radius: 50%; 
+            border: 2px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #475569;
+            transition: all 0.2s ease;
+        }
+        .rotate-indicator.active {
+            border-color: #d946ef;
+            color: #d946ef;
+            box-shadow: 0 0 15px rgba(217, 70, 239, 0.4);
+            transform: scale(1.1);
+        }
+
     </style>
 </head>
 <body>
@@ -148,9 +167,10 @@
                 <div class="stat-label">Score</div>
                 <div id="scoreDisplay" class="stat-value text-cyan-400">0</div>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Level</div>
-                <div id="levelDisplay" class="stat-value text-purple-400">1</div>
+            
+            <!-- Rotate Left Indicator -->
+            <div id="rot-left" class="rotate-indicator">
+                <i class="fas fa-undo"></i>
             </div>
         </div>
 
@@ -167,9 +187,14 @@
                 <div id="linesDisplay" class="stat-value text-green-400">0</div>
             </div>
             
+            <!-- Rotate Right Indicator -->
+            <div id="rot-right" class="rotate-indicator">
+                <i class="fas fa-redo"></i>
+            </div>
+            
             <!-- Tilt Visualizer -->
-            <div class="stat-box" style="height: 80px; position: relative; overflow: hidden;">
-                <div class="stat-label">Balance</div>
+            <div class="stat-box" style="height: 60px; position: relative; overflow: hidden;">
+                <div class="stat-label">Move</div>
                 <div class="absolute inset-0 flex items-center justify-center">
                      <div class="w-full h-[1px] bg-slate-700"></div>
                      <div class="h-full w-[1px] bg-slate-700 absolute"></div>
@@ -182,10 +207,15 @@
         <!-- START SCREEN -->
         <div id="startScreen" class="overlay">
             <h1 class="text-5xl font-black italic mb-2 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 neon-text">TETRIS</h1>
-            <div class="text-slate-400 mb-8 text-sm">
-                <p class="mb-2"><i class="fas fa-mobile-alt mr-2"></i>Hold Phone Upright</p>
-                <p>↔️ Tilt to Move</p>
-                <p>🔄 Twist to Rotate</p>
+            <div class="text-slate-400 mb-8 text-sm space-y-3">
+                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                    <p class="font-bold text-cyan-300 mb-1">↔️ Move</p>
+                    <p>Tilt slightly Left or Right</p>
+                </div>
+                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                    <p class="font-bold text-purple-300 mb-1">🔄 Rotate</p>
+                    <p>Turn phone 90° sideways</p>
+                </div>
             </div>
             <button id="startBtn" class="w-full max-w-[200px] py-4 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl font-bold text-xl shadow-lg shadow-cyan-900/50 active:scale-95 transition-transform text-white border border-cyan-400/30">
                 PLAY
@@ -207,20 +237,17 @@
             
             <div class="control-row">
                 <div class="flex justify-between mb-2">
-                    <label class="text-sm font-bold text-cyan-300">Tilt Sensitivity</label>
+                    <label class="text-sm font-bold text-cyan-300">Move Sensitivity</label>
                     <span id="tiltVal" class="text-xs font-mono text-white bg-slate-700 px-2 py-1 rounded">15°</span>
                 </div>
-                <input type="range" id="tiltRange" min="5" max="45" step="1" value="15">
-                <p class="text-[10px] text-slate-500 mt-2 text-left">Lower = More Sensitive</p>
+                <input type="range" id="tiltRange" min="5" max="35" step="1" value="15">
+                <p class="text-[10px] text-slate-500 mt-2 text-left">Angle needed to start moving</p>
             </div>
 
-            <div class="control-row">
-                <div class="flex justify-between mb-2">
-                    <label class="text-sm font-bold text-purple-300">Twist Sensitivity</label>
-                    <span id="twistVal" class="text-xs font-mono text-white bg-slate-700 px-2 py-1 rounded">200</span>
-                </div>
-                <input type="range" id="twistRange" min="50" max="600" step="10" value="200">
-                <p class="text-[10px] text-slate-500 mt-2 text-left">How fast you rotate the phone</p>
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 mb-4 text-xs text-slate-400 text-left">
+                <p class="font-bold text-purple-300 mb-1">Rotation:</p>
+                Turn phone 90° to trigger rotation.<br>
+                Return to center to move again.
             </div>
 
             <button onclick="toggleSettings()" class="mt-4 px-8 py-3 bg-slate-700 text-white rounded-xl font-bold text-sm hover:bg-slate-600">
@@ -241,15 +268,16 @@
         
         // UI
         const scoreDisplay = document.getElementById('scoreDisplay');
-        const levelDisplay = document.getElementById('levelDisplay');
         const linesDisplay = document.getElementById('linesDisplay');
         const finalScoreDisplay = document.getElementById('finalScore');
         const tiltDot = document.getElementById('tilt-dot');
+        const rotLeftIcon = document.getElementById('rot-left');
+        const rotRightIcon = document.getElementById('rot-right');
 
         // Logic
         const COLS = 10;
         const ROWS = 20;
-        const BLOCK_SIZE = 20; // Logical size, scaled by canvas CSS
+        const BLOCK_SIZE = 20; 
 
         // Colors
         const COLORS = [
@@ -272,23 +300,19 @@
         // Motion Variables
         let lastMotionTime = 0;
         let moveDelay = 120;
-        let lastRotateTime = 0;
-        let rotateCooldown = 350;
         let tiltThreshold = 15;
-        let twistThreshold = 200;
+        
+        // Rotation Logic State
+        let rotZone = 0; // 0: Neutral, 1: Right (CW), -1: Left (CCW)
+        const ROTATE_TRIGGER_ANGLE = 80;
+        const ROTATE_RESET_ANGLE = 60;
 
         // --- Settings Logic ---
         const tiltRange = document.getElementById('tiltRange');
-        const twistRange = document.getElementById('twistRange');
         
         tiltRange.addEventListener('input', (e) => {
             tiltThreshold = parseInt(e.target.value);
             document.getElementById('tiltVal').innerText = tiltThreshold + "°";
-        });
-        
-        twistRange.addEventListener('input', (e) => {
-            twistThreshold = parseInt(e.target.value);
-            document.getElementById('twistVal').innerText = twistThreshold;
         });
 
         function toggleSettings() {
@@ -333,7 +357,6 @@
         }
 
         function draw() {
-            // Clear
             ctx.fillStyle = '#020617';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
@@ -364,16 +387,11 @@
                         const px = (x + offset.x) * BLOCK_SIZE;
                         const py = (y + offset.y) * BLOCK_SIZE;
                         
-                        // Main Block
                         ctx.fillStyle = COLORS[value];
                         ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
-                        
-                        // Bevel/Highlight
                         ctx.lineWidth = 2;
                         ctx.strokeStyle = 'rgba(255,255,255,0.2)';
                         ctx.strokeRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
-                        
-                        // Inner
                         ctx.fillStyle = 'rgba(0,0,0,0.1)';
                         ctx.fillRect(px+4, py+4, BLOCK_SIZE-8, BLOCK_SIZE-8);
                     }
@@ -456,7 +474,6 @@
                 player.score += rowCount * 10;
                 player.lines++;
                 rowCount *= 2;
-                // Speed up
                 player.level = Math.floor(player.lines / 10) + 1;
                 dropInterval = Math.max(100, 1000 - (player.level - 1) * 80);
             }
@@ -464,7 +481,6 @@
 
         function updateUI() {
             scoreDisplay.innerText = player.score;
-            levelDisplay.innerText = player.level;
             linesDisplay.innerText = player.lines;
         }
 
@@ -483,66 +499,54 @@
 
         // --- Inputs ---
 
-        // Motion Handlers
         function handleOrientation(event) {
             if (isPaused || isGameOver) return;
             
-            const tilt = event.gamma; // Left/Right
+            // Gamma: -90 (Left/CCW) to 90 (Right/CW)
+            const tilt = event.gamma; 
             
-            // Visualizer Dot Logic
-            // Map -45 to 45 degrees to -30px to 30px translation
+            // --- 1. Rotation Logic (Angle based) ---
+            
+            // Check Right (CW) Zone
+            if (tilt > ROTATE_TRIGGER_ANGLE) {
+                if (rotZone !== 1) {
+                    // Trigger CW Rotate
+                    playerRotate(1);
+                    rotZone = 1;
+                    rotRightIcon.classList.add('active');
+                }
+            }
+            // Check Left (CCW) Zone
+            else if (tilt < -ROTATE_TRIGGER_ANGLE) {
+                if (rotZone !== -1) {
+                    // Trigger CCW Rotate
+                    playerRotate(-1);
+                    rotZone = -1;
+                    rotLeftIcon.classList.add('active');
+                }
+            }
+            // Check Reset Zone (Center)
+            else if (Math.abs(tilt) < ROTATE_RESET_ANGLE) {
+                if (rotZone !== 0) {
+                    rotZone = 0;
+                    rotLeftIcon.classList.remove('active');
+                    rotRightIcon.classList.remove('active');
+                }
+            }
+
+            // --- 2. Move Logic ---
+            // Visualizer logic (0 to 45 deg range)
             const clampTilt = Math.max(-45, Math.min(45, tilt));
             const xOffset = (clampTilt / 45) * 30; 
             tiltDot.style.transform = `translate(${xOffset}px, -50%)`;
-
-            // Movement Logic
-            const now = Date.now();
-            if (Math.abs(tilt) > tiltThreshold) {
-                if (now - lastMotionTime > moveDelay) {
-                    if (tilt < -tiltThreshold) playerMove(-1);
-                    else if (tilt > tiltThreshold) playerMove(1);
-                    lastMotionTime = now;
-                }
-            }
-        }
-
-        function handleMotion(event) {
-            if (isPaused || isGameOver || !event.rotationRate) return;
-            const twist = event.rotationRate.alpha; 
-            const now = Date.now();
-
-            if (now - lastRotateTime > rotateCooldown) {
-                if (Math.abs(twist) > twistThreshold) {
-                    playerRotate(1);
-                    lastRotateTime = now;
-                    // Flash the console border or something for feedback?
-                }
-            }
-        }
-
-        // Touch for Drop
-        const consoleEl = document.getElementById('game-console');
-        consoleEl.addEventListener('touchstart', (e) => {
-            // Prevent drop if tapping buttons
-            if(e.target.tagName === 'BUTTON' || e.target.closest('#settings-btn')) return;
-            e.preventDefault();
-            playerDrop();
-            playerDrop(); // Double drop speed
-        }, {passive: false});
-
-        // Debug Keys
-        document.addEventListener('keydown', e => {
-            if(isPaused || isGameOver) return;
-            if (e.keyCode === 37) playerMove(-1);
-            else if (e.keyCode === 39) playerMove(1);
-            else if (e.keyCode === 40) playerDrop();
-            else if (e.keyCode === 38) playerRotate(1);
-        });
-
-        // Init
-        async function initGame() {
-            grid = createGrid();
-            player.score = 0; 
-            player.level = 1; 
-            player.lines = 0;
-       
+            
+            // Visual feedback for Mode
+            if (rotZone !== 0) {
+                // In Rotation Mode - Dot turns Purple
+                tiltDot.style.backgroundColor = '#d946ef'; 
+            } else {
+                // In Move Mode - Dot is Cyan
+                tiltDot.style.backgroundColor = '#22d3ee'; 
+                
+                // Only Allow Moving in Neutral Zone
+                const no
