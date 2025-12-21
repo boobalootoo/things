@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sandbox Physics Tetris</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* HUD Layer */
+        #ui-layer {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between; /* Pushes score to right */
+            align-items: flex-start;
+        }
+
+        #score-box {
+            color: #fff;
+            text-align: right;
+            margin-left: auto; /* Force right alignment */
+        }
+        
+        #score-val { font-size: 2rem; font-weight: bold; color: #4ECDC4; }
+        #lines-val { font-size: 1rem; color: #aaa; }
+
+        #message-area {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            pointer-events: none;
+        }
+
+        .screen {
+            pointer-events: auto;
+            background: rgba(0,0,0,0.85);
+            padding: 30px;
+            border-radius: 20px;
+            border: 2px solid #444;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 2.5rem;
+            margin: 0 0 10px 0;
+            text-transform: uppercase;
+            text-shadow: 0 4px 0 #000;
+        }
+
+        p { color: #ccc; margin: 10px 0; font-weight: bold; line-height: 1.4; }
+
+        button {
+            background: #4ECDC4;
+            border: none;
+            color: #fff;
+            font-family: inherit;
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 15px 40px;
+            margin-top: 20px;
+            cursor: pointer;
+            border-radius: 50px;
+            box-shadow: 0 5px 15px rgba(78, 205, 196, 0.4);
+            transition: transform 0.1s;
+        }
+
+        button:active { transform: scale(0.95); }
+
+        .hidden { display: none !important; }
+
+        .controls-hint {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 15px;
+            border-top: 1px solid #444;
+            padding-top: 10px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="hud-top">
+            <!-- Health removed for Sandbox Mode -->
+            <div id="score-box">
+                <div id="score-val">0</div>
+                <div id="lines-val">LINES: 0</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-area">
+        <div id="start-screen" class="screen">
+            <h1>SANDBOX</h1>
+            <p>NO DAMAGE. NO DEATH.<br>JUST PHYSICS.</p>
+            <div class="controls-hint">
+                <strong>SWIPE</strong> to Run & Jump<br>
+                <strong>TILT</strong> to move falling blocks<br>
+                <strong>TAP</strong> to Rotate
+            </div>
+            <button id="start-btn">START GAME</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Matter.js Setup ---
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Body = Matter.Body,
+              Composite = Matter.Composite,
+              Events = Matter.Events,
+              Vector = Matter.Vector,
+              Query = Matter.Query;
+
+        // Global State
+        let engine, render, runner;
+        let width, height;
+        let isGameActive = false;
+        
+        let currentBlock = null;
+        let stickman = null;
+        let walls = [];
+        
+        let score = 0;
+        let linesCleared = 0;
+
+        // Input State
+        let tilt = { x: 0, y: 0 };
+        const TILT_SENSITIVITY = 0.0006;
+        
+        // Touch State
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let isSwiping = false;
+
+        // Config
+        const STICKMAN_W = 30, STICKMAN_H = 60;
+        const STICKMAN_SPEED = 8;
+        const JUMP_FORCE = 0.18;
+
+        function init() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+
+            engine = Engine.create({ enableSleeping: false });
+            engine.world.gravity.y = 1;
+
+            render = Render.create({
+                element: document.getElementById('canvas-container'),
+                engine: engine,
+                options: {
+                    width: width,
+                    height: height,
+                    wireframes: false, 
+                    background: '#1a1a1a',
+                    pixelRatio: window.devicePixelRatio
+                }
+            });
+
+            // Hooks
+            Events.on(render, 'afterRender', renderCustomGraphics);
+            Events.on(engine, 'collisionStart', handleCollisions);
+            Events.on(engine, 'beforeUpdate', gameLoop);
+
+            setupInputs();
+
+            Render.run(render);
+            runner = Runner.create();
+            Runner.run(runner, engine);
+            
+            window.addEventListener('resize', handleResize);
+        }
+
+        // --- Core Game Logic ---
+
+        function startGame() {
+            Composite.clear(engine.world);
+            
+            // Reset State
+            score = 0;
+            linesCleared = 0;
+            updateHUD();
+            isGameActive = true;
+
+            createWalls();
+            createStickman();
+            
+            // Hide UI
+            document.getElementById('start-screen').classList.add('hidden');
+            
+            // Start Spawning
+            spawnBlock();
+            
+            // Start Row Checks
+            if (window.rowInterval) clearInterval(window.rowInterval);
+            window.rowInterval = setInterval(checkRows, 1000);
+        }
+
+        function createWalls() {
+            const thickness = 100;
+            const floorHeight = 200;
+            const options = { isStatic: true, render: { fillStyle: '#333' }, friction: 0.5, label: 'wall' };
+
+            walls = [
+                Bodies.rectangle(width/2, height + floorHeight/2 - 10, width, floorHeight, options), // Floor
+                Bodies.rectangle(0 - thickness/2, height/2, thickness, height * 4, options), // Left
+                Bodies.rectangle(width + thickness/2, height/2, thickness, height * 4, options) // Right
+            ];
+            Composite.add(engine.world, walls);
+        }
+
+        function createStickman() {
+            // Remove old stickman if exists
+            if (stickman) Composite.remove(engine.world, stickman);
+
+            stickman = Bodies.rectangle(width/2, height - 100, STICKMAN_W, STICKMAN_H, {
+                label: 'stickman',
+                inertia: Infinity, // Prevent rotation
+                friction: 0.1,
+                frictionAir: 0.02,
+                restitution: 0,
+                render: { visible: false }, 
+                collisionFilter: { group: -1 } 
+            });
+            Composite.add(engine.world, stickman);
+        }
+
+        function spawnBlock() {
+            if (!isGameActive) return;
+
+            const size = width < 500 ? 35 : 45;
+            const startX = width / 2;
+            const startY = -150; 
+
+            const types = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            
+            let parts = [];
+            let color = '';
+
+            const sq = (x, y) => Bodies.rectangle(x * size, y * size, size, size);
+
+            switch(type) {
+                case 'I': color = '#4ECDC4'; parts = [sq(0,0), sq(1,0), sq(2,0), sq(3,0)]; break;
+                case 'O': color = '#FFE66D'; parts = [sq(0,0), sq(1,0), sq(0,1), sq(1,1)]; break;
+                case 'T': color = '#FF6B6B'; parts = [sq(1,0), sq(0,1), sq(1,1), sq(2,1)]; break;
+                case 'S': color = '#96c93d'; parts = [sq(1,0), sq(2,0), sq(0,1), sq(1,1)]; break;
+                case 'Z': color = '#FF9F43'; parts = [sq(0,0), sq(1,0), sq(1,1), sq(2,1)]; break;
+                case 'J': color = '#54A0FF'; parts = [sq(0,0), sq(0,1), sq(1,1), sq(2,1)]; break;
+                case 'L': color = '#f368e0'; parts = [sq(2,0), sq(0,1), sq(1,1), sq(2,1)]; break;
+            }
+
+            const block = Body.create({
+                parts: parts,
+                label: 'activeBlock',
+                friction: 0.8,
+                restitution: 0.1,
+                density: 0.002,
+                collisionCounts: 0
+            });
+
+            Body.setPosition(block, { x: startX, y: startY });
+
+            block.parts.forEach(p => {
+                p.render.fillStyle = color;
+                p.render.strokeStyle = '#222';
+                p.render.lineWidth = 2;
+                p.render.opacity = 1;
+            });
+
+            Composite.add(engine.world, block);
+            currentBlock = block;
+        }
+
+        function gameLoop(event) {
+            if (!isGameActive) return;
+
+            // 1. Block Control
+            if (currentBlock && currentBlock.label === 'activeBlock') {
+                const forceX = tilt.x * TILT_SENSITIVITY * currentBlock.mass;
+                const forceY = tilt.y * TILT_SENSITIVITY * currentBlock.mass;
+                Body.applyForce(currentBlock, currentBlock.position, { x: forceX, y: forceY });
+
+                // Locking Logic
+                if (currentBlock.speed < 0.2 && currentBlock.angularSpeed < 0.02) {
+                    currentBlock.lockTimer = (currentBlock.lockTimer || 0) + event.delta;
+                    if (currentBlock.lockTimer > 500) lockBlock(currentBlock);
+                } else {
+                    currentBlock.lockTimer = 0;
+                }
+
+                // Speed Limit
+                if (currentBlock.velocity.y > 20) Body.setVelocity(currentBlock, { x: currentBlock.velocity.x, y: 20 });
+            }
+
+            // 2. Stickman Respawn Logic (If glitched through floor)
+            if (stickman) {
+                Body.setAngle(stickman, 0);
+                Body.setAngularVelocity(stickman, 0);
+                
+                // If fell off screen, just respawn
+                if (stickman.position.y > height + 100) {
+                    Body.setPosition(stickman, { x: width/2, y: height/2 });
+                    Body.setVelocity(stickman, { x: 0, y: 0 });
+                }
+            }
+        }
+
+        function lockBlock(block) {
+            block.label = 'stackedBlock';
+            Body.setDensity(block, 0.01); 
+            score += 10;
+            updateHUD();
+            currentBlock = null;
+            setTimeout(spawnBlock, 200);
+        }
+
+        // --- Collision & Interaction ---
+
+        function handleCollisions(event) {
+            event.pairs.forEach(pair => {
+                const bodyA = pair.bodyA;
+                const bodyB = pair.bodyB;
+
+                let player = null;
+                let other = null;
+
+                if (bodyA.label === 'stickman') { player = bodyA; other = bodyB; }
+                else if (bodyB.label === 'stickman') { player = bodyB; other = bodyA; }
+
+                if (player) {
+                    // Check for Block Destruction (Headbutt)
+                    // If player is moving UP and hits block ABOVE
+                    if (player.velocity.y < -2 && other.position.y < player.position.y - 10) {
+                         const parent = other.parent;
+                         if (parent && (parent.label === 'stackedBlock' || parent.label === 'activeBlock')) {
+                             parent.collisionCounts = (parent.collisionCounts || 0) + 1;
+                             parent.parts.forEach(p => p.render.opacity = 1 - (parent.collisionCounts * 0.3));
+                             
+                             // Bounce player down
+                             Body.setVelocity(player, { x: player.velocity.x, y: 5 });
+
+                             if (parent.collisionCounts >= 3) {
+                                 createExplosion(parent.position);
+                                 Composite.remove(engine.world, parent);
+                                 score += 50;
+                                 updateHUD();
+                             }
+                         }
+                    }
+                    
+                    // NOTE: Removed Damage Logic entirely for Sandbox mode
+                }
+            });
+        }
+
+        // --- Row Clearing ---
+
+        function checkRows() {
+            if (!isGameActive) return;
+
+            for (let y = height - 50; y > 50; y -= 40) {
+                 const start = { x: 50, y: y };
+                 const end = { x: width - 50, y: y };
+                 const collisions = Query.ray(Composite.allBodies(engine.world), start, end);
+                 
+                 let uniqueBodies = new Set();
+                 collisions.forEach(c => {
+                     const b = c.body;
+                     if (b.label !== 'stickman' && !b.isStatic) uniqueBodies.add(b.id);
+                 });
+                 
+                 if (uniqueBodies.size > (width / 45) * 0.7) { 
+                     collisions.forEach(c => {
+                         if (c.body.parent && c.body.parent.label === 'stackedBlock') {
+                             Composite.remove(engine.world, c.body.parent);
+                         }
+                     });
+                     linesCleared++;
+                     score += 100;
+                     updateHUD();
+                 }
+            }
+        }
+
+        function createExplosion(pos) {
+            for(let i=0; i<5; i++) {
+                const p = Bodies.rectangle(pos.x, pos.y, 10, 10, { render: { fillStyle: '#fff' }});
+                Body.applyForce(p, p.position, { x: (Math.random()-0.5)*0.02, y: (Math.random()-0.5)*0.02 });
+                Composite.add(engine.world, p);
+                setTimeout(() => Composite.remove(engine.world, p), 800);
+            }
+        }
+
+        // --- Graphics & UI ---
+
+        function renderCustomGraphics() {
+            if (!stickman || !isGameActive) return;
+            const ctx = render.context;
+            const pos = stickman.position;
+            
+            ctx.save();
+            ctx.translate(pos.x, pos.y);
+            
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // Stickman drawing
+            ctx.beginPath();
+            ctx.arc(0, -20, 10, 0, 6.28); // Head
+            ctx.moveTo(0, -10); ctx.lineTo(0, 15); // Body
+            
+            const speed = stickman.velocity.x;
+            const walk = Math.sin(Date.now()/100) * Math.abs(speed);
+
+            // Legs
+            ctx.moveTo(0, 15); ctx.lineTo(-10 - walk*2, 30);
+            ctx.moveTo(0, 15); ctx.lineTo(10 + walk*2, 30);
+            
+            // Arms
+            ctx.moveTo(0, -5); ctx.lineTo(-15 + walk, 5);
+            ctx.moveTo(0, -5); ctx.lineTo(15 - walk, 5);
+            
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function updateHUD() {
+            document.getElementById('score-val').textContent = score;
+            document.getElementById('lines-val').textContent = `LINES: ${linesCleared}`;
+        }
+
+        function handleResize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            render.canvas.width = width;
+            render.canvas.height = height;
+        }
+
+        // --- Inputs ---
+
+        function setupInputs() {
+            const c = document.getElementById('canvas-container');
+
+            c.addEventListener('touchstart', e => {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                isSwiping = false;
+            }, {passive: false});
+
+            c.addEventListener('touchmove', e => {
+                if (!isGameActive || !stickman) return;
+                const x = e.touches[0].clientX;
+                const diffX = x - touchStartX;
+                
+                if (Math.abs(diffX) > 5) {
+                    isSwiping = true;
+                    const dir = diffX > 0 ? 1 : -1;
+                    Body.setVelocity(stickman, { x: dir * STICKMAN_SPEED, y: stickman.velocity.y });
+                    touchStartX = x; 
+                }
+            }, {passive: false});
+
+            c.addEventListener('touchend', e => {
+                const endY = e.changedTouches[0].clientY;
+                const diffY = endY - touchStartY;
+
+                if (!isSwiping && Math.abs(diffY) < 20) {
+                    if (currentBlock) Body.rotate(currentBlock, Math.PI/2);
+                } 
+                else if (diffY < -30) {
+                    if (stickman && Math.abs(stickman.velocity.y) < 2) {
+                        Body.applyForce(stickman, stickman.position, { x: 0, y: -JUMP_FORCE });
+                    }
+                }
+            });
+
+            window.addEventListener('deviceorientation', e => {
+                const angle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+                let beta = e.beta, gamma = e.gamma;
+                let tx = 0, ty = 0;
+
+                if (angle === 0) { tx = gamma; ty = beta; }
+                else if (angle === 90) { tx = beta; ty = -gamma; }
+                else if (angle === -90) { tx = -beta; ty = gamma; }
+
+                tilt.x = Math.min(Math.max(tx / 45, -1), 1);
+                tilt.y = Math.min(Math.max(ty / 45, -1), 1);
+            });
+        }
+
+        const startAction = async () => {
+            try {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    await DeviceOrientationEvent.requestPermission();
+                }
+            } catch(e) {}
+            startGame();
+        };
+
+        document.getElementById('start-btn').addEventListener('click', startAction);
+
+        init();
+
+    </script>
+</body>
+</html>
+
