@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Physics Tetris</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #222;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* HUD */
+        #score-board {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #controls-hint {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.4);
+            font-size: 0.9rem;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #start-overlay {
+            background: rgba(0,0,0,0.85);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            transition: opacity 0.5s;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 20;
+        }
+
+        #start-btn {
+            background: linear-gradient(135deg, #00b09b, #96c93d);
+            border: none;
+            border-radius: 50px;
+            padding: 20px 60px;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(150, 201, 61, 0.4);
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none !important;
+        }
+
+        h1 {
+            color: white;
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            background: -webkit-linear-gradient(#00b09b, #96c93d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    
+    <div id="score-board">Blocks: 0</div>
+    <div id="controls-hint">Tap to Rotate • Tilt to Move</div>
+
+    <div id="start-overlay">
+        <h1>Stacker</h1>
+        <button id="start-btn">Play</button>
+        <p style="color: #aaa; margin-top: 20px; text-align: center; max-width: 300px;">
+            Tilt phone to control the falling block.<br>
+            Tap screen to rotate.
+        </p>
+    </div>
+
+    <script>
+        // --- Matter.js Setup ---
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Body = Matter.Body,
+              Composite = Matter.Composite,
+              Events = Matter.Events,
+              Vector = Matter.Vector;
+
+        let engine, render, runner;
+        let width, height;
+        
+        // Game State
+        let currentBlock = null;
+        let blockCount = 0;
+        let isGameActive = false;
+        let lastRotationTime = 0;
+        let lockTimer = 0; 
+        const LOCK_THRESHOLD = 500; // ms to lock a block after it lands
+        
+        // Input State
+        let tilt = { x: 0, y: 0 };
+        const TILT_SENSITIVITY_X = 0.0008; // Increased slightly for better control
+        const TILT_SENSITIVITY_Y = 0.0008; 
+
+        function init() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+
+            // Increase iterations for better collision accuracy (prevents tunneling)
+            engine = Engine.create({
+                positionIterations: 10,
+                velocityIterations: 10
+            });
+            
+            engine.world.gravity.y = 1; 
+
+            render = Render.create({
+                element: document.getElementById('canvas-container'),
+                engine: engine,
+                options: {
+                    width: width,
+                    height: height,
+                    wireframes: false,
+                    background: '#222',
+                    pixelRatio: window.devicePixelRatio
+                }
+            });
+
+            createWalls();
+
+            // Game Loop Hook
+            Events.on(engine, 'beforeUpdate', updateGame);
+            
+            // Interaction: Tap to Rotate
+            render.canvas.addEventListener('touchstart', handleTap);
+            render.canvas.addEventListener('mousedown', handleTap);
+
+            Render.run(render);
+            runner = Runner.create();
+            Runner.run(runner, engine);
+
+            window.addEventListener('resize', handleResize);
+        }
+
+        function createWalls() {
+            Composite.clear(engine.world);
+            Composite.add(engine.world, currentBlock ? [currentBlock] : []); // Keep current block if resizing
+            
+            // FIX 1: Super thick floor to prevent falling through
+            const floorThickness = 500; 
+            const wallThickness = 100;
+            
+            const options = { 
+                isStatic: true, 
+                render: { fillStyle: '#444' },
+                friction: 1.0, // High friction so blocks don't slide endlessly
+                label: 'wall'
+            };
+
+            // Floor (positioned so the top edge is at "height")
+            Composite.add(engine.world, Bodies.rectangle(width/2, height + floorThickness/2 - 10, width, floorThickness, options));
+            
+            // Left Wall
+            Composite.add(engine.world, Bodies.rectangle(0 - wallThickness/2, height/2, wallThickness, height * 4, options));
+            
+            // Right Wall
+            Composite.add(engine.world, Bodies.rectangle(width + wallThickness/2, height/2, wallThickness, height * 4, options));
+        }
+
+        // --- Block Logic ---
+
+        function spawnBlock() {
+            if (!isGameActive) return;
+
+            const size = width < 500 ? 35 : 45; // Slightly larger blocks
+            const startX = width / 2;
+            const startY = -100; 
+
+            const types = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            
+            let parts = [];
+            let color = '';
+
+            const sq = (x, y) => Bodies.rectangle(x * size, y * size, size, size);
+
+            switch(type) {
+                case 'I': color = '#00f0f0'; parts = [sq(0,0), sq(-1,0), sq(1,0), sq(2,0)]; break;
+                case 'O': color = '#f0f000'; parts = [sq(0,0), sq(1,0), sq(0,1), sq(1,1)]; break;
+                case 'T': color = '#a000f0'; parts = [sq(0,0), sq(-1,0), sq(1,0), sq(0,1)]; break;
+                case 'S': color = '#00f000'; parts = [sq(0,0), sq(1,0), sq(0,1), sq(-1,1)]; break;
+                case 'Z': color = '#f00000'; parts = [sq(0,0), sq(-1,0), sq(0,1), sq(1,1)]; break;
+                case 'J': color = '#0000f0'; parts = [sq(0,0), sq(-1,0), sq(1,0), sq(-1,1)]; break;
+                case 'L': color = '#f0a000'; parts = [sq(0,0), sq(-1,0), sq(1,0), sq(1,1)]; break;
+            }
+
+            const block = Body.create({
+                parts: parts,
+                label: 'activeBlock',
+                friction: 0.8,
+                restitution: 0.1,
+                density: 0.002
+            });
+
+            block.parts.forEach(p => {
+                p.render.fillStyle = color;
+                p.render.strokeStyle = '#000';
+                p.render.lineWidth = 2;
+            });
+
+            Body.setPosition(block, { x: startX, y: startY });
+            Composite.add(engine.world, block);
+            currentBlock = block;
+            lockTimer = 0;
+        }
+
+        function updateGame(event) {
+            if (!currentBlock || !isGameActive) return;
+
+            // 1. Apply User Controls
+            const forceX = tilt.x * TILT_SENSITIVITY_X * currentBlock.mass;
+            const forceY = tilt.y * TILT_SENSITIVITY_Y * currentBlock.mass;
+
+            Body.applyForce(currentBlock, currentBlock.position, { x: forceX, y: forceY });
+
+            // FIX 2: Speed Limit (Prevent Tunneling)
+            // If the block falls faster than ~25 pixels per frame, it might skip the floor
+            const maxSpeed = 20; 
+            if (currentBlock.velocity.y > maxSpeed) {
+                Body.setVelocity(currentBlock, { 
+                    x: currentBlock.velocity.x, 
+                    y: maxSpeed 
+                });
+            }
+
+            // 2. Lock Logic
+            const speed = Vector.magnitude(currentBlock.velocity);
+            const angularSpeed = Math.abs(currentBlock.angularVelocity);
+
+            if (speed < 0.5 && angularSpeed < 0.05 && currentBlock.position.y > 0) {
+                lockTimer += event.delta;
+            } else {
+                lockTimer = 0;
+            }
+
+            if (lockTimer > LOCK_THRESHOLD) {
+                lockBlock();
+            }
+
+            // 3. Fallback: If it STILL falls through (rare), rescue it
+            if (currentBlock.position.y > height + 200) {
+                Body.setPosition(currentBlock, {x: width/2, y: 0});
+                Body.setVelocity(currentBlock, {x:0, y:0});
+            }
+        }
+
+        function lockBlock() {
+            currentBlock.label = 'stackedBlock';
+            // Make heavier once locked so the stack is harder to knock over
+            Body.setDensity(currentBlock, 0.01); 
+            
+            currentBlock = null;
+            blockCount++;
+            document.getElementById('score-board').textContent = `Blocks: ${blockCount}`;
+            
+            setTimeout(spawnBlock, 200);
+        }
+
+        function handleTap(e) {
+            if (!isGameActive || !currentBlock) return;
+            // Prevent accidental double taps
+            const now = Date.now();
+            if (now - lastRotationTime < 150) return;
+            lastRotationTime = now;
+            Body.rotate(currentBlock, Math.PI / 2);
+        }
+
+        function handleResize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            render.canvas.width = width;
+            render.canvas.height = height;
+            createWalls();
+        }
+
+        // --- Orientation Handling ---
+
+        function handleOrientation(event) {
+            let beta = event.beta; // Front/Back
+            let gamma = event.gamma; // Left/Right
+
+            const angle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+
+            let inputX = 0;
+            let inputY = 0;
+
+            if (angle === 0) { // Portrait
+                inputX = gamma;
+                inputY = beta;
+            } else if (angle === 90) { // Landscape Left
+                inputX = beta;
+                inputY = -gamma;
+            } else if (angle === -90 || angle === 270) { // Landscape Right
+                inputX = -beta;
+                inputY = gamma;
+            }
+
+            // Clamp and Normalize
+            tilt.x = clamp(inputX / 45, -1, 1); 
+            tilt.y = clamp(inputY / 45, -1, 1); 
+        }
+
+        function clamp(val, min, max) {
+            return Math.min(Math.max(val, min), max);
+        }
+
+        // --- Init & UI ---
+
+        const startBtn = document.getElementById('start-btn');
+        const overlay = document.getElementById('start-overlay');
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                if (document.documentElement.requestFullscreen) {
+                    await document.documentElement.requestFullscreen();
+                }
+                if (screen.orientation && screen.orientation.lock) {
+                    await screen.orientation.lock("portrait");
+                }
+            } catch(e) { console.log("Lock failed", e); }
+
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        startGame();
+                    } else {
+                        alert("Permission denied. Reload to try again.");
+                    }
+                } catch (e) { alert(e); }
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation);
+                startGame();
+            }
+        });
+
+        function startGame() {
+            overlay.classList.add('hidden');
+            isGameActive = true;
+            blockCount = 0;
+            document.getElementById('score-board').textContent = `Blocks: 0`;
+            
+            // Remove existing blocks
+            Composite.allBodies(engine.world).forEach(b => {
+                if (b.label === 'stackedBlock' || b.label === 'activeBlock') {
+                    Composite.remove(engine.world, b);
+                }
+            });
+
+            spawnBlock();
+        }
+
+        init();
+
+    </script>
+</body>
+</html>
+
