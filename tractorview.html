@@ -2,207 +2,191 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Tractor Viewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Motion AR Tractor</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript" src="https://static.sketchfab.com/api/sketchfab-viewer-1.12.1.js"></script>
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #000;
-        }
-        #camera-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-        }
-        #video-feed {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1); /* Mirror effect for front camera */
-        }
-        #overlay-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80%;
-            height: 60%;
-            z-index: 2;
-            pointer-events: auto;
-            border: 2px dashed rgba(255, 255, 255, 0.3);
-            resize: both;
-            overflow: hidden;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: 0;
-        }
-        .controls {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10;
-            display: flex;
-            gap: 10px;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 15px;
-            border-radius: 50px;
-            backdrop-filter: blur(5px);
-        }
-        .status-msg {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10;
-            color: white;
-            background: rgba(220, 38, 38, 0.8);
-            padding: 8px 16px;
-            border-radius: 8px;
-            display: none;
-        }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
+        #camera-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        #sketchfab-iframe { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; border: none; pointer-events: none; }
+        .ui-layer { position: fixed; bottom: 30px; left: 0; width: 100%; z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .glass-panel { background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); padding: 20px; border-radius: 24px; color: white; border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 400px; text-align: center; }
+        .btn-primary { background: #3b82f6; color: white; padding: 12px 24px; border-radius: 50px; font-weight: bold; width: 100%; transition: transform 0.1s; }
+        .btn-primary:active { transform: scale(0.95); }
+        #debug { font-size: 10px; color: #aaa; margin-top: 10px; font-family: monospace; }
+        .shutter { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 100; display: flex; align-items: center; justify-content: center; transition: opacity 0.5s; }
     </style>
 </head>
 <body>
 
-    <div id="status" class="status-msg">Camera access denied or unavailable.</div>
-
-    <div id="camera-container">
-        <video id="video-feed" autoplay playsinline muted></video>
+    <div id="shutter" class="shutter">
+        <div class="text-white text-center">
+            <h1 class="text-2xl font-bold mb-4">AR Tractor Experience</h1>
+            <p class="mb-6 px-8 opacity-70">Requires camera and motion sensor access to track your movements.</p>
+            <button onclick="initializeExperience()" class="bg-white text-black px-8 py-3 rounded-full font-bold">START</button>
+        </div>
     </div>
 
-    <div id="overlay-container">
-        <iframe 
-            title="Farm Tractor" 
-            src="https://sketchfab.com/models/327f872b2ffc4ad39f03f143f01d36db/embed?autostart=1&transparent=1&ui_infos=0&ui_watermark=0" 
-            allow="autoplay; fullscreen; xr-spatial-tracking" 
-            xr-spatial-tracking>
-        </iframe>
-    </div>
+    <video id="camera-bg" autoplay playsinline muted></video>
+    <iframe id="sketchfab-iframe" allow="autoplay; fullscreen; xr-spatial-tracking"></iframe>
 
-    <div class="controls">
-        <button onclick="toggleCamera()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Switch Camera
-        </button>
-        <button onclick="adjustSize('smaller')" class="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
-            </svg>
-        </button>
-        <button onclick="adjustSize('larger')" class="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-        </button>
+    <div class="ui-layer">
+        <div class="glass-panel">
+            <div id="sensor-status" class="text-sm mb-3">Motion Sensors: Off</div>
+            <button id="sensor-btn" onclick="requestPermissions()" class="btn-primary mb-2">Enable Motion Sensors</button>
+            <button onclick="resetCamera()" class="bg-gray-700 text-white px-4 py-2 rounded-full text-xs">Recenter Model</button>
+            <div id="debug">Ready. Move your phone to look around.</div>
+        </div>
     </div>
 
     <script>
-        const video = document.getElementById('video-feed');
-        const overlay = document.getElementById('overlay-container');
-        const statusMsg = document.getElementById('status');
-        let currentStream = null;
-        let useFrontCamera = true;
+        const modelId = '327f872b2ffc4ad39f03f143f01d36db';
+        const iframe = document.getElementById('sketchfab-iframe');
+        const debug = document.getElementById('debug');
+        const video = document.getElementById('camera-bg');
+        let api = null;
 
-        async function startCamera() {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-
-            const constraints = {
-                video: {
-                    facingMode: useFrontCamera ? "user" : "environment"
-                }
-            };
-
-            try {
-                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = currentStream;
-                statusMsg.style.display = 'none';
-                
-                // Mirror the video only if it's the front camera
-                video.style.transform = useFrontCamera ? 'scaleX(-1)' : 'scaleX(1)';
-            } catch (err) {
-                console.error("Error accessing camera: ", err);
-                statusMsg.textContent = "Camera error: Please ensure permissions are granted.";
-                statusMsg.style.display = 'block';
-            }
-        }
-
-        function toggleCamera() {
-            useFrontCamera = !useFrontCamera;
-            startCamera();
-        }
-
-        function adjustSize(direction) {
-            const currentWidth = overlay.offsetWidth;
-            const currentHeight = overlay.offsetHeight;
-            const factor = direction === 'larger' ? 1.1 : 0.9;
-            
-            overlay.style.width = (currentWidth * factor) + 'px';
-            overlay.style.height = (currentHeight * factor) + 'px';
-        }
-
-        // Initialize camera on load
-        window.onload = () => {
-            startCamera();
+        // AR Tracking State
+        let state = {
+            baseAlpha: 0,
+            distance: 15,
+            rotation: 0,
+            pitch: 45,
+            isCalibrated: false
         };
 
-        // Simple drag functionality for the tractor container
-        let isDragging = false;
-        let offset = { x: 0, y: 0 };
+        // 1. Initialize Camera
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Camera access denied", err);
+            }
+        }
 
-        overlay.addEventListener('mousedown', (e) => {
-            if (e.target.tagName === 'IFRAME') return; // Allow iframe interaction
-            isDragging = true;
-            offset.x = e.clientX - overlay.offsetLeft;
-            offset.y = e.clientY - overlay.offsetTop;
-        });
+        // 2. Initialize Sketchfab API
+        function initSketchfab() {
+            const client = new Sketchfab(iframe);
+            client.init(modelId, {
+                success: (instance) => {
+                    api = instance;
+                    api.start();
+                    api.addEventListener('viewerready', () => {
+                        document.getElementById('shutter').style.opacity = '0';
+                        setTimeout(() => document.getElementById('shutter').style.display = 'none', 500);
+                        updateCamera();
+                    });
+                },
+                error: () => console.error('Sketchfab error'),
+                transparent: 1,
+                ui_controls: 0,
+                ui_infos: 0,
+                autostart: 1
+            });
+        }
 
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            overlay.style.left = (e.clientX - offset.x) + 'px';
-            overlay.style.top = (e.clientY - offset.y) + 'px';
-            overlay.style.transform = 'none'; // Remove centering transform once moved
-        });
+        function initializeExperience() {
+            startCamera();
+            initSketchfab();
+        }
 
-        document.addEventListener('mouseup', () => {
-            isDragging = false;
-        });
+        // 3. Sensor Handling
+        async function requestPermissions() {
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS logic
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        activateSensors();
+                    }
+                } catch (e) {
+                    debug.innerText = "Permission rejected.";
+                }
+            } else {
+                // Android / Others
+                activateSensors();
+            }
+        }
 
-        // Touch support for dragging
-        overlay.addEventListener('touchstart', (e) => {
-            if (e.target.tagName === 'IFRAME') return;
-            isDragging = true;
-            const touch = e.touches[0];
-            offset.x = touch.clientX - overlay.offsetLeft;
-            offset.y = touch.clientY - overlay.offsetTop;
-        });
+        function activateSensors() {
+            window.addEventListener('deviceorientation', handleOrientation);
+            window.addEventListener('devicemotion', handleMotion);
+            document.getElementById('sensor-btn').style.display = 'none';
+            document.getElementById('sensor-status').innerText = "Motion Sensors: ACTIVE";
+            debug.innerText = "Sensors active. Calibrating...";
+        }
 
-        document.addEventListener('touchmove', (e) => {
-            if (!isDragging) return;
-            const touch = e.touches[0];
-            overlay.style.left = (touch.clientX - offset.x) + 'px';
-            overlay.style.top = (touch.clientY - offset.y) + 'px';
-            overlay.style.transform = 'none';
-        });
+        function handleOrientation(event) {
+            if (!state.isCalibrated) {
+                state.baseAlpha = event.alpha;
+                state.isCalibrated = true;
+            }
 
-        document.addEventListener('touchend', () => {
-            isDragging = false;
-        });
+            // Alpha: Yaw (Left/Right)
+            // Beta: Pitch (Tilt down/up)
+            // Gamma: Roll
+            
+            // Normalize yaw based on initial calibration
+            let yaw = event.alpha - state.baseAlpha;
+            
+            // Map tilt (beta) to camera pitch (0 is vertical, 90 is top down)
+            // Phone usually held at ~70-90 degrees for upright. 
+            // If user tilts forward (looking at ground), Beta increases.
+            let pitch = event.beta; 
+            
+            state.rotation = yaw;
+            state.pitch = pitch;
+
+            updateCamera();
+            
+            debug.innerText = `Rot: ${Math.round(yaw)}° | Tilt: ${Math.round(pitch)}° | Zoom: ${state.distance.toFixed(1)}`;
+        }
+
+        // Forward/Backward movement detection via simple accelerometer delta
+        let lastAccelZ = 0;
+        function handleMotion(event) {
+            const accel = event.acceleration; // Movement excluding gravity
+            if (!accel) return;
+
+            // Detect a surge in Z-axis (forward/backward)
+            const threshold = 1.5;
+            if (Math.abs(accel.z) > threshold) {
+                // If moving forward (negative Z in many coordinate systems)
+                // We'll adjust the distance
+                state.distance += accel.z * 0.1;
+                // Clamp distance
+                state.distance = Math.max(5, Math.min(50, state.distance));
+                updateCamera();
+            }
+        }
+
+        function updateCamera() {
+            if (!api) return;
+
+            // Convert spherical coordinates to Cartesian for the "eye" position
+            const r = state.distance;
+            const phi = (state.pitch) * (Math.PI / 180); // vertical angle
+            const theta = (-state.rotation) * (Math.PI / 180); // horizontal angle
+
+            const x = r * Math.sin(phi) * Math.cos(theta);
+            const y = r * Math.sin(phi) * Math.sin(theta);
+            const z = r * Math.cos(phi);
+
+            // Sketchfab camera uses [x, y, z] for eye and target
+            // We keep target at center [0,0,0]
+            api.setCameraLookAt([x, y, z], [0, 0, 0], 0);
+        }
+
+        function resetCamera() {
+            state.isCalibrated = false;
+            state.distance = 15;
+            updateCamera();
+        }
+
     </script>
 </body>
 </html>
