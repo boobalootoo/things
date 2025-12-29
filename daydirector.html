@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Time Redirector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .animate-pulse-soft {
+            animation: pulse-soft 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-4 font-sans">
+
+    <div id="app-card" class="max-w-md w-full bg-slate-800 rounded-3xl p-8 shadow-2xl border border-slate-700 transition-all duration-500">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div id="time-icon" class="text-5xl mb-4">⏳</div>
+            <h1 id="greeting" class="text-2xl font-bold mb-2 text-blue-400">Determining the time...</h1>
+            <p id="clock" class="text-4xl font-mono tracking-widest text-slate-300">00:00:00</p>
+        </div>
+
+        <!-- Redirect Info -->
+        <div class="bg-slate-900/50 rounded-2xl p-6 mb-8 border border-slate-700/50">
+            <p class="text-slate-400 text-sm uppercase tracking-wider mb-2">Next Destination</p>
+            <p id="target-name" class="text-xl font-semibold text-white">Loading...</p>
+            <p id="target-url" class="text-blue-500 text-sm truncate mt-1">...</p>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="mb-8">
+            <div class="flex justify-between text-xs text-slate-500 mb-2 italic">
+                <span>Redirecting in <span id="countdown">5</span>s</span>
+                <span id="status-text">Auto-pilot active</span>
+            </div>
+            <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                <div id="progress-bar" class="bg-blue-500 h-full transition-all duration-100 linear" style="width: 100%"></div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-3">
+            <button id="cancel-btn" class="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-xl font-medium transition-colors border border-slate-600">
+                Stop Redirect
+            </button>
+            <button id="go-btn" class="flex-1 bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20">
+                Go Now
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        // Edit these to change where you go at different hours (0-23)
+        const SCHEDULE = [
+            { start: 5,  end: 11, name: "Morning Routine (News)", url: "https://www.bbc.com/news", icon: "☕", color: "text-orange-400" },
+            { start: 11, end: 14, name: "Lunch Break (YouTube)", url: "https://www.youtube.com", icon: "🍱", color: "text-red-400" },
+            { start: 14, end: 18, name: "Afternoon Focus (GitHub)", url: "https://github.com", icon: "💻", color: "text-indigo-400" },
+            { start: 18, end: 22, name: "Evening Relax (Reddit)", url: "https://www.reddit.com", icon: "🌙", color: "text-orange-500" },
+            { start: 22, end: 5,  name: "Late Night (Wikipedia)", url: "https://en.wikipedia.org/wiki/Special:Random", icon: "🦉", color: "text-purple-400" }
+        ];
+
+        let countdownValue = 5;
+        let isPaused = false;
+        let targetSite = null;
+        let timerInterval = null;
+
+        const clockEl = document.getElementById('clock');
+        const greetingEl = document.getElementById('greeting');
+        const iconEl = document.getElementById('time-icon');
+        const targetNameEl = document.getElementById('target-name');
+        const targetUrlEl = document.getElementById('target-url');
+        const countdownEl = document.getElementById('countdown');
+        const progressBar = document.getElementById('progress-bar');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const goBtn = document.getElementById('go-btn');
+        const statusText = document.getElementById('status-text');
+
+        function updateClock() {
+            const now = new Date();
+            clockEl.textContent = now.toLocaleTimeString([], { hour12: false });
+            
+            const hour = now.getHours();
+            
+            // Find current schedule item
+            const current = SCHEDULE.find(item => {
+                if (item.start < item.end) {
+                    return hour >= item.start && hour < item.end;
+                } else {
+                    // Handles overnight shifts (e.g., 22 to 5)
+                    return hour >= item.start || hour < item.end;
+                }
+            });
+
+            if (current && (!targetSite || targetSite.url !== current.url)) {
+                targetSite = current;
+                updateUI(current);
+            }
+        }
+
+        function updateUI(site) {
+            greetingEl.textContent = `Good ${getTimeOfDayName()}!`;
+            iconEl.textContent = site.icon;
+            targetNameEl.textContent = site.name;
+            targetUrlEl.textContent = site.url;
+            
+            // Apply theme color to progress bar
+            const colorClass = site.color.replace('text-', 'bg-');
+            progressBar.className = `h-full transition-all duration-100 linear ${colorClass}`;
+        }
+
+        function getTimeOfDayName() {
+            const h = new Date().getHours();
+            if (h < 12) return "Morning";
+            if (h < 17) return "Afternoon";
+            return "Evening";
+        }
+
+        function startCountdown() {
+            timerInterval = setInterval(() => {
+                if (isPaused) return;
+
+                countdownValue -= 0.1;
+                if (countdownValue <= 0) {
+                    clearInterval(timerInterval);
+                    redirect();
+                }
+
+                // Update UI
+                countdownEl.textContent = Math.ceil(countdownValue);
+                progressBar.style.width = `${(countdownValue / 5) * 100}%`;
+            }, 100);
+        }
+
+        function redirect() {
+            if (targetSite) {
+                window.location.href = targetSite.url;
+            }
+        }
+
+        cancelBtn.onclick = () => {
+            isPaused = true;
+            statusText.textContent = "Auto-redirect disabled";
+            statusText.classList.add('text-red-400');
+            cancelBtn.classList.add('hidden');
+            progressBar.style.width = "0%";
+            countdownEl.parentElement.textContent = "Redirect paused.";
+        };
+
+        goBtn.onclick = redirect;
+
+        // Initialize
+        updateClock();
+        setInterval(updateClock, 1000);
+        startCountdown();
+    </script>
+</body>
+</html>
+
