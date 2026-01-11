@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Simple List & Watchlist</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <style>
+        :root {
+            --primary-bg: #f8fafc;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            background-color: var(--primary-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overscroll-behavior-y: contain;
+        }
+
+        .list-item-wrapper {
+            position: relative;
+            overflow: hidden;
+            touch-action: pan-y;
+            user-select: none;
+        }
+
+        .list-item-content {
+            position: relative;
+            background: white;
+            z-index: 2;
+            transition: transform 0.2s ease-out;
+            cursor: grab;
+        }
+
+        .list-item-content:active {
+            cursor: grabbing;
+        }
+
+        .delete-action {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 80px;
+            background: #ef4444;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+        }
+
+        .swiped-left .list-item-content {
+            transform: translateX(-80px);
+        }
+
+        /* Sortable ghosting */
+        .sortable-ghost {
+            opacity: 0.3;
+            background: #e2e8f0;
+        }
+
+        .tab-active {
+            border-bottom: 3px solid #3b82f6;
+            color: #3b82f6;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 0px;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header / Tabs -->
+    <header class="bg-white border-b pt-4 shrink-0">
+        <h1 class="text-center font-bold text-lg mb-4 text-slate-800">My Lists</h1>
+        <div class="flex justify-around text-slate-500 font-medium">
+            <button id="todoTab" class="pb-2 px-8 tab-active transition-all" onclick="switchTab('todo')">To-Do</button>
+            <button id="watchTab" class="pb-2 px-8 transition-all" onclick="switchTab('watchlist')">Watchlist</button>
+        </div>
+    </header>
+
+    <!-- List Containers -->
+    <main id="listContainer" class="flex-1 overflow-y-auto p-4 space-y-2 pb-24">
+        <!-- Items will be injected here -->
+    </main>
+
+    <!-- Bottom Input Area -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t flex gap-2 items-center">
+        <input type="text" id="itemInput" placeholder="Add something..." 
+               class="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none">
+        <button onclick="addItem()" class="bg-blue-600 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+        </button>
+    </div>
+
+    <script>
+        let currentTab = 'todo';
+        let data = {
+            todo: [],
+            watchlist: []
+        };
+
+        const container = document.getElementById('listContainer');
+        const input = document.getElementById('itemInput');
+        
+        // Initialize from LocalStorage
+        function init() {
+            const savedData = localStorage.getItem('my_simple_lists');
+            if (savedData) {
+                data = JSON.parse(savedData);
+            }
+            render();
+            setupSortable();
+        }
+
+        function saveData() {
+            localStorage.setItem('my_simple_lists', JSON.stringify(data));
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('todoTab').classList.toggle('tab-active', tab === 'todo');
+            document.getElementById('watchTab').classList.toggle('tab-active', tab === 'watchlist');
+            render();
+        }
+
+        function addItem() {
+            const text = input.value.trim();
+            if (!text) return;
+            
+            data[currentTab].push({
+                id: Date.now().toString(),
+                text: text
+            });
+            
+            input.value = '';
+            saveData();
+            render();
+            // Scroll to bottom
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+
+        // Allow Enter key to add
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addItem();
+        });
+
+        function deleteItem(id) {
+            data[currentTab] = data[currentTab].filter(item => item.id !== id);
+            saveData();
+            render();
+        }
+
+        function render() {
+            container.innerHTML = '';
+            
+            if (data[currentTab].length === 0) {
+                container.innerHTML = `<div class="text-center text-slate-400 mt-10">Nothing here yet.</div>`;
+                return;
+            }
+
+            data[currentTab].forEach((item) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'list-item-wrapper rounded-xl shadow-sm group';
+                wrapper.dataset.id = item.id;
+
+                wrapper.innerHTML = `
+                    <div class="delete-action" onclick="deleteItem('${item.id}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </div>
+                    <div class="list-item-content p-4 rounded-xl flex items-center gap-3 border border-slate-100">
+                        <span class="text-slate-300">☰</span>
+                        <span class="text-slate-700 flex-1">${item.text}</span>
+                    </div>
+                `;
+
+                // Handle Swiping
+                let startX = 0;
+                let currentX = 0;
+                const content = wrapper.querySelector('.list-item-content');
+
+                wrapper.addEventListener('touchstart', e => {
+                    startX = e.touches[0].clientX;
+                    // Reset others
+                    document.querySelectorAll('.list-item-wrapper').forEach(w => {
+                        if (w !== wrapper) w.classList.remove('swiped-left');
+                    });
+                }, {passive: true});
+
+                wrapper.addEventListener('touchmove', e => {
+                    currentX = e.touches[0].clientX;
+                    const diff = startX - currentX;
+                    if (diff > 50) {
+                        wrapper.classList.add('swiped-left');
+                    } else if (diff < -50) {
+                        wrapper.classList.remove('swiped-left');
+                    }
+                }, {passive: true});
+
+                container.appendChild(wrapper);
+            });
+        }
+
+        function setupSortable() {
+            new Sortable(container, {
+                animation: 150,
+                handle: '.list-item-content',
+                ghostClass: 'sortable-ghost',
+                onEnd: function (evt) {
+                    const itemEl = evt.item;
+                    // Sync the data array with the new DOM order
+                    const newOrderIds = Array.from(container.querySelectorAll('.list-item-wrapper')).map(el => el.dataset.id);
+                    
+                    const newData = [];
+                    newOrderIds.forEach(id => {
+                        const item = data[currentTab].find(i => i.id === id);
+                        if (item) newData.push(item);
+                    });
+                    
+                    data[currentTab] = newData;
+                    saveData();
+                }
+            });
+        }
+
+        // Initialize on load
+        window.onload = init;
+    </script>
+</body>
+</html>
