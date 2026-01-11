@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Body Quest RPG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
+        
+        body {
+            font-family: 'MedievalSharp', cursive;
+            background-color: #000;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #output-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .ui-overlay {
+            position: relative;
+            z-index: 10;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            pointer-events: none;
+        }
+
+        .glass-panel {
+            background: rgba(0, 0, 0, 0.85);
+            border: 2px solid #8b5a2b;
+            padding: 1.25rem;
+            border-radius: 0.5rem;
+            pointer-events: auto;
+            backdrop-filter: blur(6px);
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.75rem;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #8b5a2b;
+            line-height: 1;
+            z-index: 20;
+        }
+
+        .btn-rpg {
+            background: #8b5a2b;
+            color: white;
+            padding: 0.6rem 2rem;
+            border-radius: 0.5rem;
+            font-size: 1.25rem;
+            border-bottom: 4px solid #5d3a1a;
+            pointer-events: auto;
+            transition: all 0.1s;
+        }
+
+        .btn-rpg:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+
+        .market-item {
+            background: rgba(139, 90, 43, 0.1);
+            border: 1px solid rgba(139, 90, 43, 0.3);
+            transition: all 0.2s;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        .market-item:hover {
+            background: rgba(139, 90, 43, 0.3);
+            transform: translateY(-2px);
+        }
+
+        #detection-popup {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            background: rgba(251, 191, 36, 0.95);
+            color: #000;
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.25rem;
+            font-weight: bold;
+            font-size: 0.9rem;
+            z-index: 200;
+            display: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        #map-icon {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 40;
+            background: #8b5a2b;
+            width: 50px;
+            height: 50px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 2px solid #d4b483;
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+        }
+
+        /* Map Zoom/Pan Container */
+        #map-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 500;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .map-viewport {
+            width: 95%;
+            max-width: 600px;
+            height: 80vh;
+            overflow: hidden;
+            border: 8px solid #5d3a1a;
+            border-radius: 4px;
+            position: relative;
+            background: #e2cfb0;
+            pointer-events: auto;
+        }
+
+        .map-parchment {
+            width: 1000px;
+            height: 1200px;
+            background-color: #e2cfb0;
+            background-image: url('https://www.transparenttextures.com/patterns/papyros.png');
+            position: absolute;
+            transform-origin: 0 0;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .map-parchment:active { cursor: grabbing; }
+
+        .map-node {
+            position: absolute;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            pointer-events: auto;
+        }
+        .map-node:hover { transform: scale(1.2); }
+
+        #chicken-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 5;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #chicken-sprite {
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(0 10px 10px rgba(0,0,0,0.5));
+        }
+
+        .bawk-anim {
+            animation: bawk 0.3s infinite;
+        }
+        @keyframes bawk {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1) rotate(5deg); }
+            100% { transform: scale(1); }
+        }
+
+        .travel-progress-bar {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            max-width: 400px;
+            height: 1.5rem;
+            background: rgba(0,0,0,0.6);
+            border: 2px solid #8b5a2b;
+            border-radius: 1rem;
+            overflow: hidden;
+            display: none;
+            z-index: 100;
+        }
+
+        #travel-fill {
+            height: 100%;
+            background: #8b5a2b;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: black;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pulse {
+            animation: pulse-anim 2s infinite;
+        }
+        @keyframes pulse-anim {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 90, 43, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(139, 90, 43, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 90, 43, 0); }
+        }
+
+        /* Rhythm Game Styles */
+        #beat-indicator {
+            position: fixed;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 80px;
+            border: 8px solid #8b5a2b;
+            border-radius: 50%;
+            z-index: 200;
+            display: none;
+        }
+        .beat-active {
+            animation: beat-grow 0.8s ease-out infinite;
+            border-color: #fbbf24 !important;
+            box-shadow: 0 0 20px #fbbf24;
+        }
+        @keyframes beat-grow {
+            0% { transform: translateX(-50%) scale(0.8); opacity: 0.5; }
+            50% { transform: translateX(-50%) scale(1.2); opacity: 1; }
+            100% { transform: translateX(-50%) scale(0.8); opacity: 0.5; }
+        }
+
+        .fade-in { animation: fadeIn 0.5s forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="text-center">
+            <div class="text-2xl mb-4 text-yellow-500 animate-pulse">Initializing Body Sensors...</div>
+            <div class="w-48 h-1 bg-gray-800 rounded-full overflow-hidden">
+                <div id="loading-bar" class="h-full bg-yellow-600 w-0 transition-all duration-300"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="detection-popup">DETECTED!</div>
+
+    <div id="map-icon" onclick="toggleMap()">
+        <span class="text-2xl">🗺️</span>
+    </div>
+
+    <!-- Travel Progress -->
+    <div class="travel-progress-bar" id="travel-ui">
+        <div id="travel-fill"></div>
+        <div id="travel-text" class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white uppercase tracking-tighter shadow-black drop-shadow-md">Traveling</div>
+    </div>
+
+    <!-- Rhythm Game Visual -->
+    <div id="beat-indicator"></div>
+
+    <!-- Gameplay Visual Layer -->
+    <div id="chicken-layer">
+        <div id="chicken-sprite" style="display:none; font-size: 2rem;">🐔</div>
+    </div>
+
+    <div id="video-container">
+        <video id="input-video" class="hidden" playsinline></video>
+        <canvas id="output-canvas"></canvas>
+    </div>
+
+    <div class="ui-overlay" id="ui-container">
+        <!-- Scenes injected here -->
+    </div>
+
+    <!-- Map Overlay with Zoom/Pan -->
+    <div id="map-overlay" onclick="toggleMap()">
+        <div class="map-viewport" onclick="event.stopPropagation()">
+            <div class="close-btn" onclick="toggleMap()" style="z-index: 600; right: 1rem; top: 1rem;">X</div>
+            <div id="map-content" class="map-parchment">
+                <h2 class="text-2xl text-center font-bold mt-8 uppercase border-b border-black/20 pb-2 w-full">World Map</h2>
+                <p class="text-[10px] text-center italic">Scroll to zoom • Drag to pan</p>
+                
+                <!-- Wanderers Wood -->
+                <div class="map-node" style="top: 800px; left: 200px;" onclick="startTravel('Wanderer\'s Wood')">
+                    <div class="text-4xl">🌲</div>
+                    <div class="text-xs">Wanderer's Wood</div>
+                </div>
+
+                <!-- Little Village -->
+                <div class="map-node" style="top: 300px; left: 700px;" onclick="startTravel('Little Village')">
+                    <div id="village-marker" class="text-4xl">🏘️</div>
+                    <div class="text-xs">Little Village</div>
+                </div>
+
+                <!-- Fiddler's Farm (Initially hidden) -->
+                <div id="map-node-farm" class="map-node hidden" style="top: 100px; left: 400px;" onclick="startTravel('Fiddler\'s Farm')">
+                    <div class="text-4xl">🚜</div>
+                    <div class="text-xs">Fiddler's Farm</div>
+                </div>
+
+                <!-- Millie's Delivery Point (Messenger mission) -->
+                <div id="map-node-millie" class="map-node hidden" style="top: 500px; left: 850px;" onclick="startTravel('Delivery Point')">
+                    <div class="text-4xl">📦</div>
+                    <div class="text-xs">Delivery Target</div>
+                </div>
+
+                <!-- Path SVG -->
+                <svg class="absolute inset-0 pointer-events-none" style="width: 1000px; height: 1200px;">
+                    <path d="M 250 800 Q 400 600 700 350" stroke="black" stroke-dasharray="10,10" fill="transparent" />
+                    <path id="farm-path" class="hidden" d="M 700 300 Q 550 200 450 150" stroke="black" stroke-dasharray="5,5" fill="transparent" />
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const uiContainer = document.getElementById('ui-container');
+        const popup = document.getElementById('detection-popup');
+        const mapIcon = document.getElementById('map-icon');
+        const chickenSprite = document.getElementById('chicken-sprite');
+        const travelUI = document.getElementById('travel-ui');
+        const travelFill = document.getElementById('travel-fill');
+        const travelText = document.getElementById('travel-text');
+        const beatIndicator = document.getElementById('beat-indicator');
+        const mapContent = document.getElementById('map-content');
+
+        const forestBg = new Image();
+        forestBg.src = 'https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?auto=format&fit=crop&q=80&w=2000';
+
+        let currentScene = 'CALIBRATION';
+        let showCameraFeed = true;
+        let lastAnkleY = 0;
+        let isSquatting = false;
+        let hasMap = false;
+
+        // Player Stats & Inventory
+        let coins = 0;
+        let inventory = [];
+        let potatoesDug = 0;
+
+        // Game Progress State
+        let chickenDistance = 100;
+        const CHICKEN_MIN_DIST = 10;
+        let travelProgress = 0;
+        let travelGoal = 50; 
+        let targetDestination = '';
+
+        // Dance Game State
+        let danceActive = false;
+        let danceBeats = 0;
+        let danceHits = 0;
+
+        // Map Zoom/Pan Logic
+        let scale = 0.6;
+        let posX = 0;
+        let posY = 0;
+        let isDragging = false;
+        let startX, startY;
+
+        const updateMapTransform = () => {
+            mapContent.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+        };
+
+        mapContent.parentElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.05 : 0.05;
+            scale = Math.min(Math.max(scale + delta, 0.4), 1.5);
+            updateMapTransform();
+        });
+
+        mapContent.parentElement.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX - posX;
+            startY = e.clientY - posY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            posX = e.clientX - startX;
+            posY = e.clientY - startY;
+            updateMapTransform();
+        });
+
+        window.addEventListener('mouseup', () => isDragging = false);
+
+        // MediaPipe Initialization
+        const pose = new Pose({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+        });
+
+        pose.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        pose.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        function showPopup(text) {
+            popup.innerText = text;
+            popup.style.display = 'block';
+            setTimeout(() => { popup.style.display = 'none'; }, 1000);
+        }
+
+        function toggleMap() {
+            if (!hasMap) return;
+            const overlay = document.getElementById('map-overlay');
+            const isShowing = overlay.style.display === 'flex';
+            overlay.style.display = isShowing ? 'none' : 'flex';
+            if (!isShowing) {
+                mapIcon.classList.remove('pulse');
+                updateMapTransform();
+            }
+        }
+
+        function closeCurrentWindow() {
+            if (currentScene === 'FOREST_START') setScene('SEE_CHICKEN');
+            else uiContainer.innerHTML = '';
+        }
+
+        function setScene(scene) {
+            currentScene = scene;
+            uiContainer.innerHTML = '';
+
+            if (scene === 'SEE_CHICKEN') {
+                chickenSprite.style.display = 'block';
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-md mx-auto mt-10 text-center fade-in">
+                        <div class="close-btn" onclick="closeCurrentWindow()">X</div>
+                        <p class="text-xl mb-4">You see a chicken in the distance!</p>
+                        <p class="text-lg opacity-80">Run to catch it. When it bawks, squat!</p>
+                    </div>
+                `;
+            } else if (scene === 'CATCH_SUCCESS') {
+                chickenSprite.style.display = 'none';
+                inventory.push('Chicken');
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-md mx-auto mt-20 text-center fade-in">
+                        <div class="close-btn" onclick="uiContainer.innerHTML=''">X</div>
+                        <h2 class="text-3xl text-yellow-500 mb-2">Got it!</h2>
+                        <p class="text-lg mb-4">You have no hand free. Head to the Village to trade it.</p>
+                        <div class="text-5xl mt-4">🍗</div>
+                    </div>
+                `;
+                mapIcon.classList.add('pulse');
+            } else if (scene === 'VILLAGE_ARRIVAL') {
+                travelUI.style.display = 'none';
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-md mx-auto mt-20 text-center fade-in">
+                        <div class="close-btn" onclick="uiContainer.innerHTML=''">X</div>
+                        <h2 class="text-2xl text-yellow-500 mb-2">Little Village</h2>
+                        <div class="flex flex-col gap-2 mt-4">
+                            <button class="btn-rpg" onclick="setScene('TAVERN')">The Tavern</button>
+                            <button class="btn-rpg" onclick="setScene('MARKET')">The Market</button>
+                        </div>
+                    </div>
+                `;
+            } else if (scene === 'TAVERN') {
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-md mx-auto mt-20 text-center fade-in">
+                        <div class="close-btn" onclick="setScene('VILLAGE_ARRIVAL')">X</div>
+                        <h2 class="text-2xl text-yellow-500">The Tavern</h2>
+                        <p class="text-sm mt-4">An old farmer plays a fiddle. Dance or talk to Millie Messenger?</p>
+                        <div class="flex flex-col gap-2 mt-6">
+                            <button class="btn-rpg" onclick="startDancing()">Dance to Fiddle</button>
+                            <button class="btn-rpg" onclick="setScene('MILLIE_QUEST')">Talk to Millie</button>
+                        </div>
+                    </div>
+                `;
+            } else if (scene === 'FIONN_MEETING') {
+                document.getElementById('map-node-farm').classList.remove('hidden');
+                document.getElementById('farm-path').classList.remove('hidden');
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-lg mx-auto mt-10 text-center fade-in">
+                        <div class="close-btn" onclick="setScene('VILLAGE_ARRIVAL')">X</div>
+                        <h2 class="text-2xl text-yellow-500 mb-2">Fionn Fiddler</h2>
+                        <p class="text-sm italic mb-4">"I need a hand digging potatoes at my farm. You keep half!"</p>
+                        <p class="text-xs text-yellow-600">Fiddler's Farm has been added to your map.</p>
+                        <button class="btn-rpg mt-4 scale-75" onclick="setScene('VILLAGE_ARRIVAL')">Back</button>
+                    </div>
+                `;
+            } else if (scene === 'MILLIE_QUEST') {
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-md mx-auto mt-10 text-center fade-in">
+                        <div class="close-btn" onclick="setScene('TAVERN')">X</div>
+                        <h2 class="text-2xl text-blue-400 mb-2">Millie Messenger</h2>
+                        <p class="text-sm italic">"I have a package for a neighbor down the path. Can you deliver it quick? I'll tip you!"</p>
+                        <button class="btn-rpg mt-4" onclick="acceptMillieQuest()">Accept Delivery</button>
+                    </div>
+                `;
+            } else if (scene === 'POTATO_FARM') {
+                travelUI.style.display = 'none';
+                potatoesDug = 0;
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-md mx-auto mt-10 text-center fade-in">
+                        <div class="close-btn" onclick="setScene('MAP_READY')">X</div>
+                        <h2 class="text-2xl text-yellow-500">Digging Potatoes</h2>
+                        <p class="text-lg mt-4">SQUAT to dig a potato!</p>
+                        <div id="potato-count" class="text-3xl mt-2">🥔 x0</div>
+                        <p class="text-xs mt-4 opacity-70">Pick 10 potatoes to earn your share (5 gold).</p>
+                    </div>
+                `;
+            } else if (scene === 'POTATO_SUCCESS') {
+                coins += 5;
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-md mx-auto mt-10 text-center fade-in">
+                        <div class="close-btn" onclick="setScene('VILLAGE_ARRIVAL')">X</div>
+                        <h2 class="text-2xl text-green-500">Good work!</h2>
+                        <p class="text-lg">You picked a full batch. Fionn gives you 5 coins.</p>
+                        <div class="text-4xl mt-4">💰💰💰</div>
+                    </div>
+                `;
+            } else if (scene === 'MARKET') {
+                const hasChicken = inventory.includes('Chicken');
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-lg mx-auto mt-10 text-center fade-in">
+                        <div class="close-btn" onclick="setScene('VILLAGE_ARRIVAL')">X</div>
+                        <h2 class="text-2xl text-yellow-500 mb-2">The Market</h2>
+                        <div class="bg-black/40 p-2 rounded mb-4 flex justify-between items-center px-4 text-yellow-400">
+                            <span>💰 Coins: ${coins}</span>
+                            ${hasChicken ? `<button class="btn-rpg scale-75" onclick="sellChicken()">Sell Chicken (+5 💰)</button>` : ``}
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="market-item p-2 rounded" onclick="buyItem('Quill', 2)"><div class="text-2xl">✒️</div><div class="text-[10px]">Quill (2)</div></div>
+                            <div class="market-item p-2 rounded" onclick="buyItem('Bags', 10)"><div class="text-2xl">🎒</div><div class="text-[10px]">Bags (10)</div></div>
+                        </div>
+                    </div>
+                `;
+            } else if (scene === 'DELIVERY_SUCCESS') {
+                travelUI.style.display = 'none';
+                coins += 10;
+                uiContainer.innerHTML = `
+                    <div class="glass-panel max-w-md mx-auto mt-10 text-center fade-in">
+                        <div class="close-btn" onclick="setScene('VILLAGE_ARRIVAL')">X</div>
+                        <h2 class="text-2xl text-blue-500">Delivery Complete!</h2>
+                        <p class="text-lg">The neighbor thanks you. Millie sends word and a 10 coin tip!</p>
+                        <div class="text-4xl mt-4">📦✨💰</div>
+                    </div>
+                `;
+            }
+        }
+
+        function acceptMillieQuest() {
+            document.getElementById('map-node-millie').classList.remove('hidden');
+            showPopup("📦 Mission Started!");
+            setScene('MAP_HINT');
+            mapIcon.classList.add('pulse');
+        }
+
+        function startTravel(destination) {
+            targetDestination = destination;
+            toggleMap();
+            currentScene = 'TRAVELING';
+            chickenSprite.style.display = 'none';
+            travelProgress = 0;
+            travelGoal = 50; 
+            travelUI.style.display = 'block';
+            travelFill.style.width = '0%';
+            travelText.innerText = `To ${destination}`;
+            uiContainer.innerHTML = `<div class="glass-panel max-w-xs mx-auto mt-4 text-center">RUN ON THE SPOT TO REACH ${destination.toUpperCase()}</div>`;
+        }
+
+        function startDancing() {
+            currentScene = 'DANCING';
+            danceActive = true;
+            danceHits = 0;
+            danceBeats = 8; 
+            uiContainer.innerHTML = `<div class="glass-panel max-w-md mx-auto mt-4 text-center"><h2 class="text-xl text-yellow-500">DANCE!</h2><p class="text-sm">Move in time with the ring!</p><div id="dance-stats" class="text-xs mt-2">Coins: 0</div></div>`;
+            beatIndicator.style.display = 'block';
+            
+            const nextBeat = () => {
+                if (!danceActive || danceBeats <= 0) { endDancing(); return; }
+                beatIndicator.classList.add('beat-active');
+                let hit = false;
+                window.danceCheck = () => { if (!hit) { hit = true; danceHits++; coins++; document.getElementById('dance-stats').innerText = `Coins: ${danceHits}`; showPopup("✨ PERFECT!"); }};
+                setTimeout(() => { beatIndicator.classList.remove('beat-active'); danceBeats--; window.danceCheck = null; setTimeout(nextBeat, 600); }, 800);
+            };
+            nextBeat();
+        }
+
+        function endDancing() { danceActive = false; beatIndicator.style.display = 'none'; setScene('FIONN_MEETING'); }
+
+        function onResults(results) {
+            if (document.getElementById('loading-overlay').style.display !== 'none') document.getElementById('loading-overlay').style.display = 'none';
+            if (canvasElement.width !== window.innerWidth) { canvasElement.width = window.innerWidth; canvasElement.height = window.innerHeight; }
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            if (showCameraFeed) canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            else {
+                const ratio = Math.max(canvasElement.width / forestBg.width, canvasElement.height / forestBg.height);
+                const nw = forestBg.width * ratio; const nh = forestBg.height * ratio;
+                canvasCtx.drawImage(forestBg, (canvasElement.width - nw) / 2, (canvasElement.height - nh) / 2, nw, nh);
+                canvasCtx.fillStyle = 'rgba(0, 20, 0, 0.4)'; canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+            }
+            if (results.poseLandmarks) {
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2, radius: 4});
+                checkMovements(results.poseLandmarks);
+            }
+            canvasCtx.restore();
+        }
+
+        function checkMovements(landmarks) {
+            const leftAnkle = landmarks[27];
+            const rightAnkle = landmarks[28];
+            const leftHip = landmarks[23];
+            const leftKnee = landmarks[25];
+
+            const currentAnkleY = (leftAnkle.y + rightAnkle.y) / 2;
+            if (Math.abs(currentAnkleY - lastAnkleY) > 0.02) {
+                showPopup("👣 WALK");
+                if (window.danceCheck) window.danceCheck();
+                handleWalk();
+            }
+            lastAnkleY = currentAnkleY;
+
+            if (leftHip.y > leftKnee.y - 0.05) {
+                if (!isSquatting) {
+                    isSquatting = true;
+                    showPopup("🧘 SQUAT");
+                    if (window.danceCheck) window.danceCheck();
+                    handleSquat();
+                }
+            } else { isSquatting = false; }
+        }
+
+        function handleWalk() {
+            if (currentScene === 'SEE_CHICKEN') {
+                if (chickenDistance > CHICKEN_MIN_DIST) {
+                    chickenDistance -= 2;
+                    chickenSprite.style.transform = `scale(${1 + (100 - chickenDistance)/10})`;
+                    if (chickenDistance <= CHICKEN_MIN_DIST) { chickenSprite.classList.add('bawk-anim'); showPopup("🔊 BAWK! SQUAT!"); }
+                }
+            } else if (currentScene === 'TRAVELING') {
+                travelProgress++;
+                travelFill.style.width = `${(travelProgress / travelGoal) * 100}%`;
+                if (travelProgress >= travelGoal) {
+                    if (targetDestination === 'Little Village') setScene('VILLAGE_ARRIVAL');
+                    else if (targetDestination === 'Fiddler\'s Farm') setScene('POTATO_FARM');
+                    else if (targetDestination === 'Delivery Point') setScene('DELIVERY_SUCCESS');
+                }
+            }
+        }
+
+        function handleSquat() {
+            if (currentScene === 'SEE_CHICKEN' && chickenDistance <= CHICKEN_MIN_DIST) setScene('CATCH_SUCCESS');
+            else if (currentScene === 'POTATO_FARM') {
+                potatoesDug++;
+                const counter = document.getElementById('potato-count');
+                if (counter) counter.innerText = `🥔 x${potatoesDug}`;
+                if (potatoesDug >= 10) setScene('POTATO_SUCCESS');
+            }
+        }
+
+        function renderCalibration() {
+            currentScene = 'CALIBRATION'; showCameraFeed = true;
+            uiContainer.innerHTML = `<div class="flex flex-col h-full justify-between"><div class="glass-panel max-w-md"><p class="text-lg">Check that your joints match the green lines.</p></div><div class="flex justify-end mb-8"><button class="btn-rpg" onclick="renderTutorial()">next</button></div></div>`;
+        }
+
+        function renderTutorial() {
+            currentScene = 'TUTORIAL';
+            uiContainer.innerHTML = `<div class="flex flex-col h-full justify-between"><div class="glass-panel w-full max-w-xl mx-auto mt-4"><h2 class="text-2xl font-bold mb-2 text-yellow-500">Tutorial</h2><div class="grid grid-cols-2 gap-2 text-xs"><div class="p-2 rounded bg-black/40 border border-white/10">Squat: Dig / Pick up</div><div class="p-2 rounded bg-black/40 border border-white/10">Walk: Move on spot</div></div></div><div class="flex justify-center mb-12"><button class="btn-rpg px-12 py-4 text-2xl" onclick="startAdventure()">Start Game</button></div></div>`;
+        }
+
+        function startAdventure() {
+            currentScene = 'FOREST_START'; showCameraFeed = false; hasMap = true; mapIcon.style.display = 'flex';
+            uiContainer.innerHTML = `<div class="flex flex-col h-full items-center justify-center fade-in"><div class="glass-panel max-w-md text-center"><div class="close-btn" onclick="closeCurrentWindow()">X</div><p class="text-2xl mb-4">You wake up in a forest...</p><div class="text-6xl mb-4">🌲</div></div></div>`;
+        }
+
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += 10;
+            const bar = document.getElementById('loading-bar');
+            if (bar) bar.style.width = progress + '%';
+            if (progress >= 100) clearInterval(interval);
+        }, 100);
+
+        window.onload = () => { camera.start(); renderCalibration(); };
+        window.addEventListener('resize', () => { canvasElement.width = window.innerWidth; canvasElement.height = window.innerHeight; });
+    </script>
+</body>
+</html>
