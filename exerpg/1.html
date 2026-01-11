@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Body Quest RPG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
+        
+        body {
+            font-family: 'MedievalSharp', cursive;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .rpg-panel {
+            background: linear-gradient(135deg, #3d2b1f 0%, #2a1d15 100%);
+            border: 4px solid #8b5a2b;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .btn-rpg {
+            background-color: #8b5a2b;
+            transition: all 0.2s;
+            border-bottom: 4px solid #5d3a1a;
+        }
+
+        .btn-rpg:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+
+        .btn-rpg:disabled {
+            background-color: #4a3a2e;
+            border-bottom-color: #2a1a0e;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #video-container {
+            transform: scaleX(-1); /* Mirror effect */
+        }
+
+        .fade-in { animation: fadeIn 0.5s ease-in forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .chicken-bounce {
+            animation: bounce 0.5s infinite alternate;
+        }
+        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+        
+        #loading-screen {
+            transition: opacity 0.8s ease-out, visibility 0.8s;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center text-center">
+        <div class="text-4xl mb-4 text-yellow-500">⚔️ Initializing Quest...</div>
+        <div class="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
+            <div id="loading-bar" class="h-full bg-yellow-600 w-0 transition-all duration-300"></div>
+        </div>
+        <p class="mt-4 text-gray-400">Summoning Body-Tracking Spirits...</p>
+    </div>
+
+    <!-- UI Overlays -->
+    <div id="game-ui" class="relative w-full max-w-2xl h-full flex flex-col">
+        
+        <!-- Camera View -->
+        <div class="relative w-full aspect-video rounded-xl overflow-hidden bg-black border-4 border-gray-700 shadow-2xl">
+            <div id="video-container" class="absolute inset-0 w-full h-full">
+                <video id="input-video" class="hidden" playsinline></video>
+                <canvas id="output-canvas" class="w-full h-full object-cover"></canvas>
+            </div>
+            
+            <!-- Camera Status Overlay (Hidden by default) -->
+            <div id="camera-loading" class="absolute inset-0 bg-black/60 flex items-center justify-center hidden">
+                <div class="text-white text-xl animate-pulse">Requesting Camera Access...</div>
+            </div>
+            
+            <!-- Move Indicator -->
+            <div id="move-toast" class="absolute top-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-4 py-1 rounded-full font-bold opacity-0 transition-opacity z-10">
+                MOVEMENT DETECTED!
+            </div>
+        </div>
+
+        <!-- Narrative & Interaction Area -->
+        <div id="narrative-box" class="mt-4 flex-grow rpg-panel rounded-xl p-6 relative flex flex-col items-center justify-center text-center">
+            <div id="scene-content" class="fade-in">
+                <!-- Content injected via JS -->
+            </div>
+        </div>
+
+        <!-- Inventory / Stats Bar -->
+        <div class="mt-4 flex gap-4 justify-between items-center bg-black/40 p-3 rounded-lg border border-gray-700">
+            <div id="stat-steps">👣 Distance: 0m</div>
+            <div id="stat-coins">💰 Coins: 0</div>
+            <div id="stat-items">🎒 Bag: Empty</div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingScreen = document.getElementById('loading-screen');
+        const cameraLoading = document.getElementById('camera-loading');
+        const sceneContent = document.getElementById('scene-content');
+        const moveToast = document.getElementById('move-toast');
+
+        // Game State
+        const state = {
+            scene: 'LANDING',
+            steps: 0,
+            coins: 0,
+            inventory: [],
+            isCalibrated: false,
+            detectedMove: null,
+            targetDistance: 0,
+            chickenProgress: 0,
+            lastAnkleY: 0,
+            isSquatting: false,
+            isAxeSwinging: false,
+            cameraReady: false
+        };
+
+        // Pose Estimation Initialization
+        const pose = new Pose({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+        });
+
+        pose.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        pose.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        function showToast(text) {
+            moveToast.innerText = text;
+            moveToast.style.opacity = '1';
+            setTimeout(() => moveToast.style.opacity = '0', 1000);
+        }
+
+        function onResults(results) {
+            // Hide the camera loading overlay on first results
+            if (!state.cameraReady) {
+                state.cameraReady = true;
+                cameraLoading.classList.add('hidden');
+            }
+
+            // Setup canvas sizing on first frame
+            if (canvasElement.width !== videoElement.videoWidth) {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+            }
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.poseLandmarks) {
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2});
+                
+                detectMovements(results.poseLandmarks);
+            }
+            canvasCtx.restore();
+        }
+
+        function detectMovements(landmarks) {
+            const leftAnkle = landmarks[27];
+            const rightAnkle = landmarks[28];
+            const leftHip = landmarks[23];
+            const rightHip = landmarks[24];
+            const leftKnee = landmarks[25];
+            const leftWrist = landmarks[15];
+            const leftShoulder = landmarks[11];
+
+            // 1. Running on Spot
+            const currentAnkleY = (leftAnkle.y + rightAnkle.y) / 2;
+            if (Math.abs(currentAnkleY - state.lastAnkleY) > 0.015) {
+                handleMove('WALK');
+            }
+            state.lastAnkleY = currentAnkleY;
+
+            // 2. Squat detection
+            const hipY = (leftHip.y + rightHip.y) / 2;
+            const kneeY = leftKnee.y;
+            if (hipY > kneeY - 0.05) {
+                if (!state.isSquatting) {
+                    state.isSquatting = true;
+                    handleMove('SQUAT');
+                }
+            } else {
+                state.isSquatting = false;
+            }
+
+            // 3. Axe Swing
+            if (leftWrist.y < leftShoulder.y - 0.2) {
+                state.isAxeSwinging = true;
+            }
+            if (state.isAxeSwinging && leftWrist.y > leftShoulder.y + 0.1) {
+                handleMove('CHOP');
+                state.isAxeSwinging = false;
+            }
+        }
+
+        function handleMove(moveType) {
+            state.detectedMove = moveType;
+            
+            if (state.scene === 'TUTORIAL') {
+                showToast(moveType + " DETECTED!");
+            }
+
+            if (state.scene === 'CATCH_CHICKEN' && moveType === 'WALK') {
+                state.chickenProgress += 2;
+                updateScene();
+            }
+
+            if (state.scene === 'CATCH_CHICKEN_REACHED' && moveType === 'SQUAT') {
+                state.inventory.push('Chicken');
+                setScene('CONGRATS_CHICKEN');
+            }
+
+            if (state.scene === 'WALKING_VILLAGE' && moveType === 'WALK') {
+                state.steps += 1;
+                updateScene();
+                if (state.steps >= state.targetDistance) {
+                    setScene('VILLAGE_REACHED');
+                }
+            }
+
+            document.getElementById('stat-steps').innerText = `👣 Steps: ${state.steps}`;
+        }
+
+        function setScene(newScene) {
+            state.scene = newScene;
+            renderScene();
+        }
+
+        function updateScene() {
+            const subtext = document.getElementById('dynamic-subtext');
+            if (state.scene === 'CATCH_CHICKEN') {
+                const chicken = document.getElementById('chicken-sprite');
+                if (chicken) {
+                    const size = 50 + (state.chickenProgress);
+                    chicken.style.width = size + 'px';
+                    if (state.chickenProgress >= 100) {
+                        setScene('CATCH_CHICKEN_REACHED');
+                    }
+                }
+            }
+            if (state.scene === 'WALKING_VILLAGE') {
+                const progress = Math.floor((state.steps / state.targetDistance) * 100);
+                if (subtext) subtext.innerText = `Progress: ${progress}% (${state.steps}/${state.targetDistance} steps)`;
+            }
+        }
+
+        function renderScene() {
+            sceneContent.innerHTML = '';
+            
+            switch(state.scene) {
+                case 'LANDING':
+                    sceneContent.innerHTML = `
+                        <h1 class="text-3xl font-bold mb-4">Body Quest RPG</h1>
+                        <p class="mb-6">Ready to transform your sweat into experience points?</p>
+                        <button onclick="startCamera()" class="btn-rpg px-8 py-3 rounded text-xl font-bold">Wake Up</button>
+                    `;
+                    break;
+                
+                case 'CALIBRATION':
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-2">Calibration</h2>
+                        <p class="text-sm mb-4">Stand back so your whole body is in the camera frame.<br>If the green lines match your body, you're ready.</p>
+                        <button onclick="setScene('TUTORIAL')" class="btn-rpg px-6 py-2 rounded">Next</button>
+                    `;
+                    break;
+
+                case 'TUTORIAL':
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-2">Tutorial</h2>
+                        <p class="text-sm mb-4">Practice your moves! Try running on the spot or squatting.</p>
+                        <div class="flex gap-2 justify-center mb-4">
+                            <span class="bg-gray-700 px-2 rounded">👣 Run</span>
+                            <span class="bg-gray-700 px-2 rounded">🧘 Squat</span>
+                            <span class="bg-gray-700 px-2 rounded">🪓 Chop</span>
+                        </div>
+                        <button onclick="setScene('STORY_START')" class="btn-rpg px-6 py-2 rounded">Start Game</button>
+                    `;
+                    break;
+
+                case 'STORY_START':
+                    sceneContent.innerHTML = `
+                        <p class="mb-4">You wake up in a forest with no memories...<br>You find a map tucked into your waistband.</p>
+                        <div class="text-5xl mb-4">🌲🗺️🌲</div>
+                        <button onclick="setScene('SEE_CHICKEN')" class="btn-rpg px-6 py-2 rounded">Look Around</button>
+                    `;
+                    break;
+
+                case 'SEE_CHICKEN':
+                    sceneContent.innerHTML = `
+                        <p class="mb-4">You see a chicken in the distance! It looks plump.<br>Run to catch it!</p>
+                        <button onclick="setScene('CATCH_CHICKEN')" class="btn-rpg px-6 py-2 rounded">Chase it!</button>
+                    `;
+                    break;
+
+                case 'CATCH_CHICKEN':
+                    state.chickenProgress = 0;
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-4">CATCH THE CHICKEN!</h2>
+                        <div class="flex justify-center items-center h-32">
+                            <div id="chicken-sprite" class="chicken-bounce" style="width: 50px;">
+                                <svg viewBox="0 0 100 100" class="fill-yellow-400">
+                                    <path d="M50 20c-10 0-15 5-15 15 0 5 2 10 5 13-5 5-10 15-10 27 0 10 5 15 15 15s15-5 15-15c0-12-5-22-10-27 3-3 5-8 5-13 0-10-5-15-15-15z"/>
+                                    <circle cx="45" cy="30" r="2" fill="black"/>
+                                    <circle cx="55" cy="30" r="2" fill="black"/>
+                                    <path d="M48 35l2 5 2-5h-4z" fill="orange"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <p class="mt-4 font-bold text-yellow-500">RUN ON THE SPOT!</p>
+                    `;
+                    break;
+
+                case 'CATCH_CHICKEN_REACHED':
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-2">BAWK!</h2>
+                        <p class="mb-4">The chicken is right there! Quick, squat down to grab it!</p>
+                        <div class="text-6xl mb-4">🐔</div>
+                        <p class="font-bold text-green-500">SQUAT NOW!</p>
+                    `;
+                    break;
+
+                case 'CONGRATS_CHICKEN':
+                    document.getElementById('stat-items').innerText = "🎒 Bag: 1x Chicken";
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-2">Caught!</h2>
+                        <p class="mb-4">You have one chicken, but no bags. You can't carry much more.<br>Check your map for the nearest village.</p>
+                        <button onclick="setScene('OPEN_MAP')" class="btn-rpg px-6 py-2 rounded">Open Map</button>
+                    `;
+                    break;
+
+                case 'OPEN_MAP':
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-4">World Map</h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="p-4 bg-green-900 border border-yellow-600 rounded">
+                                <p>Wanderer's Wood</p>
+                                <p class="text-xs">You are here</p>
+                            </div>
+                            <button onclick="startTravel('Little Village', 50)" class="p-4 bg-yellow-900 border border-yellow-600 rounded hover:bg-yellow-800">
+                                <p>Little Village</p>
+                                <p class="text-xs">Distance: 50m</p>
+                            </button>
+                        </div>
+                    `;
+                    break;
+
+                case 'WALKING_VILLAGE':
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-2">Traveling to Village</h2>
+                        <p class="mb-6">Keep walking to reach your destination.</p>
+                        <div class="text-5xl mb-4">🏃💨</div>
+                        <div id="dynamic-subtext" class="text-yellow-500 font-bold">Progress: 0%</div>
+                    `;
+                    break;
+
+                case 'VILLAGE_REACHED':
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-2">Little Village</h2>
+                        <p class="mb-4">You've arrived! Where would you like to go first?</p>
+                        <div class="flex flex-col gap-2">
+                            <button onclick="setScene('MARKET')" class="btn-rpg px-4 py-2 rounded">The Market</button>
+                            <button onclick="setScene('TAVERN')" class="btn-rpg px-4 py-2 rounded">The Tavern</button>
+                        </div>
+                    `;
+                    break;
+
+                case 'MARKET':
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-2">Marketplace</h2>
+                        <p class="mb-4">"I'll buy that chicken for 5 coins!" says the merchant.</p>
+                        <button onclick="sellChicken()" class="btn-rpg px-4 py-2 rounded">Sell Chicken</button>
+                        <button onclick="setScene('VILLAGE_REACHED')" class="mt-4 text-xs underline">Back</button>
+                    `;
+                    break;
+                
+                case 'TAVERN':
+                    sceneContent.innerHTML = `
+                        <h2 class="text-2xl mb-2">The Tavern</h2>
+                        <p class="mb-4">An old man plays a fiddle in the corner.</p>
+                        <p class="italic text-sm">"Care to dance for a copper?"</p>
+                        <button class="btn-rpg px-4 py-2 rounded">Dance! (TBD)</button>
+                        <button onclick="setScene('VILLAGE_REACHED')" class="mt-4 text-xs underline">Back</button>
+                    `;
+                    break;
+            }
+        }
+
+        async function startCamera() {
+            cameraLoading.classList.remove('hidden');
+            try {
+                await camera.start();
+                setScene('CALIBRATION');
+            } catch (err) {
+                console.error("Camera failed:", err);
+                cameraLoading.innerHTML = `<div class="bg-red-900 p-4 rounded text-white">Camera Error: Please ensure you have granted permission and are using a secure connection (HTTPS).</div>`;
+            }
+        }
+
+        function startTravel(loc, dist) {
+            state.targetDistance = state.steps + dist;
+            setScene('WALKING_VILLAGE');
+        }
+
+        function sellChicken() {
+            if (state.inventory.includes('Chicken')) {
+                state.inventory = state.inventory.filter(i => i !== 'Chicken');
+                state.coins += 5;
+                document.getElementById('stat-coins').innerText = `💰 Coins: ${state.coins}`;
+                document.getElementById('stat-items').innerText = "🎒 Bag: Empty";
+                setScene('VILLAGE_REACHED');
+            }
+        }
+
+        // Initialize loading state
+        let progress = 0;
+        const loadInt = setInterval(() => {
+            progress += 5;
+            loadingBar.style.width = progress + '%';
+            if (progress >= 100) {
+                clearInterval(loadInt);
+                // Hide loading screen to reveal the LANDING page
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                    }, 800);
+                }, 500);
+            }
+        }, 50);
+
+        window.onload = () => {
+            renderScene();
+        };
+
+    </script>
+</body>
+</html>
