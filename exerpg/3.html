@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Body Quest RPG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
+        
+        body {
+            font-family: 'MedievalSharp', cursive;
+            background-color: #000;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #video-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        #output-canvas {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .ui-overlay {
+            position: relative;
+            z-index: 10;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            pointer-events: none;
+        }
+
+        .glass-panel {
+            background: rgba(0, 0, 0, 0.85);
+            border: 2px solid #8b5a2b;
+            padding: 1.25rem;
+            border-radius: 0.5rem;
+            pointer-events: auto;
+            backdrop-filter: blur(6px);
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 0.5rem; right: 0.75rem;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #8b5a2b;
+            line-height: 1;
+            z-index: 20;
+        }
+
+        .btn-rpg {
+            background: #8b5a2b;
+            color: white;
+            padding: 0.6rem 2rem;
+            border-radius: 0.5rem;
+            font-size: 1.25rem;
+            border-bottom: 4px solid #5d3a1a;
+            pointer-events: auto;
+            transition: all 0.1s;
+        }
+
+        .btn-rpg:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+
+        .market-item {
+            background: rgba(139, 90, 43, 0.1);
+            border: 1px solid rgba(139, 90, 43, 0.3);
+            transition: all 0.2s;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        .market-item:hover {
+            background: rgba(139, 90, 43, 0.3);
+            transform: translateY(-2px);
+        }
+
+        #detection-popup {
+            position: fixed;
+            top: 1rem; left: 1rem;
+            background: rgba(251, 191, 36, 0.95);
+            color: #000;
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.25rem;
+            font-weight: bold;
+            font-size: 0.8rem;
+            z-index: 200;
+            display: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        #map-icon {
+            position: fixed;
+            top: 1rem; right: 1rem;
+            z-index: 40;
+            background: #8b5a2b;
+            width: 50px; height: 50px;
+            display: none;
+            align-items: center; justify-content: center;
+            border-radius: 50%;
+            border: 2px solid #d4b483;
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+        }
+
+        /* Voice Status Indicator */
+        #voice-status {
+            position: fixed;
+            bottom: 1rem; right: 1rem;
+            z-index: 40;
+            background: rgba(0,0,0,0.7);
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            border: 1px solid #8b5a2b;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        #map-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 500;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            align-items: center; justify-content: center;
+            padding: 1rem;
+        }
+
+        .map-viewport {
+            width: 95%; max-width: 600px;
+            height: 80vh;
+            overflow: hidden;
+            border: 8px solid #5d3a1a;
+            border-radius: 4px;
+            position: relative;
+            background: #e2cfb0;
+            pointer-events: auto;
+        }
+
+        .map-parchment {
+            width: 1000px; height: 1200px;
+            background-color: #e2cfb0;
+            background-image: url('https://www.transparenttextures.com/patterns/papyros.png');
+            position: absolute;
+            transform-origin: 0 0;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .map-node {
+            position: absolute;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            pointer-events: auto;
+        }
+        .map-node:hover { transform: scale(1.2); }
+
+        #chicken-sprite {
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(0 10px 10px rgba(0,0,0,0.5));
+        }
+
+        .travel-progress-bar {
+            position: fixed;
+            bottom: 4rem;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%; max-width: 400px;
+            height: 1.5rem;
+            background: rgba(0,0,0,0.6);
+            border: 2px solid #8b5a2b;
+            border-radius: 1rem;
+            overflow: hidden;
+            display: none;
+            z-index: 100;
+        }
+
+        #travel-fill {
+            height: 100%;
+            background: #8b5a2b;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        #loading-overlay {
+            position: fixed; inset: 0;
+            background: black;
+            z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        #beat-indicator {
+            position: fixed;
+            bottom: 25%; left: 50%;
+            transform: translateX(-50%);
+            width: 80px; height: 80px;
+            border: 8px solid #8b5a2b;
+            border-radius: 50%;
+            z-index: 200;
+            display: none;
+        }
+        .beat-active {
+            animation: beat-grow 0.8s ease-out infinite;
+            border-color: #fbbf24 !important;
+            box-shadow: 0 0 20px #fbbf24;
+        }
+        @keyframes beat-grow {
+            0% { transform: translateX(-50%) scale(0.8); opacity: 0.5; }
+            50% { transform: translateX(-50%) scale(1.2); opacity: 1; }
+            100% { transform: translateX(-50%) scale(0.8); opacity: 0.5; }
+        }
+
+        .fade-in { animation: fadeIn 0.5s forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .voice-mic-active { color: #22c55e; }
+        .voice-mic-muted { color: #eab308; }
+        .voice-mic-stopped { color: #ef4444; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="text-center">
+            <div class="text-2xl mb-4 text-yellow-500 animate-pulse">Initializing RPG Systems...</div>
+            <div class="w-48 h-1 bg-gray-800 rounded-full overflow-hidden">
+                <div id="loading-bar" class="h-full bg-yellow-600 w-0 transition-all duration-300"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="detection-popup">DETECTED!</div>
+
+    <div id="map-icon" onclick="toggleMap()">
+        <span class="text-2xl">🗺️</span>
+    </div>
+
+    <!-- Voice Control Indicator -->
+    <div id="voice-status" onclick="restartVoice()">
+        <span id="voice-dot" class="text-xl">🎙️</span>
+        <span id="voice-label">Listening...</span>
+    </div>
+
+    <div class="travel-progress-bar" id="travel-ui">
+        <div id="travel-fill"></div>
+        <div id="travel-text" class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white uppercase tracking-tighter shadow-black drop-shadow-md">Traveling</div>
+    </div>
+
+    <div id="beat-indicator"></div>
+
+    <div id="chicken-layer" class="fixed inset-0 flex items-center justify-center z-5 pointer-events-none">
+        <div id="chicken-sprite" style="display:none; font-size: 2rem;">🐔</div>
+    </div>
+
+    <div id="video-container">
+        <video id="input-video" class="hidden" playsinline></video>
+        <canvas id="output-canvas"></canvas>
+    </div>
+
+    <div class="ui-overlay" id="ui-container"></div>
+
+    <div id="map-overlay" onclick="toggleMap()">
+        <div class="map-viewport" onclick="event.stopPropagation()">
+            <div class="close-btn" onclick="toggleMap()" style="z-index: 600; right: 1rem; top: 1rem;">X</div>
+            <div id="map-content" class="map-parchment">
+                <h2 class="text-2xl text-center font-bold mt-8 uppercase border-b border-black/20 pb-2 w-full">World Map</h2>
+                <div class="map-node" style="top: 800px; left: 200px;" onclick="startTravel('Wanderer\'s Wood')">
+                    <div class="text-4xl">🌲</div><div class="text-xs">Wanderer's Wood</div>
+                </div>
+                <div class="map-node" style="top: 300px; left: 700px;" onclick="startTravel('Little Village')">
+                    <div id="village-marker" class="text-4xl">🏘️</div><div class="text-xs">Little Village</div>
+                </div>
+                <div id="map-node-farm" class="map-node hidden" style="top: 100px; left: 400px;" onclick="startTravel('Fiddler\'s Farm')">
+                    <div class="text-4xl">🚜</div><div class="text-xs">Fiddler's Farm</div>
+                </div>
+                <div id="map-node-millie" class="map-node hidden" style="top: 500px; left: 850px;" onclick="startTravel('Delivery Point')">
+                    <div class="text-4xl">📦</div><div class="text-xs">Delivery Target</div>
+                </div>
+                <svg class="absolute inset-0 pointer-events-none" style="width: 1000px; height: 1200px;">
+                    <path d="M 250 800 Q 400 600 700 350" stroke="black" stroke-dasharray="10,10" fill="transparent" />
+                    <path id="farm-path" class="hidden" d="M 700 300 Q 550 200 450 150" stroke="black" stroke-dasharray="5,5" fill="transparent" />
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const uiContainer = document.getElementById('ui-container');
+        const popup = document.getElementById('detection-popup');
+        const mapIcon = document.getElementById('map-icon');
+        const chickenSprite = document.getElementById('chicken-sprite');
+        const travelUI = document.getElementById('travel-ui');
+        const travelFill = document.getElementById('travel-fill');
+        const travelText = document.getElementById('travel-text');
+        const beatIndicator = document.getElementById('beat-indicator');
+        const mapContent = document.getElementById('map-content');
+
+        const forestBg = new Image();
+        forestBg.src = 'https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?auto=format&fit=crop&q=80&w=2000';
+
+        // Scene / Game State
+        let currentScene = 'CALIBRATION';
+        let showCameraFeed = true;
+        let lastLeftAnkleY = 0, lastRightAnkleY = 0;
+        let isSquatting = false;
+        let hasMap = false;
+
+        // Player Data
+        let coins = 0;
+        let inventory = [];
+        let potatoesDug = 0;
+
+        // Voice Control State
+        let isMuted = false;
+        let isStopped = false;
+        let recognition = null;
+
+        // Progress
+        let chickenDistance = 100;
+        let travelProgress = 0, travelGoal = 50; 
+        let targetDestination = '';
+        let danceActive = false, danceBeats = 0, danceHits = 0;
+
+        // Map Control
+        let scale = 0.6, posX = 0, posY = 0, isDragging = false, startX, startY;
+        const updateMapTransform = () => { mapContent.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; };
+
+        // --- Voice Control Logic ---
+        function initVoice() {
+            if (!('webkitSpeechRecognition' in window)) {
+                console.warn("Speech Recognition not supported");
+                return;
+            }
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = (event) => {
+                const command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+                console.log("Voice Command:", command);
+                processVoiceCommand(command);
+            };
+
+            recognition.onend = () => { if (!isStopped) recognition.start(); };
+            recognition.start();
+        }
+
+        function processVoiceCommand(cmd) {
+            const label = document.getElementById('voice-label');
+            const dot = document.getElementById('voice-dot');
+
+            // Command: UNMUTE (Always works if not stopped)
+            if (cmd.includes('unmute')) {
+                isMuted = false;
+                label.innerText = "Listening...";
+                dot.className = "text-xl voice-mic-active";
+                showPopup("🎙️ VOICE ACTIVE");
+                return;
+            }
+
+            if (isMuted) return;
+
+            // Command: HUSH (Stop completely)
+            if (cmd.includes('hush')) {
+                isStopped = true;
+                recognition.stop();
+                label.innerText = "Stopped (Tap to wake)";
+                dot.className = "text-xl voice-mic-stopped";
+                showPopup("🎙️ VOICE STOPPED");
+                return;
+            }
+
+            // Command: MUTE
+            if (cmd.includes('mute')) {
+                isMuted = true;
+                label.innerText = "Muted (Say 'Unmute')";
+                dot.className = "text-xl voice-mic-muted";
+                showPopup("🎙️ VOICE MUTED");
+                return;
+            }
+
+            // Logic Commands
+            if (cmd.includes('next')) triggerNext();
+            if (cmd.includes('back')) closeCurrentWindow();
+            if (cmd.includes('yes')) handleVoiceConfirm(true);
+            if (cmd.includes('no')) handleVoiceConfirm(false);
+        }
+
+        function restartVoice() {
+            isStopped = false;
+            isMuted = false;
+            document.getElementById('voice-label').innerText = "Listening...";
+            document.getElementById('voice-dot').className = "text-xl voice-mic-active";
+            if (recognition) recognition.start();
+            showPopup("🎙️ VOICE RESTARTED");
+        }
+
+        function triggerNext() {
+            if (currentScene === 'CALIBRATION') renderTutorial();
+            else if (currentScene === 'TUTORIAL') startAdventure();
+            else if (currentScene === 'FOREST_START') closeCurrentWindow();
+        }
+
+        function handleVoiceConfirm(val) {
+            if (currentScene === 'MILLIE_QUEST' && val) acceptMillieQuest();
+            if (currentScene === 'MARKET_SELL' && val) { /* logic for selling all? */ }
+        }
+
+        // --- Game Logic ---
+        function calculateAngle(a, b, c) {
+            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+            let angle = Math.abs(radians * 180.0 / Math.PI);
+            if (angle > 180.0) angle = 360 - angle;
+            return angle;
+        }
+
+        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        pose.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await pose.send({image: videoElement}); },
+            width: 1280, height: 720
+        });
+
+        function showPopup(text) {
+            popup.innerText = text; popup.style.display = 'block';
+            setTimeout(() => { popup.style.display = 'none'; }, 1000);
+        }
+
+        function toggleMap() {
+            if (!hasMap || isStopped) return;
+            const overlay = document.getElementById('map-overlay');
+            const isShowing = overlay.style.display === 'flex';
+            overlay.style.display = isShowing ? 'none' : 'flex';
+            if (!isShowing) { mapIcon.classList.remove('pulse'); updateMapTransform(); }
+        }
+
+        function closeCurrentWindow() {
+            if (currentScene === 'FOREST_START') setScene('SEE_CHICKEN');
+            else if (currentScene === 'TAVERN' || currentScene === 'MARKET' || currentScene === 'POTATO_FARM' || currentScene === 'MILLIE_QUEST') setScene('VILLAGE_ARRIVAL');
+            else uiContainer.innerHTML = '';
+        }
+
+        function setScene(scene) {
+            currentScene = scene;
+            uiContainer.innerHTML = '';
+
+            switch(scene) {
+                case 'SEE_CHICKEN':
+                    chickenSprite.style.display = 'block';
+                    uiContainer.innerHTML = `
+                        <div class="glass-panel max-w-md mx-auto mt-10 text-center fade-in">
+                            <div class="close-btn" onclick="closeCurrentWindow()">X</div>
+                            <p class="text-xl mb-4">You see a chicken!</p>
+                            <p class="text-lg opacity-80">Run to catch it. Say "Back" to check your map instead.</p>
+                        </div>
+                    `;
+                    break;
+                case 'CATCH_SUCCESS':
+                    chickenSprite.style.display = 'none'; inventory.push('Chicken');
+                    uiContainer.innerHTML = `<div class="glass-panel max-w-md mx-auto mt-20 text-center"><div class="close-btn" onclick="uiContainer.innerHTML=''">X</div><h2 class="text-3xl text-yellow-500 mb-2">Caught!</h2><p>You have no bag. Trade it at the Village.</p><div class="text-5xl mt-4">🍗</div></div>`;
+                    mapIcon.classList.add('pulse');
+                    break;
+                case 'VILLAGE_ARRIVAL':
+                    travelUI.style.display = 'none';
+                    uiContainer.innerHTML = `
+                        <div class="glass-panel max-w-md mx-auto mt-20 text-center">
+                            <div class="close-btn" onclick="uiContainer.innerHTML=''">X</div>
+                            <h2 class="text-2xl text-yellow-500 mb-2">Little Village</h2>
+                            <div class="flex flex-col gap-2 mt-4">
+                                <button class="btn-rpg" onclick="setScene('TAVERN')">The Tavern</button>
+                                <button class="btn-rpg" onclick="setScene('MARKET')">The Market</button>
+                            </div>
+                        </div>
+                    `;
+                    break;
+                case 'MARKET':
+                    uiContainer.innerHTML = `
+                        <div class="glass-panel max-w-lg mx-auto mt-10 text-center">
+                            <div class="close-btn" onclick="setScene('VILLAGE_ARRIVAL')">X</div>
+                            <h2 class="text-2xl text-yellow-500 mb-2">The Market</h2>
+                            <div class="bg-black/40 p-2 rounded mb-4 flex justify-between px-4 text-yellow-400">
+                                <span>💰 Gold: ${coins}</span>
+                                <button class="btn-rpg scale-75" onclick="setScene('MARKET_SELL')">Sell Items</button>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="market-item p-2 rounded" onclick="buyItem('Quill', 2)"><div class="text-2xl">✒️</div><div class="text-[10px]">Quill (2)</div></div>
+                                <div class="market-item p-2 rounded" onclick="buyItem('Bags', 10)"><div class="text-2xl">🎒</div><div class="text-[10px]">Bags (10)</div></div>
+                            </div>
+                        </div>
+                    `;
+                    break;
+                case 'MARKET_SELL':
+                    const items = [...new Set(inventory)];
+                    uiContainer.innerHTML = `
+                        <div class="glass-panel max-w-lg mx-auto mt-10 text-center">
+                            <div class="close-btn" onclick="setScene('MARKET')">X</div>
+                            <h2 class="text-2xl text-yellow-500 mb-2">Sell Goods</h2>
+                            <div class="grid grid-cols-1 gap-2">
+                                ${items.length ? items.map(n => `<div class="flex justify-between p-2 border border-white/20"><span>${n}</span><button onclick="sellItem('${n}', 5)">Sell for 5💰</button></div>`).join('') : 'Empty Bag'}
+                            </div>
+                        </div>
+                    `;
+                    break;
+                case 'TAVERN':
+                    uiContainer.innerHTML = `<div class="glass-panel max-w-md mx-auto mt-20 text-center"><div class="close-btn" onclick="setScene('VILLAGE_ARRIVAL')">X</div><h2 class="text-2xl text-yellow-500">The Tavern</h2><div class="flex flex-col gap-2 mt-6"><button class="btn-rpg" onclick="startDancing()">Dance</button><button class="btn-rpg" onclick="setScene('MILLIE_QUEST')">Millie Messenger</button></div></div>`;
+                    break;
+                case 'POTATO_FARM':
+                    travelUI.style.display = 'none'; potatoesDug = 0;
+                    uiContainer.innerHTML = `<div class="glass-panel max-w-md mx-auto mt-10 text-center"><h2 class="text-2xl text-yellow-500">Fiddler's Farm</h2><p class="mt-4">SQUAT to dig potatoes!</p><div id="potato-count" class="text-3xl mt-2">🥔 x0</div></div>`;
+                    break;
+                case 'POTATO_SUCCESS':
+                    coins += 5; setScene('VILLAGE_ARRIVAL'); showPopup("💰 +5 Gold");
+                    break;
+            }
+        }
+
+        function acceptMillieQuest() {
+            document.getElementById('map-node-millie').classList.remove('hidden');
+            showPopup("📦 Mission Started!"); setScene('MAP_HINT'); mapIcon.classList.add('pulse');
+        }
+
+        function startTravel(destination) {
+            targetDestination = destination; toggleMap(); currentScene = 'TRAVELING';
+            chickenSprite.style.display = 'none'; travelProgress = 0; travelGoal = 50; 
+            travelUI.style.display = 'block'; travelFill.style.width = '0%'; travelText.innerText = `To ${destination}`;
+            uiContainer.innerHTML = `<div class="glass-panel max-w-xs mx-auto mt-4 text-center">RUN ON SPOT</div>`;
+        }
+
+        function startDancing() {
+            currentScene = 'DANCING'; danceActive = true; danceHits = 0; danceBeats = 8; 
+            uiContainer.innerHTML = `<div class="glass-panel max-w-md mx-auto mt-4 text-center"><h2 class="text-xl text-yellow-500">DANCE!</h2></div>`;
+            beatIndicator.style.display = 'block';
+            const nextBeat = () => {
+                if (!danceActive || danceBeats <= 0) { endDancing(); return; }
+                beatIndicator.classList.add('beat-active');
+                let hit = false;
+                window.danceCheck = () => { if (!hit) { hit = true; danceHits++; coins++; showPopup("✨!"); }};
+                setTimeout(() => { beatIndicator.classList.remove('beat-active'); danceBeats--; window.danceCheck = null; setTimeout(nextBeat, 600); }, 800);
+            };
+            nextBeat();
+        }
+
+        function endDancing() { danceActive = false; beatIndicator.style.display = 'none'; setScene('FIONN_MEETING'); }
+
+        function onResults(results) {
+            if (document.getElementById('loading-overlay').style.display !== 'none') document.getElementById('loading-overlay').style.display = 'none';
+            if (canvasElement.width !== window.innerWidth) { canvasElement.width = window.innerWidth; canvasElement.height = window.innerHeight; }
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            if (showCameraFeed) canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            else {
+                const ratio = Math.max(canvasElement.width / forestBg.width, canvasElement.height / forestBg.height);
+                const nw = forestBg.width * ratio; const nh = forestBg.height * ratio;
+                canvasCtx.drawImage(forestBg, (canvasElement.width - nw) / 2, (canvasElement.height - nh) / 2, nw, nh);
+                canvasCtx.fillStyle = 'rgba(0, 20, 0, 0.4)'; canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+            }
+            if (results.poseLandmarks && !isMuted && !isStopped) {
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2, radius: 4});
+                checkMovements(results.poseLandmarks);
+            }
+            canvasCtx.restore();
+        }
+
+        function checkMovements(landmarks) {
+            const leftAnkle = landmarks[27]; const rightAnkle = landmarks[28];
+            const leftHip = landmarks[23]; const rightHip = landmarks[24];
+            
+            const currentLeftAnkleRel = leftAnkle.y - leftHip.y;
+            const currentRightAnkleRel = rightAnkle.y - rightHip.y;
+            
+            if (Math.abs(currentLeftAnkleRel - lastLeftAnkleY) > 0.05 || Math.abs(currentRightAnkleRel - lastRightAnkleY) > 0.05) {
+                showPopup("👣 WALK");
+                if (window.danceCheck) window.danceCheck();
+                handleWalk();
+            }
+            lastLeftAnkleY = currentLeftAnkleRel;
+            lastRightAnkleY = currentRightAnkleRel;
+
+            const leftKneeAngle = calculateAngle(landmarks[23], landmarks[25], landmarks[27]);
+            const rightKneeAngle = calculateAngle(landmarks[24], landmarks[26], landmarks[28]);
+            
+            if (leftKneeAngle < 145 || rightKneeAngle < 145) {
+                if (!isSquatting) {
+                    isSquatting = true;
+                    showPopup("🧘 SQUAT");
+                    if (window.danceCheck) window.danceCheck();
+                    handleSquat();
+                }
+            } else { isSquatting = false; }
+        }
+
+        function handleWalk() {
+            if (currentScene === 'SEE_CHICKEN') {
+                chickenDistance -= 2;
+                chickenSprite.style.transform = `scale(${1 + (100 - chickenDistance)/10})`;
+                if (chickenDistance <= CHICKEN_MIN_DIST) showPopup("🔊 BAWK! SQUAT!");
+            } else if (currentScene === 'TRAVELING') {
+                travelProgress++;
+                travelFill.style.width = `${(travelProgress / travelGoal) * 100}%`;
+                if (travelProgress >= travelGoal) {
+                    if (targetDestination === 'Little Village') setScene('VILLAGE_ARRIVAL');
+                    else if (targetDestination === 'Fiddler\'s Farm') setScene('POTATO_FARM');
+                    else if (targetDestination === 'Delivery Point') setScene('DELIVERY_SUCCESS');
+                    else setScene('VILLAGE_ARRIVAL');
+                }
+            }
+        }
+
+        function handleSquat() {
+            if (currentScene === 'SEE_CHICKEN' && chickenDistance <= CHICKEN_MIN_DIST) setScene('CATCH_SUCCESS');
+            else if (currentScene === 'POTATO_FARM') {
+                potatoesDug++;
+                const counter = document.getElementById('potato-count');
+                if (counter) counter.innerText = `🥔 x${potatoesDug}`;
+                if (potatoesDug >= 10) setScene('POTATO_SUCCESS');
+            }
+        }
+
+        function renderCalibration() {
+            currentScene = 'CALIBRATION'; showCameraFeed = true;
+            uiContainer.innerHTML = `<div class="flex flex-col h-full justify-between"><div class="glass-panel max-w-md"><p class="text-lg">Match joints. Say "Next" to start.</p></div></div>`;
+        }
+
+        function renderTutorial() {
+            currentScene = 'TUTORIAL';
+            uiContainer.innerHTML = `<div class="glass-panel w-full max-w-xl mx-auto mt-4"><h2 class="text-2xl text-yellow-500">Tutorial</h2><p>Practice moves. Say "Next" to play.</p></div>`;
+        }
+
+        function startAdventure() {
+            currentScene = 'FOREST_START'; showCameraFeed = false; hasMap = true; mapIcon.style.display = 'flex';
+            uiContainer.innerHTML = `<div class="glass-panel max-w-md mx-auto mt-20 text-center"><p class="text-2xl">Wake up in forest...</p><p>Say "Next" to look around.</p></div>`;
+        }
+
+        function sellItem(n, p) { inventory.splice(inventory.indexOf(n), 1); coins += p; setScene('MARKET_SELL'); }
+        function buyItem(n, p) { if (coins >= p) { coins -= p; inventory.push(n); setScene('MARKET'); } }
+
+        let progress = 0;
+        const interval = setInterval(() => { progress += 10; if (progress >= 100) clearInterval(interval); }, 100);
+        window.onload = () => { camera.start(); renderCalibration(); initVoice(); };
+        window.addEventListener('resize', () => { canvasElement.width = window.innerWidth; canvasElement.height = window.innerHeight; });
+    </script>
+</body>
+</html>
