@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subitizing Practice Master</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            touch-action: manipulation;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 1 / 1;
+            background: white;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .dot {
+            position: absolute;
+            transition: opacity 0.2s ease;
+            user-select: none;
+        }
+
+        .hidden-content {
+            display: none !important;
+        }
+
+        /* Standard Dice Grid */
+        .dice-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 80%;
+            height: 80%;
+        }
+
+        /* Large Regular Grid (for numbers > 9) */
+        .large-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 4px;
+            width: 90%;
+            height: 90%;
+        }
+
+        .grid-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+        }
+
+        .large-grid .grid-cell {
+            font-size: 1.2rem;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center min-h-screen">
+
+    <div class="max-w-2xl w-full space-y-8">
+        <header class="text-center">
+            <h1 class="text-4xl font-bold text-slate-800 mb-2">Subitizing Master</h1>
+            <p class="text-slate-500">Train your brain to recognize quantities instantly (1-100).</p>
+        </header>
+
+        <!-- Settings Panel -->
+        <section id="settings" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Range & Pattern -->
+            <div class="space-y-4">
+                <div class="space-y-4">
+                    <label class="block text-sm font-semibold text-slate-700">Number Range: <span id="minLabel" class="text-blue-600">1</span> to <span id="maxLabel" class="text-blue-600">6</span></label>
+                    
+                    <div class="space-y-1">
+                        <span class="text-xs text-slate-400">Lower Bound</span>
+                        <input type="range" id="minRange" min="1" max="100" value="1" class="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    </div>
+                    <div class="space-y-1">
+                        <span class="text-xs text-slate-400">Upper Bound</span>
+                        <input type="range" id="maxRange" min="1" max="100" value="6" class="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Pattern Type</label>
+                    <div class="flex gap-2">
+                        <button data-type="regular" class="pattern-btn flex-1 py-2 px-4 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-medium">Regular</button>
+                        <button data-type="irregular" class="pattern-btn flex-1 py-2 px-4 rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-medium">Irregular</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Speed & Feedback -->
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Display Speed (<span id="speedLabel">500</span>ms)</label>
+                    <input type="range" id="speed" min="50" max="2000" step="50" value="500" class="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Answer Reveal</label>
+                    <div class="flex gap-2">
+                        <button data-mode="auto" class="mode-btn flex-1 py-2 px-4 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-medium">Automatic</button>
+                        <button data-mode="manual" class="mode-btn flex-1 py-2 px-4 rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-medium">Click to see</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emoji Selection -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-semibold text-slate-700 mb-2">Item to Subitize</label>
+                <div class="flex flex-wrap gap-3 justify-center">
+                    <button class="emoji-btn text-2xl p-2 rounded-xl border-2 border-blue-600 bg-blue-50" data-emoji="🔵">🔵</button>
+                    <button class="emoji-btn text-2xl p-2 rounded-xl border-2 border-slate-100" data-emoji="🍎">🍎</button>
+                    <button class="emoji-btn text-2xl p-2 rounded-xl border-2 border-slate-100" data-emoji="⭐">⭐</button>
+                    <button class="emoji-btn text-2xl p-2 rounded-xl border-2 border-slate-100" data-emoji="🐱">🐱</button>
+                    <button class="emoji-btn text-2xl p-2 rounded-xl border-2 border-slate-100" data-emoji="🚀">🚀</button>
+                    <button class="emoji-btn text-2xl p-2 rounded-xl border-2 border-slate-100" data-emoji="🦖">🦖</button>
+                    <button class="emoji-btn text-2xl p-2 rounded-xl border-2 border-slate-100" data-emoji="🍕">🍕</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Play Area -->
+        <main class="flex flex-col items-center space-y-6">
+            <div id="gameCanvas" class="canvas-container">
+                <div id="startPrompt" class="text-slate-400 text-lg font-medium text-center">Press START to begin<br><span class="text-sm font-normal">Range: <span id="promptRange">1-6</span></span></div>
+                <div id="targetDisplay" class="hidden-content flex flex-wrap items-center justify-center w-full h-full relative"></div>
+            </div>
+
+            <div id="answerDisplay" class="h-16 flex items-center justify-center">
+                <div id="answerValue" class="hidden-content text-5xl font-black text-blue-600 bg-blue-50 px-8 py-2 rounded-2xl border-2 border-blue-200">
+                    ?
+                </div>
+                <button id="revealBtn" class="hidden-content px-8 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg transition-all pulse">
+                    SHOW ANSWER
+                </button>
+            </div>
+
+            <button id="nextBtn" class="w-full max-w-sm py-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-2xl shadow-xl transition-all active:scale-95">
+                START / NEXT
+            </button>
+        </main>
+    </div>
+
+    <script>
+        const state = {
+            min: 1,
+            max: 6,
+            pattern: 'regular',
+            speed: 500,
+            mode: 'auto',
+            emoji: '🔵',
+            currentValue: 0,
+            isShowing: false
+        };
+
+        const targetDisplay = document.getElementById('targetDisplay');
+        const startPrompt = document.getElementById('startPrompt');
+        const answerValue = document.getElementById('answerValue');
+        const revealBtn = document.getElementById('revealBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const minRange = document.getElementById('minRange');
+        const maxRange = document.getElementById('maxRange');
+        const minLabel = document.getElementById('minLabel');
+        const maxLabel = document.getElementById('maxLabel');
+        const promptRange = document.getElementById('promptRange');
+        const speedRange = document.getElementById('speed');
+        const speedLabel = document.getElementById('speedLabel');
+        const gameCanvas = document.getElementById('gameCanvas');
+
+        const dicePatterns = {
+            1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8],
+            6: [0, 2, 3, 5, 6, 8], 7: [0, 2, 3, 4, 5, 6, 8], 8: [0, 1, 2, 3, 5, 6, 7, 8],
+            9: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        };
+
+        const updateRangeLabels = () => {
+            minLabel.textContent = state.min;
+            maxLabel.textContent = state.max;
+            promptRange.textContent = `${state.min}-${state.max}`;
+        };
+
+        minRange.addEventListener('input', (e) => {
+            state.min = parseInt(e.target.value);
+            if (state.min > state.max) {
+                state.max = state.min;
+                maxRange.value = state.max;
+            }
+            updateRangeLabels();
+        });
+
+        maxRange.addEventListener('input', (e) => {
+            state.max = parseInt(e.target.value);
+            if (state.max < state.min) {
+                state.min = state.max;
+                minRange.value = state.min;
+            }
+            updateRangeLabels();
+        });
+
+        speedRange.addEventListener('input', (e) => {
+            state.speed = parseInt(e.target.value);
+            speedLabel.textContent = state.speed;
+        });
+
+        document.querySelectorAll('.pattern-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.pattern-btn').forEach(b => b.className = 'pattern-btn flex-1 py-2 px-4 rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-medium');
+                btn.className = 'pattern-btn flex-1 py-2 px-4 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-medium';
+                state.pattern = btn.dataset.type;
+            });
+        });
+
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mode-btn').forEach(b => b.className = 'mode-btn flex-1 py-2 px-4 rounded-lg border-2 border-slate-200 bg-white text-slate-600 font-medium');
+                btn.className = 'mode-btn flex-1 py-2 px-4 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-medium';
+                state.mode = btn.dataset.mode;
+            });
+        });
+
+        document.querySelectorAll('.emoji-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.emoji-btn').forEach(b => b.className = 'emoji-btn text-2xl p-2 rounded-xl border-2 border-slate-100');
+                btn.className = 'emoji-btn text-2xl p-2 rounded-xl border-2 border-blue-600 bg-blue-50';
+                state.emoji = btn.dataset.emoji;
+            });
+        });
+
+        const clearCanvas = () => {
+            targetDisplay.innerHTML = '';
+            targetDisplay.classList.add('hidden-content');
+            startPrompt.classList.add('hidden-content');
+            answerValue.classList.add('hidden-content');
+            revealBtn.classList.add('hidden-content');
+        };
+
+        const generateRegular = (num) => {
+            if (num <= 9) {
+                const grid = document.createElement('div');
+                grid.className = 'dice-grid';
+                const positions = dicePatterns[num];
+                for (let i = 0; i < 9; i++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    if (positions.includes(i)) cell.textContent = state.emoji;
+                    grid.appendChild(cell);
+                }
+                targetDisplay.appendChild(grid);
+            } else {
+                // For numbers > 9, use a 10x10 base grid
+                const grid = document.createElement('div');
+                grid.className = 'large-grid';
+                for (let i = 0; i < 100; i++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    if (i < num) cell.textContent = state.emoji;
+                    grid.appendChild(cell);
+                }
+                targetDisplay.appendChild(grid);
+            }
+        };
+
+        const generateIrregular = (num) => {
+            const containerWidth = gameCanvas.clientWidth - 40;
+            const emojiSize = num > 50 ? 24 : num > 20 ? 32 : 48;
+            const placements = [];
+
+            for (let i = 0; i < num; i++) {
+                let x, y, overlapping;
+                let attempts = 0;
+                do {
+                    overlapping = false;
+                    x = Math.random() * (containerWidth - emojiSize);
+                    y = Math.random() * (containerWidth - emojiSize);
+                    for (let p of placements) {
+                        const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
+                        if (dist < emojiSize * 0.8) { overlapping = true; break; }
+                    }
+                    attempts++;
+                } while (overlapping && attempts < 100);
+
+                placements.push({ x, y });
+                const el = document.createElement('div');
+                el.className = 'dot';
+                el.style.left = `${x}px`;
+                el.style.top = `${y}px`;
+                el.style.fontSize = num > 50 ? '1rem' : num > 20 ? '1.5rem' : '3rem';
+                el.textContent = state.emoji;
+                targetDisplay.appendChild(el);
+            }
+        };
+
+        const nextRound = () => {
+            if (state.isShowing) return;
+            state.isShowing = true;
+            clearCanvas();
+            
+            // Random number within the user-defined range
+            state.currentValue = Math.floor(Math.random() * (state.max - state.min + 1)) + state.min;
+            
+            if (state.pattern === 'regular') {
+                generateRegular(state.currentValue);
+            } else {
+                generateIrregular(state.currentValue);
+            }
+
+            targetDisplay.classList.remove('hidden-content');
+            
+            setTimeout(() => {
+                targetDisplay.classList.add('hidden-content');
+                state.isShowing = false;
+                if (state.mode === 'auto') {
+                    showAnswer();
+                } else {
+                    revealBtn.classList.remove('hidden-content');
+                }
+            }, state.speed);
+        };
+
+        const showAnswer = () => {
+            revealBtn.classList.add('hidden-content');
+            answerValue.textContent = state.currentValue;
+            answerValue.classList.remove('hidden-content');
+        };
+
+        nextBtn.addEventListener('click', nextRound);
+        revealBtn.addEventListener('click', showAnswer);
+    </script>
+</body>
+</html>
