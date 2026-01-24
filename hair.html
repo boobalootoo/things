@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hairstyle Mirror</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        video, canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+        .ui-layer {
+            position: absolute;
+            z-index: 100;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+        .controls-top {
+            pointer-events: auto;
+            background: rgba(0,0,0,0.6);
+            padding: 15px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        .controls-bottom {
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .btn {
+            background: white;
+            color: black;
+            padding: 12px 24px;
+            border-radius: 999px;
+            font-weight: 600;
+            border: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+        .hidden { display: none !important; }
+        
+        /* Loading Overlay */
+        #loading {
+            position: fixed;
+            inset: 0;
+            background: black;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #hairCanvas {
+            pointer-events: none;
+            transform: none; /* We handle mirroring in drawing logic if needed, but usually hair images aren't mirrored */
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading">
+    <div class="spinner"></div>
+    <p>Loading AI Models...</p>
+</div>
+
+<div id="container">
+    <!-- The user's camera feed -->
+    <video id="inputVideo" autoplay playsinline></video>
+    
+    <!-- This canvas will render the processed hair with face removed -->
+    <canvas id="outputCanvas"></canvas>
+
+    <div class="ui-layer">
+        <div class="controls-top">
+            <input type="text" id="imgUrl" placeholder="Paste hair image URL here..." 
+                   class="w-full p-3 rounded-lg bg-gray-800 text-white border-none focus:ring-2 focus:ring-blue-500 mb-3">
+            <button id="loadBtn" class="w-full btn bg-blue-600 text-white">Load Hairstyle</button>
+        </div>
+
+        <div class="controls-bottom">
+            <div id="adjustmentTools" class="hidden flex flex-wrap justify-center gap-2 bg-black/40 p-3 rounded-xl backdrop-blur-md mb-2">
+                <button onclick="adjustHair('scale', 1.1)" class="btn p-2 bg-gray-200">➕ Size</button>
+                <button onclick="adjustHair('scale', 0.9)" class="btn p-2 bg-gray-200">➖ Size</button>
+                <button onclick="adjustHair('y', -10)" class="btn p-2 bg-gray-200">⬆️</button>
+                <button onclick="adjustHair('y', 10)" class="btn p-2 bg-gray-200">⬇️</button>
+                <button id="flipBtn" class="btn p-2 bg-gray-200">🔄 Flip</button>
+            </div>
+            
+            <button id="toggleBtn" class="btn w-full max-w-xs">Toggle View: <span id="modeText">Normal</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Helper canvas for hairstyle segmentation (not visible) -->
+<canvas id="segmentationCanvas" class="hidden"></canvas>
+
+<script>
+    const video = document.getElementById('inputVideo');
+    const outputCanvas = document.getElementById('outputCanvas');
+    const ctx = outputCanvas.getContext('2d');
+    const loadBtn = document.getElementById('loadBtn');
+    const imgUrlInput = document.getElementById('imgUrl');
+    const toggleBtn = document.getElementById('toggleBtn');
+    const modeText = document.getElementById('modeText');
+    const loading = document.getElementById('loading');
+    const adjustmentTools = document.getElementById('adjustmentTools');
+    const flipBtn = document.getElementById('flipBtn');
+
+    let hairstyleImg = new Image();
+    hairstyleImg.crossOrigin = "anonymous";
+    let isHairstyleLoaded = false;
+    let showHairstyle = false;
+    let hairFlipped = false;
+    
+    // Hair manipulation state
+    let hairPos = { x: 0, y: 0, scale: 1.0 };
+    
+    const selfieSegmentation = new SelfieSegmentation({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+    });
+
+    selfieSegmentation.setOptions({
+        modelSelection: 1, // 1 for landscape, better quality
+    });
+
+    // We use this to process the hairstyle image once it's loaded
+    async function processHairstyle(image) {
+        // Prepare canvas for segmentation
+        const segCanvas = document.getElementById('segmentationCanvas');
+        const sCtx = segCanvas.getContext('2d');
+        segCanvas.width = image.width;
+        segCanvas.height = image.height;
+        
+        // Use selfie segmentation to find the face in the hair image
+        await selfieSegmentation.send({image: image});
+        
+        // The onResults callback will be triggered by the .send()
+    }
+
+    let processedHairData = null; // Stores the hair with the hole for the face
+
+    selfieSegmentation.onResults((results) => {
+        // This is triggered both for the live video AND for the processing step
+        if (!isHairstyleLoaded && hairstyleImg.complete && hairstyleImg.src) {
+            // Logic for extracting hair from the static image
+            extractHair(results);
+        } else {
+            // Logic for live overlay
+            renderOverlay(results);
+        }
+    });
+
+    function extractHair(results) {
+        const segCanvas = document.getElementById('segmentationCanvas');
+        const sCtx = segCanvas.getContext('2d');
+        
+        sCtx.save();
+        sCtx.clearRect(0, 0, segCanvas.width, segCanvas.height);
+        
+        // Draw the mask - we want everything BUT the person/face
+        // Actually, we want the Hair. The segmentation mask gives us the person.
+        // To put the face "behind" the fringe, we remove the face area from the hair image.
+        
+        sCtx.drawImage(results.segmentationMask, 0, 0, segCanvas.width, segCanvas.height);
+        
+        // Set composite to destination-out: it removes the pixels where the mask is drawn
+        sCtx.globalCompositeOperation = 'destination-out';
+        sCtx.drawImage(hairstyleImg, 0, 0, segCanvas.width, segCanvas.height);
+        
+        // Reverse thought: we want to KEEP the hair but REMOVE the face.
+        // Let's draw the image first, then use mask to punch hole.
+        sCtx.globalCompositeOperation = 'source-over';
+        sCtx.drawImage(hairstyleImg, 0, 0, segCanvas.width, segCanvas.height);
+        
+        sCtx.globalCompositeOperation = 'destination-out';
+        sCtx.drawImage(results.segmentationMask, 0, 0, segCanvas.width, segCanvas.height);
+        
+        processedHairData = new Image();
+        processedHairData.src = segCanvas.toDataURL();
+        processedHairData.onload = () => {
+            isHairstyleLoaded = true;
+            loading.classList.add('hidden');
+            adjustmentTools.classList.remove('hidden');
+            showHairstyle = true;
+            updateModeUI();
+        };
+    }
+
+    function renderOverlay(results) {
+        outputCanvas.width = video.videoWidth;
+        outputCanvas.height = video.videoHeight;
+
+        ctx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+
+        if (showHairstyle && processedHairData) {
+            // Draw camera feed
+            ctx.save();
+            ctx.translate(outputCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+            ctx.restore();
+
+            // Draw processed hair on top
+            const w = outputCanvas.width * hairPos.scale;
+            const h = (processedHairData.height / processedHairData.width) * w;
+            const x = (outputCanvas.width - w) / 2 + hairPos.x;
+            const y = (outputCanvas.height - h) / 2 + hairPos.y;
+
+            ctx.save();
+            if (hairFlipped) {
+                ctx.translate(x + w, y);
+                ctx.scale(-1, 1);
+                ctx.drawImage(processedHairData, 0, 0, w, h);
+            } else {
+                ctx.drawImage(processedHairData, x, y, w, h);
+            }
+            ctx.restore();
+        } else {
+            // Just raw camera (mirrored)
+            ctx.save();
+            ctx.translate(outputCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+            ctx.restore();
+        }
+    }
+
+    // Start Camera
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } 
+            });
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                loading.classList.add('hidden');
+                requestAnimationFrame(loop);
+            };
+        } catch (err) {
+            console.error("Camera error:", err);
+            alert("Please allow camera access to use this tool.");
+        }
+    }
+
+    function loop() {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            // We don't need to send the live frame to segmentation if we aren't masking the LIVE user
+            // But we do need a loop to draw the canvas
+            renderOverlay(null);
+        }
+        requestAnimationFrame(loop);
+    }
+
+    window.adjustHair = (type, val) => {
+        if (type === 'scale') hairPos.scale *= val;
+        if (type === 'x') hairPos.x += val;
+        if (type === 'y') hairPos.y += val;
+    };
+
+    flipBtn.addEventListener('click', () => {
+        hairFlipped = !hairFlipped;
+    });
+
+    loadBtn.addEventListener('click', () => {
+        const url = imgUrlInput.value.trim();
+        if (!url) return;
+        
+        loading.classList.remove('hidden');
+        isHairstyleLoaded = false;
+        
+        // Use an image proxy if necessary, but try direct first
+        hairstyleImg.src = url;
+        hairstyleImg.onload = () => {
+            processHairstyle(hairstyleImg);
+        };
+        hairstyleImg.onerror = () => {
+            loading.classList.add('hidden');
+            alert("Could not load image. Make sure it's a direct link to an image file (jpg/png).");
+        };
+    });
+
+    toggleBtn.addEventListener('click', () => {
+        if (!processedHairData) {
+            alert("Load a hairstyle first!");
+            return;
+        }
+        showHairstyle = !showHairstyle;
+        updateModeUI();
+    });
+
+    function updateModeUI() {
+        modeText.innerText = showHairstyle ? "Hairstyle Overlay" : "Normal";
+        toggleBtn.className = showHairstyle ? "btn w-full max-w-xs bg-green-500 text-white" : "btn w-full max-w-xs";
+    }
+
+    window.onload = initCamera;
+</script>
+
+</body>
+</html>
