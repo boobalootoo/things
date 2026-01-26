@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenGIS Lite - Pro</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <!-- Leaflet Geocoder CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #map { height: calc(100vh - 80px); width: 100%; z-index: 1; }
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            padding: 0;
+            overflow: hidden;
+        }
+        .custom-popup .leaflet-popup-content {
+            margin: 0;
+            width: 300px !important;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #3b82f6;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Leaflet Control Overrides */
+        .leaflet-control-layers {
+            border-radius: 8px !important;
+            border: none !important;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
+            padding: 6px !important;
+        }
+        .leaflet-touch .leaflet-bar {
+            border: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 overflow-hidden font-sans">
+
+    <!-- Header / Navigation -->
+    <header class="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm z-[1001] relative">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-indigo-600 rounded-lg text-white shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-800">OpenGIS <span class="text-indigo-600">Pro</span></h1>
+                <p class="text-xs text-gray-500 font-medium">Advanced Mapping Tool</p>
+            </div>
+        </div>
+
+        <!-- Controls Area -->
+        <div class="flex items-center space-x-3">
+            <!-- Analysis Tool (Hidden initially) -->
+            <div id="analysisControls" class="hidden flex items-center space-x-2 bg-gray-100 p-1.5 rounded-lg border border-gray-200 mr-2">
+                <span class="text-xs font-semibold text-gray-500 px-2">Style By:</span>
+                <select id="attributeSelect" class="text-sm bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-indigo-500" onchange="applyThematicStyle()">
+                    <option value="">Default (Blue)</option>
+                </select>
+            </div>
+
+            <label for="fileInput" class="cursor-pointer flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-all shadow-md active:scale-95 group">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-hover:animate-bounce" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                </svg>
+                <span class="font-medium">Import Data</span>
+                <input type="file" id="fileInput" class="hidden" accept=".csv, .xls, .xlsx, .json, .geojson, .kml">
+            </label>
+            
+            <button onclick="clearMap()" class="text-gray-500 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors" title="Clear Map">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="relative h-full">
+        <!-- Map Container -->
+        <div id="map"></div>
+
+        <!-- Legend (Dynamic) -->
+        <div id="legend" class="hidden absolute bottom-8 right-8 z-[900] bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-xl border border-gray-200 max-w-xs">
+            <h4 class="font-bold text-xs uppercase tracking-wider text-gray-500 mb-2">Legend</h4>
+            <div id="legendContent" class="text-sm space-y-1"></div>
+        </div>
+
+        <!-- Status Box -->
+        <div id="statusBox" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-white border border-gray-200 px-6 py-3 rounded-full shadow-xl flex items-center space-x-3 transition-all duration-300">
+            <div id="statusLoader" class="loading-spinner w-5 h-5 border-2"></div>
+            <div id="statusSuccess" class="hidden text-green-500">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <p id="statusMsg" class="text-sm font-medium text-gray-700">Processing...</p>
+        </div>
+    </main>
+
+    <!-- Scripts -->
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Leaflet MarkerCluster -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <!-- Leaflet Heat -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <!-- Leaflet Geocoder -->
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    
+    <!-- Data Parsing Utilities -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Chroma.js for Color Scales -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
+
+    <script>
+        // --- Global Variables ---
+        let map;
+        let layers = {
+            base: {},
+            overlays: {}
+        };
+        let currentData = []; // Store raw data for analysis
+        let currentGeoJson = null; // Store GeoJSON layer reference
+        
+        // --- Initialization ---
+        function initMap() {
+            // Base Maps
+            layers.base.standard = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO',
+                subdomains: 'abcd',
+                maxZoom: 20
+            });
+            
+            layers.base.dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO',
+                subdomains: 'abcd',
+                maxZoom: 20
+            });
+
+            layers.base.topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                maxZoom: 17,
+                attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)'
+            });
+
+            layers.base.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri'
+            });
+
+            // Initialize Map
+            map = L.map('map', {
+                center: [20, 0],
+                zoom: 2,
+                zoomControl: false,
+                layers: [layers.base.standard]
+            });
+
+            // Overlay Groups
+            layers.overlays.clusters = L.markerClusterGroup({
+                showCoverageOnHover: false,
+                maxClusterRadius: 50
+            });
+            layers.overlays.heatmap = null; // Will be initialized when data arrives
+            
+            // Add Controls
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+            L.control.scale({ imperial: true, metric: true }).addTo(map);
+            L.Control.geocoder({ position: 'topleft', defaultMarkGeocode: false })
+                .on('markgeocode', function(e) {
+                    var bbox = e.geocode.bbox;
+                    var poly = L.polygon([
+                        bbox.getSouthEast(),
+                        bbox.getNorthEast(),
+                        bbox.getNorthWest(),
+                        bbox.getSouthWest()
+                    ]).addTo(map);
+                    map.fitBounds(poly.getBounds());
+                    setTimeout(() => map.removeLayer(poly), 3000);
+                })
+                .addTo(map);
+
+            // Layer Control
+            const baseMaps = {
+                "Standard (Light)": layers.base.standard,
+                "Night Mode (Dark)": layers.base.dark,
+                "Topographic": layers.base.topo,
+                "Satellite": layers.base.satellite
+            };
+            
+            const overlayMaps = {
+                "Marker Clusters": layers.overlays.clusters,
+            };
+
+            L.control.layers(baseMaps, overlayMaps, { position: 'topright' }).addTo(map);
+            
+            // Initially add cluster layer
+            map.addLayer(layers.overlays.clusters);
+        }
+
+        // --- File Handling ---
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showStatus("Processing...", "Reading file contents.");
+            const reader = new FileReader();
+            const extension = file.name.split('.').pop().toLowerCase();
+
+            if (extension === 'csv') {
+                Papa.parse(file, {
+                    header: true,
+                    dynamicTyping: true,
+                    skipEmptyLines: true,
+                    complete: (results) => loadPointData(results.data),
+                    error: (err) => showError("CSV Error: " + err.message)
+                });
+            } else if (['xls', 'xlsx'].includes(extension)) {
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                    loadPointData(json);
+                };
+                reader.readAsArrayBuffer(file);
+            } else if (['json', 'geojson'].includes(extension)) {
+                reader.onload = (e) => {
+                    try {
+                        const json = JSON.parse(e.target.result);
+                        loadGeoJSON(json);
+                    } catch (err) {
+                        showError("Invalid JSON file.");
+                    }
+                };
+                reader.readAsText(file);
+            } else {
+                showError("Unsupported file format.");
+            }
+        });
+
+        // --- Data Processing (Points) ---
+        function loadPointData(data) {
+            clearMapData();
+            currentData = data;
+            
+            if (!data || data.length === 0) {
+                showError("File is empty.");
+                return;
+            }
+
+            // 1. Find Coordinate Columns
+            const keys = Object.keys(data[0]);
+            const latKey = keys.find(k => ['latitude', 'lat', 'y'].includes(k.toLowerCase()));
+            const lngKey = keys.find(k => ['longitude', 'long', 'lng', 'lon', 'x'].includes(k.toLowerCase()));
+
+            if (!latKey || !lngKey) {
+                showError("No coordinate columns found (lat/lng).");
+                return;
+            }
+
+            // 2. Identify Numeric Columns for Styling
+            const numericKeys = keys.filter(key => {
+                const val = data[0][key];
+                return typeof val === 'number' && key !== latKey && key !== lngKey;
+            });
+            updateStyleDropdown(numericKeys);
+
+            // 3. Create Markers and Heatmap Data
+            const heatPoints = [];
+            const markers = [];
+            const bounds = L.latLngBounds();
+            let validCount = 0;
+
+            data.forEach(row => {
+                const lat = parseFloat(row[latKey]);
+                const lng = parseFloat(row[lngKey]);
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    // Create Popup
+                    let popupHTML = `<div class="bg-indigo-600 text-white p-3 font-bold text-sm">${row['name'] || row['Name'] || row['city'] || 'Location Details'}</div>
+                                     <div class="p-3 bg-white max-h-48 overflow-y-auto"><table class="w-full text-xs">`;
+                    
+                    for (let k in row) {
+                        if (row[k] !== null && row[k] !== undefined && row[k] !== '') {
+                            popupHTML += `<tr class="border-b border-gray-100 last:border-0">
+                                <td class="py-1 font-semibold text-gray-500 uppercase pr-2">${k}</td>
+                                <td class="py-1 text-gray-800 text-right font-mono">${row[k]}</td>
+                            </tr>`;
+                        }
+                    }
+                    popupHTML += `</table></div>`;
+
+                    const marker = L.circleMarker([lat, lng], {
+                        radius: 8,
+                        fillColor: "#4f46e5", // indigo-600
+                        color: "#fff",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8,
+                        className: 'custom-marker' // For easy selection later
+                    });
+                    
+                    // Attach data to marker for later styling
+                    marker.feature = { properties: row }; 
+                    marker.bindPopup(popupHTML, { className: 'custom-popup' });
+                    
+                    markers.push(marker);
+                    layers.overlays.clusters.addLayer(marker);
+                    
+                    heatPoints.push([lat, lng, 1.0]); // 1.0 intensity default
+                    bounds.extend([lat, lng]);
+                    validCount++;
+                }
+            });
+
+            // 4. Update Map Layers
+            if (validCount > 0) {
+                map.fitBounds(bounds, { padding: [50, 50] });
+
+                // Create Heatmap Layer (Hidden by default, available in controls)
+                if (layers.overlays.heatmap) map.removeLayer(layers.overlays.heatmap);
+                layers.overlays.heatmap = L.heatLayer(heatPoints, { radius: 25, blur: 15 });
+                
+                // Add to Layer Control
+                const control = document.querySelector('.leaflet-control-layers-overlays');
+                // Note: Simple way to refresh control is tricky in Leaflet without removing/adding. 
+                // We assume the control exists. 
+                
+                // We manually add heatmap to the map toggles if not there, or manage visibility.
+                // For this "Lite" version, we rely on the logic that 'clusters' is default.
+                // A true dynamic Layer Control requires re-instantiating or direct DOM manipulation, 
+                // but let's keep it simple: Add Heatmap to the map object's internal tracking via a new control if needed?
+                // Actually, standard practice: remove old control, make new one.
+                refreshLayerControl();
+
+                showSuccess(`Loaded ${validCount} points.`);
+            } else {
+                showError("No valid coordinates found.");
+            }
+        }
+
+        // --- Data Processing (GeoJSON) ---
+        function loadGeoJSON(data) {
+            clearMapData();
+            
+            currentGeoJson = L.geoJSON(data, {
+                onEachFeature: function (feature, layer) {
+                    if (feature.properties) {
+                        let content = `<div class="bg-teal-600 text-white p-2 font-bold text-sm">Feature Details</div><div class="p-2 text-xs"><table class="w-full">`;
+                        for (let k in feature.properties) {
+                            content += `<tr><td class="font-bold text-gray-500 pr-2">${k}:</td><td>${feature.properties[k]}</td></tr>`;
+                        }
+                        content += `</table></div>`;
+                        layer.bindPopup(content, { className: 'custom-popup' });
+                    }
+                },
+                style: {
+                    color: "#3b82f6",
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.3
+                }
+            });
+
+            layers.overlays.clusters.addLayer(currentGeoJson);
+            map.fitBounds(currentGeoJson.getBounds());
+            showSuccess("GeoJSON loaded successfully.");
+            
+            // Try to find numeric properties for styling
+            if (data.features && data.features.length > 0) {
+                const props = data.features[0].properties;
+                const numericKeys = Object.keys(props).filter(k => typeof props[k] === 'number');
+                updateStyleDropdown(numericKeys);
+            }
+        }
+
+        // --- Thematic Mapping Logic ---
+        function updateStyleDropdown(keys) {
+            const select = document.getElementById('attributeSelect');
+            const container = document.getElementById('analysisControls');
+            
+            select.innerHTML = '<option value="">Default (Blue)</option>';
+            
+            if (keys.length > 0) {
+                keys.forEach(k => {
+                    const opt = document.createElement('option');
+                    opt.value = k;
+                    opt.innerText = k;
+                    select.appendChild(opt);
+                });
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+
+        function applyThematicStyle() {
+            const attribute = document.getElementById('attributeSelect').value;
+            const legend = document.getElementById('legend');
+            const legendContent = document.getElementById('legendContent');
+
+            // Reset if empty
+            if (!attribute) {
+                layers.overlays.clusters.eachLayer(layer => {
+                    if (layer.setStyle) { // Check if it's a shape/marker we can style
+                        layer.setStyle({ fillColor: "#4f46e5", color: "#fff", radius: 8 });
+                    }
+                });
+                legend.classList.add('hidden');
+                return;
+            }
+
+            // 1. Get Values to calculate domain
+            let values = [];
+            layers.overlays.clusters.eachLayer(layer => {
+                if (layer.feature && layer.feature.properties && layer.feature.properties[attribute] !== undefined) {
+                    values.push(layer.feature.properties[attribute]);
+                }
+            });
+
+            if (values.length === 0) return;
+
+            // 2. Create Color Scale
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            // Use Chroma for color scale: Light Yellow -> Red
+            const scale = chroma.scale(['#fde047', '#ef4444', '#7f1d1d']).domain([min, max]);
+
+            // 3. Apply Style
+            layers.overlays.clusters.eachLayer(layer => {
+                if (layer.feature && layer.feature.properties) {
+                    const val = layer.feature.properties[attribute];
+                    const color = scale(val).hex();
+                    
+                    if (layer.setStyle) {
+                        layer.setStyle({ 
+                            fillColor: color, 
+                            color: chroma(color).darken().hex(),
+                            radius: 10
+                        });
+                    }
+                }
+            });
+
+            // 4. Update Legend
+            legendContent.innerHTML = `
+                <div class="flex items-center justify-between text-xs mb-1">
+                    <span>${min.toLocaleString()}</span>
+                    <span>${max.toLocaleString()}</span>
+                </div>
+                <div class="h-3 w-full rounded bg-gradient-to-r from-yellow-300 via-red-500 to-red-900"></div>
+                <div class="text-center text-[10px] text-gray-400 mt-1">${attribute}</div>
+            `;
+            legend.classList.remove('hidden');
+        }
+
+        // --- UI Utilities ---
+        function clearMap() {
+            clearMapData();
+            document.getElementById('fileInput').value = "";
+            document.getElementById('analysisControls').classList.add('hidden');
+            document.getElementById('legend').classList.add('hidden');
+            map.setView([20, 0], 2);
+        }
+
+        function clearMapData() {
+            layers.overlays.clusters.clearLayers();
+            if (layers.overlays.heatmap) {
+                map.removeLayer(layers.overlays.heatmap);
+                layers.overlays.heatmap = null;
+            }
+            refreshLayerControl();
+        }
+
+        function refreshLayerControl() {
+            // A bit of a hack to refresh standard Leaflet control: remove and re-add
+            // In a production app, we'd keep a reference to the control.
+            // For this single file, we select the control container and rebuild logic if needed,
+            // but for simplicity, we just add the heatmap to the existing control if not present?
+            // Leaflet doesn't make updating controls easy.
+            
+            // Re-building the control:
+            const oldControl = document.querySelector('.leaflet-control-layers');
+            if (oldControl) oldControl.remove();
+
+            const baseMaps = {
+                "Standard": layers.base.standard,
+                "Dark Mode": layers.base.dark,
+                "Topographic": layers.base.topo,
+                "Satellite": layers.base.satellite
+            };
+            
+            const overlayMaps = {
+                "Points (Clusters)": layers.overlays.clusters
+            };
+            if (layers.overlays.heatmap) {
+                overlayMaps["Heatmap"] = layers.overlays.heatmap;
+            }
+
+            L.control.layers(baseMaps, overlayMaps, { position: 'topright' }).addTo(map);
+        }
+
+        function showStatus(title, msg) {
+            const box = document.getElementById('statusBox');
+            const msgEl = document.getElementById('statusMsg');
+            document.getElementById('statusLoader').classList.remove('hidden');
+            document.getElementById('statusSuccess').classList.add('hidden');
+            msgEl.innerHTML = `<span class="font-bold">${title}</span> ${msg}`;
+            box.classList.remove('hidden', '-translate-y-full');
+        }
+
+        function showSuccess(msg) {
+            document.getElementById('statusLoader').classList.add('hidden');
+            document.getElementById('statusSuccess').classList.remove('hidden');
+            document.getElementById('statusMsg').innerText = msg;
+            setTimeout(() => {
+                document.getElementById('statusBox').classList.add('hidden');
+            }, 3000);
+        }
+
+        function showError(msg) {
+            showStatus("Error", msg);
+            document.getElementById('statusLoader').classList.add('hidden');
+            document.getElementById('statusMsg').classList.add('text-red-600');
+            setTimeout(() => {
+                document.getElementById('statusBox').classList.add('hidden');
+                document.getElementById('statusMsg').classList.remove('text-red-600');
+            }, 4000);
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
