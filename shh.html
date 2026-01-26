@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Noise Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Fredoka', sans-serif;
+            overflow: hidden; /* Prevent scrolling */
+        }
+        
+        /* Smooth transition for background color changes */
+        .bg-transition {
+            transition: background-color 0.8s ease-in-out;
+        }
+
+        .meter-fill {
+            transition: height 0.1s linear, background-color 0.3s ease;
+        }
+
+        .emoji-bounce {
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        /* Custom range slider styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #4B5563;
+            cursor: pointer;
+            margin-top: -8px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #D1D5DB;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body id="app-body" class="h-screen w-screen flex flex-col items-center justify-center bg-green-100 bg-transition relative text-gray-800">
+
+    <!-- Start Overlay (Required for Audio Context) -->
+    <div id="start-overlay" class="absolute inset-0 z-50 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center">
+        <h1 class="text-4xl font-bold mb-4 text-blue-600">Classroom Noise Monitor</h1>
+        <p class="text-xl text-gray-600 mb-8 max-w-md">Use this tool to help the class keep noise levels down. Please allow microphone access when prompted.</p>
+        <button onclick="startMonitoring()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-8 rounded-full text-2xl shadow-lg transform transition hover:scale-105">
+            Start Listening 🎤
+        </button>
+    </div>
+
+    <!-- Main Display -->
+    <div class="flex flex-col items-center justify-center w-full h-full max-w-4xl mx-auto p-4">
+        
+        <!-- Status Text -->
+        <h1 id="status-text" class="text-5xl md:text-7xl font-bold mb-8 text-center text-white drop-shadow-md transition-all duration-300">
+            Great Job!
+        </h1>
+
+        <!-- Character/Emoji Display -->
+        <div id="emoji-container" class="text-9xl md:text-[12rem] mb-10 filter drop-shadow-xl transition-transform duration-300 transform cursor-default select-none">
+            😴
+        </div>
+
+        <!-- Noise Meter Bar -->
+        <div class="relative w-full max-w-md h-16 bg-white/50 rounded-full overflow-hidden border-4 border-white/60 shadow-inner">
+            <!-- Ticks -->
+            <div class="absolute inset-0 flex justify-between px-4 items-center z-10 opacity-30 pointer-events-none">
+                <div class="w-0.5 h-4 bg-black"></div>
+                <div class="w-0.5 h-4 bg-black"></div>
+                <div class="w-0.5 h-4 bg-black"></div>
+                <div class="w-0.5 h-4 bg-black"></div>
+                <div class="w-0.5 h-4 bg-black"></div> <!-- 5 -->
+                <div class="w-0.5 h-4 bg-black"></div>
+                <div class="w-0.5 h-4 bg-black"></div>
+                <div class="w-0.5 h-4 bg-black"></div>
+                <div class="w-0.5 h-4 bg-black"></div>
+                <div class="w-0.5 h-4 bg-black"></div>
+            </div>
+            
+            <!-- The Fill -->
+            <div id="meter-fill" class="h-full bg-green-500 meter-fill w-0"></div>
+            
+            <!-- Numeric Label (Optional, for debugging or older kids) -->
+            <div id="level-number" class="absolute inset-0 flex items-center justify-center font-bold text-xl text-black/50 z-20">
+                Level: 0
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Toggle Button -->
+    <button onclick="toggleSettings()" class="absolute bottom-4 right-4 bg-white/40 hover:bg-white/80 p-2 rounded-lg transition text-gray-700 z-40">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+    </button>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel" class="absolute bottom-16 right-4 w-72 bg-white rounded-xl shadow-2xl p-6 hidden z-40 border border-gray-200">
+        <h3 class="font-bold text-gray-800 mb-4 border-b pb-2">Teacher Controls</h3>
+        
+        <!-- Sensitivity Control -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                Mic Sensitivity <span id="sens-val" class="text-xs text-gray-500">(1.5x)</span>
+            </label>
+            <input type="range" id="sensitivity" min="0.5" max="5" step="0.1" value="1.5" oninput="updateSettings()">
+            <p class="text-xs text-gray-500 mt-1">Increase if the bar doesn't move enough.</p>
+        </div>
+
+        <!-- Warning Threshold -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                Warning Level <span id="warn-val" class="text-xs text-yellow-600">(4)</span>
+            </label>
+            <input type="range" id="warn-level" min="1" max="9" step="0.5" value="4" oninput="updateSettings()">
+        </div>
+
+        <!-- Danger Threshold -->
+        <div class="mb-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                Too Loud Level <span id="danger-val" class="text-xs text-red-600">(7)</span>
+            </label>
+            <input type="range" id="danger-level" min="2" max="10" step="0.5" value="7" oninput="updateSettings()">
+        </div>
+        
+        <div class="text-xs text-gray-400 mt-4 italic text-center">
+            Settings are not saved on refresh.
+        </div>
+    </div>
+
+    <script>
+        // State variables
+        let audioContext;
+        let analyser;
+        let microphone;
+        let javascriptNode;
+        let isListening = false;
+        let currentVolume = 0;
+        
+        // Settings with defaults
+        let sensitivity = 1.5;
+        let warningThreshold = 4;
+        let dangerThreshold = 7;
+        
+        // DOM Elements
+        const body = document.getElementById('app-body');
+        const meterFill = document.getElementById('meter-fill');
+        const emojiContainer = document.getElementById('emoji-container');
+        const statusText = document.getElementById('status-text');
+        const levelNumber = document.getElementById('level-number');
+        
+        // Emojis for different states
+        // Using standard unicode emojis for broad compatibility
+        const STATE_QUIET = { emoji: "😴", text: "Shhh... Sleeping", color: "bg-green-100", barColor: "bg-green-500" };
+        const STATE_OK = { emoji: "😊", text: "Nice work", color: "bg-blue-100", barColor: "bg-blue-500" };
+        const STATE_WARN = { emoji: "😲", text: "Getting Loud", color: "bg-yellow-100", barColor: "bg-yellow-500" };
+        const STATE_LOUD = { emoji: "🤫", text: "Too Loud!", color: "bg-red-200", barColor: "bg-red-600" };
+
+        function updateSettings() {
+            sensitivity = parseFloat(document.getElementById('sensitivity').value);
+            warningThreshold = parseFloat(document.getElementById('warn-level').value);
+            dangerThreshold = parseFloat(document.getElementById('danger-level').value);
+            
+            // Validate to ensure warning isn't higher than danger
+            if(warningThreshold >= dangerThreshold) {
+                warningThreshold = dangerThreshold - 0.5;
+                document.getElementById('warn-level').value = warningThreshold;
+            }
+
+            document.getElementById('sens-val').innerText = `(${sensitivity}x)`;
+            document.getElementById('warn-val').innerText = `(${warningThreshold})`;
+            document.getElementById('danger-val').innerText = `(${dangerThreshold})`;
+        }
+
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.classList.toggle('hidden');
+        }
+
+        async function startMonitoring() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+                javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+                analyser.smoothingTimeConstant = 0.8;
+                analyser.fftSize = 1024;
+
+                microphone.connect(analyser);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+
+                javascriptNode.onaudioprocess = function() {
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    
+                    let values = 0;
+                    const length = array.length;
+                    
+                    for (let i = 0; i < length; i++) {
+                        values += array[i];
+                    }
+                    
+                    const average = values / length;
+                    
+                    // Logic to map raw input to 0-10 scale
+                    // Raw average usually sits between 0-50 for silence/quiet talking 
+                    // and 100+ for loud noise.
+                    let calculatedLevel = (average / 10) * sensitivity;
+                    
+                    // Smoothing: Current value is 90% old value + 10% new value
+                    // This prevents the needle from jittering too wildly
+                    currentVolume = currentVolume * 0.9 + calculatedLevel * 0.1;
+                    
+                    updateUI(currentVolume);
+                }
+
+                // Hide overlay
+                document.getElementById('start-overlay').style.display = 'none';
+                isListening = true;
+
+            } catch (err) {
+                alert("Microphone access is required to monitor noise levels. Please refresh and allow access.");
+                console.error(err);
+            }
+        }
+
+        function updateUI(vol) {
+            // Clamp volume between 0 and 10
+            let displayVol = Math.min(Math.max(vol, 0), 10);
+            
+            // Round for display
+            levelNumber.innerText = `Level: ${displayVol.toFixed(1)}`;
+            
+            // Update Bar Width
+            meterFill.style.width = `${displayVol * 10}%`;
+
+            // Determine State
+            let currentState;
+            
+            if (displayVol >= dangerThreshold) {
+                currentState = STATE_LOUD;
+                emojiContainer.classList.add('shake');
+                emojiContainer.classList.remove('emoji-bounce');
+            } else if (displayVol >= warningThreshold) {
+                currentState = STATE_WARN;
+                emojiContainer.classList.remove('shake');
+                emojiContainer.classList.remove('emoji-bounce');
+            } else if (displayVol < 2) {
+                currentState = STATE_QUIET; // Special state for very quiet
+                emojiContainer.classList.remove('shake');
+                emojiContainer.classList.remove('emoji-bounce');
+            } else {
+                currentState = STATE_OK;
+                emojiContainer.classList.remove('shake');
+                emojiContainer.classList.add('emoji-bounce');
+            }
+
+            // Apply Visuals
+            emojiContainer.innerText = currentState.emoji;
+            statusText.innerText = currentState.text;
+            
+            // Update Colors
+            // We strip existing background classes and add the new one
+            body.className = `h-screen w-screen flex flex-col items-center justify-center bg-transition relative text-gray-800 ${currentState.color}`;
+            meterFill.className = `h-full meter-fill w-0 ${currentState.barColor}`;
+        }
+    </script>
+</body>
+</html>
