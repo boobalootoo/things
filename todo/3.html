@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nested List Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <style>
+        :root { --primary-bg: #f8fafc; }
+        body { background-color: var(--primary-bg); font-family: sans-serif; overscroll-behavior-y: contain; }
+        .list-item-wrapper { position: relative; overflow: hidden; touch-action: pan-y; }
+        .list-item-content { position: relative; background: white; z-index: 2; transition: transform 0.2s ease-out; cursor: grab; }
+        .delete-action { position: absolute; right: 0; top: 0; bottom: 0; width: 80px; background: #ef4444; color: white; display: flex; align-items: center; justify-content: center; z-index: 1; }
+        .swiped-left .list-item-content { transform: translateX(-80px); }
+        .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; font-weight: 700; }
+        #tabBar::-webkit-scrollbar { display: none; }
+        .modal-overlay { background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
+        .sortable-ghost { opacity: 0.3; background: #e2e8f0; }
+        
+        /* Toast notification for errors */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #ef4444;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
+            position: fixed;
+            z-index: 200;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #toast.show { visibility: visible; opacity: 1; }
+
+        /* Opinion badges */
+        .opinion-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-add-opinion { background-color: #f1f5f9; color: #64748b; }
+        .btn-add-opinion:hover { background-color: #e2e8f0; color: #475569; }
+        .btn-view-opinion { background-color: #eff6ff; color: #2563eb; }
+        .btn-view-opinion:hover { background-color: #dbeafe; }
+        
+        /* Scroll Buttons */
+        .scroll-btn {
+            background: white;
+            border: none;
+            color: #94a3b8;
+            padding: 0 12px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .scroll-btn:hover { color: #3b82f6; background: #f8fafc; }
+        .scroll-btn:active { background: #e2e8f0; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header / Navigation -->
+    <header class="bg-white border-b pt-4 shrink-0 shadow-sm z-30">
+        <div class="flex items-center justify-between px-4 mb-2">
+            <div id="breadcrumbs" class="flex items-center text-xs font-bold text-slate-400 uppercase tracking-widest overflow-hidden whitespace-nowrap">
+                <!-- Breadcrumbs injected here -->
+            </div>
+            <div class="flex gap-4">
+                <button onclick="exportData()" title="Backup Data" class="text-slate-400 hover:text-blue-600 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                </button>
+                <button onclick="document.getElementById('fileInput').click()" title="Import Data" class="text-slate-400 hover:text-blue-600 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" /></svg>
+                </button>
+                <button onclick="openResetModal()" title="Clear All Data" class="text-slate-400 hover:text-red-600 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+                <input type="file" id="fileInput" class="hidden" accept=".json" onchange="handleFileImport(event)">
+            </div>
+        </div>
+
+        <div class="flex items-stretch border-t h-12">
+            <button class="scroll-btn border-r" onclick="scrollTabs(-1)">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <div id="tabBar" class="flex flex-1 overflow-x-auto text-slate-500 font-medium scroll-smooth items-center">
+                <!-- Tabs go here -->
+            </div>
+            <button class="scroll-btn border-l border-r" onclick="scrollTabs(1)">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+            </button>
+            <button onclick="openTabModal()" class="px-5 text-blue-600 font-bold bg-slate-50 active:bg-slate-200 transition-colors flex items-center justify-center">+</button>
+        </div>
+    </header>
+
+    <!-- Main List Area -->
+    <main id="listContainer" class="flex-1 overflow-y-auto p-4 space-y-2 pb-24">
+        <!-- Items go here -->
+    </main>
+
+    <!-- Bottom Input Area -->
+    <div id="inputBar" class="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t flex gap-2 items-center z-40">
+        <input type="text" id="itemInput" placeholder="Add to this list..." 
+               class="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none">
+        <button onclick="addItem()" class="bg-blue-600 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 shrink-0 transition-transform">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+        </button>
+    </div>
+
+    <!-- Error Toast -->
+    <div id="toast">Error parsing backup file</div>
+
+    <!-- Tab Modal -->
+    <div id="tabModal" class="modal-overlay fixed inset-0">
+        <div class="bg-white p-6 rounded-3xl w-80 shadow-2xl">
+            <h2 id="tabModalTitle" class="text-xl font-bold mb-4 text-slate-800">New Sub-tab</h2>
+            <input type="text" id="tabNameInput" placeholder="Tab name..." class="w-full bg-slate-100 border-none rounded-xl px-4 py-3 mb-6 outline-none focus:ring-2 focus:ring-blue-500">
+            <div class="flex gap-3">
+                <button onclick="closeModal('tabModal')" class="flex-1 py-3 rounded-xl bg-slate-100 font-semibold text-slate-500">Cancel</button>
+                <button id="tabConfirmBtn" class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold">Confirm</button>
+            </div>
+            <button id="deleteTabBtn" class="w-full mt-3 py-2 text-red-500 text-sm font-bold hidden">Delete Tab</button>
+        </div>
+    </div>
+
+    <!-- Add/Edit Opinion Modal -->
+    <div id="addOpinionModal" class="modal-overlay fixed inset-0">
+        <div class="bg-white p-6 rounded-3xl w-80 shadow-2xl">
+            <h2 id="opinionModalTitle" class="text-xl font-bold mb-4 text-slate-800">Add Opinion</h2>
+            <p id="opinionItemText" class="text-xs text-slate-400 mb-2 truncate"></p>
+            <textarea id="opinionInput" rows="3" placeholder="Write your opinion here..." class="w-full bg-slate-100 border-none rounded-xl px-4 py-3 mb-6 outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
+            <div class="flex gap-3">
+                <button onclick="closeModal('addOpinionModal')" class="flex-1 py-3 rounded-xl bg-slate-100 font-semibold text-slate-500">Cancel</button>
+                <button id="saveOpinionBtn" class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Opinions Modal -->
+    <div id="viewOpinionsModal" class="modal-overlay fixed inset-0">
+        <div class="bg-white p-6 rounded-3xl w-80 shadow-2xl flex flex-col max-h-[80vh]">
+            <h2 class="text-xl font-bold mb-1 text-slate-800">Opinions</h2>
+            <p id="viewOpinionSubtitle" class="text-xs text-slate-400 mb-4 truncate"></p>
+            
+            <div id="opinionsList" class="flex-1 overflow-y-auto space-y-2 mb-4 pr-1">
+                <!-- Opinions injected here -->
+            </div>
+
+            <button onclick="closeModal('viewOpinionsModal')" class="w-full py-3 rounded-xl bg-slate-100 font-semibold text-slate-600">Close</button>
+        </div>
+    </div>
+
+    <!-- Generic Confirmation Modal for Tab Deletion -->
+    <div id="confirmModal" class="modal-overlay fixed inset-0">
+        <div class="bg-white p-6 rounded-3xl w-80 shadow-2xl text-center">
+            <h2 class="text-xl font-bold mb-2 text-slate-800">Delete this Tab?</h2>
+            <p class="text-slate-500 text-sm mb-6">This will delete the tab and all items inside it permanently.</p>
+            <div class="flex gap-3">
+                <button onclick="closeModal('confirmModal')" class="flex-1 py-3 rounded-xl bg-slate-100 font-semibold text-slate-500">Cancel</button>
+                <button id="confirmDeleteActionBtn" class="flex-1 py-3 rounded-xl bg-red-600 text-white font-semibold">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="importModal" class="modal-overlay fixed inset-0">
+        <div class="bg-white p-6 rounded-3xl w-80 shadow-2xl text-center">
+            <h2 class="text-xl font-bold mb-2">Import Data</h2>
+            <p class="text-slate-400 text-sm mb-6">Replace current data or merge it?</p>
+            <div class="flex flex-col gap-2">
+                <button onclick="finishImport('replace')" class="w-full py-3 rounded-xl bg-red-500 text-white font-bold">Replace All</button>
+                <button onclick="finishImport('merge')" class="w-full py-3 rounded-xl bg-blue-600 text-white font-bold">Merge Items</button>
+                <button onclick="closeModal('importModal')" class="w-full py-3 rounded-xl bg-slate-100 text-slate-500 font-bold">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="resetModal" class="modal-overlay fixed inset-0">
+        <div class="bg-white p-6 rounded-3xl w-80 shadow-2xl text-center">
+            <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            </div>
+            <h2 class="text-xl font-bold mb-2 text-slate-800">Wipe All Data?</h2>
+            <p class="text-slate-500 text-sm mb-6">This will reset to defaults. Download backup first?</p>
+            <div class="flex flex-col gap-3">
+                <button onclick="exportData(); closeModal('resetModal');" class="w-full py-3 rounded-xl bg-blue-100 text-blue-700 font-bold">Download Backup First</button>
+                <button onclick="performFullReset()" class="w-full py-3 rounded-xl bg-red-600 text-white font-bold">Reset to Defaults</button>
+                <button onclick="closeModal('resetModal')" class="w-full py-3 rounded-xl bg-slate-100 text-slate-500 font-bold">Nevermind</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_STORE = {
+            name: "Home",
+            id: "root",
+            children: [
+                { id: "home", name: "Home", items: [], children: [] },
+                { id: "things", name: "Things I want to do", items: [], children: [] },
+                { id: "avail", name: "Availability", items: [], children: [] },
+                { id: "feelings", name: "Feelings", items: [], children: [] },
+                { id: "favours", name: "Favours", items: [], children: [] },
+                { id: "discuss", name: "Discussion", items: [], children: [] },
+                { id: "likes", name: "Likes and dislikes", items: [], children: [] },
+                { id: "ideal", name: "My ideal life", items: [], children: [] },
+                { id: "behave", name: "My behaviours explained", items: [], children: [] }
+            ]
+        };
+
+        const STORAGE_KEY = 'nested_list_data_v4';
+
+        let store = JSON.parse(JSON.stringify(DEFAULT_STORE));
+        let path = ["root"]; 
+        let activeTabId = "home"; 
+        let isMasterView = false;
+        let importedDataTemp = null;
+        let pendingDeleteId = null;
+        let activeOpinionItemId = null;
+        let editingOpinionId = null; // Track if we are editing an opinion
+
+        const tabBar = document.getElementById('tabBar');
+        const listContainer = document.getElementById('listContainer');
+        const itemInput = document.getElementById('itemInput');
+        const breadcrumbs = document.getElementById('breadcrumbs');
+
+        function init() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                try {
+                    store = JSON.parse(saved);
+                } catch(e) {
+                    store = JSON.parse(JSON.stringify(DEFAULT_STORE));
+                }
+            }
+            if (!findNode(activeTabId)) {
+                activeTabId = store.children.length > 0 ? store.children[0].id : "all";
+            }
+            render();
+            setupSortables();
+        }
+
+        function save() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        }
+
+        function findNode(id, node = store) {
+            if (node.id === id) return node;
+            if (node.children) {
+                for (let child of node.children) {
+                    let found = findNode(id, child);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        function getCurrentNode() {
+            return findNode(path[path.length - 1]);
+        }
+
+        function render() {
+            renderBreadcrumbs();
+            renderTabs();
+            renderItems();
+        }
+
+        function renderBreadcrumbs() {
+            breadcrumbs.innerHTML = '';
+            path.forEach((id, index) => {
+                const node = findNode(id);
+                if (!node) return;
+                const span = document.createElement('span');
+                span.innerText = node.name;
+                span.className = "cursor-pointer hover:text-blue-600 transition-colors";
+                span.onclick = () => {
+                    path = path.slice(0, index + 1);
+                    const currentNode = getCurrentNode();
+                    activeTabId = currentNode.children.length > 0 ? currentNode.children[0].id : "all";
+                    isMasterView = activeTabId === "all";
+                    render();
+                };
+                breadcrumbs.appendChild(span);
+                if (index < path.length - 1) {
+                    const sep = document.createElement('span');
+                    sep.innerText = " / ";
+                    sep.className = "mx-1 opacity-30";
+                    breadcrumbs.appendChild(sep);
+                }
+            });
+        }
+
+        function scrollTabs(direction) {
+            tabBar.scrollBy({ left: direction * 150, behavior: 'smooth' });
+        }
+
+        function renderTabs() {
+            tabBar.innerHTML = '';
+            const node = getCurrentNode();
+            if (!node) return;
+            
+            if (node.children.length > 0) {
+                const allBtn = createTabBtn("All Items", "all", isMasterView);
+                tabBar.appendChild(allBtn);
+            }
+
+            node.children.forEach(child => {
+                const btn = createTabBtn(child.name, child.id, !isMasterView && activeTabId === child.id);
+                
+                let timer;
+                btn.ontouchstart = () => timer = setTimeout(() => openTabModal(child.id), 600);
+                btn.ontouchend = () => clearTimeout(timer);
+                btn.onmousedown = () => timer = setTimeout(() => openTabModal(child.id), 600);
+                btn.onmouseup = () => clearTimeout(timer);
+                btn.oncontextmenu = (e) => { e.preventDefault(); openTabModal(child.id); };
+
+                tabBar.appendChild(btn);
+            });
+        }
+
+        function createTabBtn(name, id, isActive) {
+            const btn = document.createElement('button');
+            btn.className = `px-6 py-3 whitespace-nowrap transition-all flex items-center gap-2 h-full ${isActive ? 'tab-active' : 'text-slate-400'}`;
+            btn.dataset.id = id;
+            btn.innerHTML = `<span>${name}</span>`;
+            btn.onclick = () => {
+                if (id === "all") {
+                    isMasterView = true;
+                    activeTabId = "all";
+                } else {
+                    if (activeTabId === id && !isMasterView) {
+                        path.push(id);
+                        const n = findNode(id);
+                        activeTabId = n.children.length > 0 ? n.children[0].id : "all";
+                        isMasterView = activeTabId === "all";
+                    } else {
+                        isMasterView = false;
+                        activeTabId = id;
+                    }
+                }
+                render();
+            };
+            return btn;
+        }
+
+        function renderItems() {
+            listContainer.innerHTML = '';
+            const node = getCurrentNode();
+            if (!node) return;
+            let itemsToDisplay = [];
+
+            if (isMasterView) {
+                itemsToDisplay = flattenItems(node);
+                document.getElementById('inputBar').style.display = 'none';
+            } else {
+                const activeNode = findNode(activeTabId);
+                if (activeNode) {
+                    itemsToDisplay = activeNode.items.map(it => ({ ...it, source: activeNode.name }));
+                }
+                document.getElementById('inputBar').style.display = 'flex';
+            }
+
+            if (itemsToDisplay.length === 0) {
+                listContainer.innerHTML = `<div class="text-center text-slate-300 mt-20 italic">No items here.</div>`;
+                return;
+            }
+
+            itemsToDisplay.forEach(item => {
+                const opinionCount = item.opinions ? item.opinions.length : 0;
+                
+                const el = document.createElement('div');
+                el.className = 'list-item-wrapper rounded-2xl shadow-sm bg-white border border-slate-100';
+                el.dataset.id = item.id;
+                
+                el.innerHTML = `
+                    <div class="delete-action" onclick="deleteItem('${item.id}')">Delete</div>
+                    <div class="list-item-content p-4 rounded-2xl flex flex-col gap-3">
+                        <div class="flex items-center gap-4">
+                            <div class="text-slate-300 shrink-0">☰</div>
+                            <div class="flex flex-col flex-1 overflow-hidden">
+                                <span class="text-slate-700 font-medium break-words text-lg">${item.text}</span>
+                                ${isMasterView ? `<span class="text-[10px] text-blue-500 font-bold uppercase tracking-tighter">${item.source}</span>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-2 ml-8">
+                            <button onclick="openAddOpinionModal('${item.id}', '${item.text.replace(/'/g, "\\'")}')" class="opinion-badge btn-add-opinion">
+                                + Add Opinion
+                            </button>
+                            ${opinionCount > 0 ? `
+                            <button onclick="openViewOpinionsModal('${item.id}', '${item.text.replace(/'/g, "\\'")}')" class="opinion-badge btn-view-opinion">
+                                View Opinions (${opinionCount})
+                            </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                let startX = 0;
+                el.addEventListener('touchstart', e => startX = e.touches[0].clientX, {passive:true});
+                el.addEventListener('touchmove', e => {
+                    let d = startX - e.touches[0].clientX;
+                    if (d > 60) el.classList.add('swiped-left');
+                    if (d < -60) el.classList.remove('swiped-left');
+                }, {passive:true});
+
+                listContainer.appendChild(el);
+            });
+        }
+
+        function flattenItems(node) {
+            let results = [];
+            if (!node.children) return results;
+            node.children.forEach(child => {
+                child.items.forEach(it => results.push({ ...it, source: child.name }));
+                results = results.concat(flattenItems(child));
+            });
+            return results;
+        }
+
+        function addItem() {
+            const text = itemInput.value.trim();
+            if (!text || isMasterView) return;
+            const node = findNode(activeTabId);
+            if (node) {
+                node.items.push({ id: Date.now().toString(), text: text, opinions: [] });
+                itemInput.value = '';
+                save();
+                render();
+                listContainer.scrollTo({ top: listContainer.scrollHeight, behavior: 'smooth' });
+            }
+        }
+
+        function deleteItem(id) {
+            const node = findNode(activeTabId);
+            if (node) {
+                node.items = node.items.filter(i => i.id !== id);
+                save();
+                render();
+            }
+        }
+
+        // --- Opinions Logic ---
+
+        function openAddOpinionModal(itemId, itemText, opinionId = null, currentText = '') {
+            activeOpinionItemId = itemId;
+            editingOpinionId = opinionId;
+            
+            document.getElementById('opinionItemText').innerText = itemText;
+            document.getElementById('opinionInput').value = currentText;
+            
+            const titleEl = document.getElementById('opinionModalTitle');
+            titleEl.innerText = opinionId ? "Edit Opinion" : "Add Opinion";
+            
+            document.getElementById('addOpinionModal').style.display = 'flex';
+            setTimeout(() => document.getElementById('opinionInput').focus(), 50);
+
+            document.getElementById('saveOpinionBtn').onclick = () => {
+                const text = document.getElementById('opinionInput').value.trim();
+                if (text) {
+                    saveOpinion(activeOpinionItemId, text, editingOpinionId);
+                    closeModal('addOpinionModal');
+                }
+            };
+        }
+
+        function saveOpinion(itemId, text, opinionId) {
+            // Find item
+            let node = findNode(activeTabId);
+            let item = node ? node.items.find(i => i.id === itemId) : null;
+            
+            if (!item && isMasterView) {
+                const search = (n) => {
+                    let found = n.items.find(i => i.id === itemId);
+                    if (found) return found;
+                    for (let child of n.children) {
+                        found = search(child);
+                        if (found) return found;
+                    }
+                    return null;
+                };
+                item = search(getCurrentNode());
+            }
+
+            if (item) {
+                if (!item.opinions) item.opinions = [];
+                
+                if (opinionId) {
+                    // Update existing
+                    const op = item.opinions.find(o => o.id === opinionId);
+                    if (op) {
+                        op.text = text;
+                        op.date = new Date().toLocaleDateString();
+                    }
+                } else {
+                    // Add new
+                    item.opinions.push({ id: Date.now().toString(), text: text, date: new Date().toLocaleDateString() });
+                }
+                
+                save();
+                render();
+                // If viewing modal is open, refresh it
+                if(document.getElementById('viewOpinionsModal').style.display === 'flex') {
+                    openViewOpinionsModal(itemId, item.text);
+                }
+            }
+        }
+
+        function openViewOpinionsModal(itemId, itemText) {
+            activeOpinionItemId = itemId;
+            document.getElementById('viewOpinionSubtitle').innerText = `For: "${itemText}"`;
+            
+            let node = findNode(activeTabId);
+            let item = node ? node.items.find(i => i.id === itemId) : null;
+             if (!item && isMasterView) {
+                 const search = (n) => {
+                    let found = n.items.find(i => i.id === itemId);
+                    if (found) return found;
+                    for (let child of n.children) {
+                        found = search(child);
+                        if (found) return found;
+                    }
+                    return null;
+                };
+                item = search(getCurrentNode());
+            }
+
+            const list = document.getElementById('opinionsList');
+            list.innerHTML = '';
+
+            if (item && item.opinions && item.opinions.length > 0) {
+                item.opinions.forEach(op => {
+                    const div = document.createElement('div');
+                    div.className = "bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-start group";
+                    
+                    // Escaping for the onclick handler
+                    const escapedText = op.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const escapedItemText = itemText.replace(/'/g, "\\'");
+
+                    div.innerHTML = `
+                        <p class="text-slate-700 text-sm flex-1 mr-2">${op.text}</p>
+                        <div class="flex gap-1 shrink-0">
+                            <button onclick="openAddOpinionModal('${itemId}', '${escapedItemText}', '${op.id}', '${escapedText}')" class="text-blue-500 hover:text-blue-700 p-1" title="Edit">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            </button>
+                            <button onclick="deleteOpinion('${itemId}', '${op.id}')" class="text-slate-300 hover:text-red-500 p-1" title="Delete">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+            } else {
+                list.innerHTML = '<p class="text-center text-slate-400 mt-4">No opinions yet.</p>';
+            }
+
+            document.getElementById('viewOpinionsModal').style.display = 'flex';
+        }
+
+        function deleteOpinion(itemId, opinionId) {
+             let node = findNode(activeTabId);
+            let item = node ? node.items.find(i => i.id === itemId) : null;
+             if (!item && isMasterView) {
+                 const search = (n) => {
+                    let found = n.items.find(i => i.id === itemId);
+                    if (found) return found;
+                    for (let child of n.children) {
+                        found = search(child);
+                        if (found) return found;
+                    }
+                    return null;
+                };
+                item = search(getCurrentNode());
+            }
+
+            if (item && item.opinions) {
+                item.opinions = item.opinions.filter(op => op.id !== opinionId);
+                save();
+                render();
+                // Refresh modal content
+                openViewOpinionsModal(itemId, item.text);
+            }
+        }
+
+        // --- Tab Management & Modals ---
+
+        function openTabModal(editId = null) {
+            const modal = document.getElementById('tabModal');
+            const input = document.getElementById('tabNameInput');
+            const btn = document.getElementById('tabConfirmBtn');
+            const delBtn = document.getElementById('deleteTabBtn');
+            const title = document.getElementById('tabModalTitle');
+
+            modal.style.display = 'flex';
+            input.value = editId ? findNode(editId).name : '';
+            title.innerText = editId ? "Rename Tab" : "New Sub-tab";
+            delBtn.style.display = editId ? 'block' : 'none';
+            setTimeout(() => input.focus(), 50);
+
+            btn.onclick = () => {
+                const name = input.value.trim();
+                if (!name) return;
+                if (editId) {
+                    findNode(editId).name = name;
+                } else {
+                    const parent = getCurrentNode();
+                    const newId = Date.now().toString();
+                    parent.children.push({ id: newId, name: name, items: [], children: [] });
+                    activeTabId = newId;
+                }
+                save();
+                render();
+                closeModal('tabModal');
+            };
+
+            delBtn.onclick = () => {
+                pendingDeleteId = editId;
+                closeModal('tabModal');
+                document.getElementById('confirmModal').style.display = 'flex';
+            };
+        }
+
+        document.getElementById('confirmDeleteActionBtn').onclick = () => {
+            if (pendingDeleteId) {
+                const parent = getCurrentNode();
+                parent.children = parent.children.filter(c => c.id !== pendingDeleteId);
+                activeTabId = parent.children.length > 0 ? parent.children[0].id : "all";
+                isMasterView = activeTabId === "all";
+                save();
+                render();
+                pendingDeleteId = null;
+                closeModal('confirmModal');
+            }
+        };
+
+        function openResetModal() {
+            document.getElementById('resetModal').style.display = 'flex';
+        }
+
+        function performFullReset() {
+            store = JSON.parse(JSON.stringify(DEFAULT_STORE));
+            path = ["root"];
+            activeTabId = "home";
+            isMasterView = false;
+            save();
+            render();
+            closeModal('resetModal');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById("toast");
+            toast.innerText = message;
+            toast.className = "show";
+            setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+        // --- Sorting ---
+
+        function setupSortables() {
+            new Sortable(listContainer, {
+                animation: 150,
+                handle: '.list-item-content',
+                onEnd: () => {
+                    if (isMasterView) return;
+                    const node = findNode(activeTabId);
+                    const ids = Array.from(listContainer.children).map(el => el.dataset.id);
+                    node.items = ids.map(id => node.items.find(i => i.id === id));
+                    save();
+                }
+            });
+
+            new Sortable(tabBar, {
+                animation: 150,
+                filter: '.tab-active',
+                onEnd: () => {
+                    const node = getCurrentNode();
+                    const ids = Array.from(tabBar.children).map(el => el.dataset.id).filter(id => id !== "all");
+                    node.children = ids.map(id => node.children.find(c => c.id === id));
+                    save();
+                }
+            });
+        }
+
+        // --- Import / Export ---
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `list_backup_v4_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+        }
+
+        function handleFileImport(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    importedDataTemp = JSON.parse(ev.target.result);
+                    document.getElementById('importModal').style.display = 'flex';
+                } catch(err) {
+                    showToast("Error: Invalid backup file format");
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        }
+
+        function finishImport(type) {
+            if (type === 'replace') {
+                store = importedDataTemp;
+                path = ["root"];
+                activeTabId = store.children.length > 0 ? store.children[0].id : "all";
+                isMasterView = activeTabId === "all";
+            } else {
+                store.children = store.children.concat(importedDataTemp.children);
+            }
+            save();
+            render();
+            closeModal('importModal');
+        }
+
+        itemInput.addEventListener('keypress', e => e.key === 'Enter' && addItem());
+        window.onload = init;
+    </script>
+</body>
+</html>
