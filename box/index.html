@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Boxing Analysis</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TensorFlow.js and MoveNet -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: white; }
+        .canvas-container { position: relative; width: 100%; max-width: 1280px; margin: 0 auto; aspect-ratio: 16/9; background: #1e293b; border-radius: 1rem; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); /* Mirror for user feel, un-mirror for logic later */ opacity: 0.6; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .hud-panel { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="flex flex-col items-center min-h-screen p-4">
+
+    <!-- Header -->
+    <header class="w-full max-w-6xl flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-red-400">AI Sparring Tracker</h1>
+            <p class="text-slate-400 text-sm">Real-time MoveNet MultiPose Analysis</p>
+        </div>
+        <div class="flex gap-4">
+            <button id="startBtn" class="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-semibold transition shadow-lg shadow-emerald-900/50" onclick="startApp()">Start Camera</button>
+            <button id="resetBtn" class="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold transition" onclick="resetStats()">Reset Stats</button>
+        </div>
+    </header>
+
+    <!-- Main Viewport -->
+    <div class="canvas-container border border-slate-700">
+        <div id="loading" class="absolute inset-0 flex flex-col items-center justify-center z-20 bg-slate-900">
+            <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p class="text-blue-400 font-mono">Loading TensorFlow Models...</p>
+        </div>
+        <video id="video" playsinline></video>
+        <canvas id="output"></canvas>
+        
+        <!-- Instruction Overlay -->
+        <div id="instructions" class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-full text-sm font-medium text-white pointer-events-none hidden">
+            Ensure 2 people are visible in frame
+        </div>
+    </div>
+
+    <!-- Stats Dashboard -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl mt-6">
+        
+        <!-- Player 1 Stats -->
+        <div class="hud-panel rounded-xl p-6 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-2 h-full bg-blue-500"></div>
+            <div class="flex justify-between items-end mb-4">
+                <h2 class="text-2xl font-bold text-blue-400">Player 1 (Left)</h2>
+                <span class="text-xs text-slate-500 uppercase tracking-wider">Stats</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-slate-800/50 p-3 rounded-lg">
+                    <p class="text-slate-400 text-xs">Punches Thrown</p>
+                    <p class="text-3xl font-mono font-bold text-white" id="p1-punches">0</p>
+                </div>
+                <div class="bg-slate-800/50 p-3 rounded-lg">
+                    <p class="text-slate-400 text-xs">Steps Taken</p>
+                    <p class="text-3xl font-mono font-bold text-white" id="p1-steps">0</p>
+                </div>
+            </div>
+
+            <div class="mt-4 space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span class="text-red-400">Head Hits Landed</span>
+                    <span class="font-bold" id="p1-head">0</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div id="p1-head-bar" class="bg-red-500 h-full" style="width: 0%"></div>
+                </div>
+
+                <div class="flex justify-between text-sm">
+                    <span class="text-yellow-400">Body Hits Landed</span>
+                    <span class="font-bold" id="p1-body">0</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div id="p1-body-bar" class="bg-yellow-500 h-full" style="width: 0%"></div>
+                </div>
+
+                <div class="flex justify-between text-sm">
+                    <span class="text-orange-400">Arm/Block Hits</span>
+                    <span class="font-bold" id="p1-arm">0</span>
+                </div>
+                 <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div id="p1-arm-bar" class="bg-orange-500 h-full" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Player 2 Stats -->
+        <div class="hud-panel rounded-xl p-6 relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-2 h-full bg-red-500"></div>
+            <div class="flex justify-between items-end mb-4">
+                <span class="text-xs text-slate-500 uppercase tracking-wider">Stats</span>
+                <h2 class="text-2xl font-bold text-red-400">Player 2 (Right)</h2>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 text-right">
+                <div class="bg-slate-800/50 p-3 rounded-lg">
+                    <p class="text-slate-400 text-xs">Steps Taken</p>
+                    <p class="text-3xl font-mono font-bold text-white" id="p2-steps">0</p>
+                </div>
+                <div class="bg-slate-800/50 p-3 rounded-lg">
+                    <p class="text-slate-400 text-xs">Punches Thrown</p>
+                    <p class="text-3xl font-mono font-bold text-white" id="p2-punches">0</p>
+                </div>
+            </div>
+
+             <div class="mt-4 space-y-2 text-right">
+                <div class="flex justify-between text-sm flex-row-reverse">
+                    <span class="text-red-400">Head Hits Landed</span>
+                    <span class="font-bold" id="p2-head">0</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden flex justify-end">
+                    <div id="p2-head-bar" class="bg-red-500 h-full" style="width: 0%"></div>
+                </div>
+
+                <div class="flex justify-between text-sm flex-row-reverse">
+                    <span class="text-yellow-400">Body Hits Landed</span>
+                    <span class="font-bold" id="p2-body">0</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden flex justify-end">
+                    <div id="p2-body-bar" class="bg-yellow-500 h-full" style="width: 0%"></div>
+                </div>
+
+                <div class="flex justify-between text-sm flex-row-reverse">
+                    <span class="text-orange-400">Arm/Block Hits</span>
+                    <span class="font-bold" id="p2-arm">0</span>
+                </div>
+                 <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden flex justify-end">
+                    <div id="p2-arm-bar" class="bg-orange-500 h-full" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // --- Configuration ---
+        const VIDEO_WIDTH = 640;
+        const VIDEO_HEIGHT = 480;
+        // Sensitivity Thresholds
+        const PUNCH_VELOCITY_THRESHOLD = 5; // Pixel delta per frame (tuned for 30fps)
+        const ARM_EXTENSION_THRESHOLD = 140; // Degrees
+        const STEP_MOVEMENT_THRESHOLD = 10; // Pixel delta of hips
+        const HIT_COOLDOWN = 15; // Frames between hits
+        const STEP_COOLDOWN = 15; // Frames between steps
+        
+        // --- State ---
+        let detector;
+        let video, canvas, ctx;
+        let animationId;
+        let isRunning = false;
+
+        // Player Data Structure
+        const createPlayerState = (id) => ({
+            id: id,
+            prevKeypoints: null,
+            punchState: 'ready', // ready, punching, retracting
+            punchCooldown: 0,
+            stepCooldown: 0,
+            stats: {
+                punches: 0,
+                headHits: 0,
+                bodyHits: 0,
+                armHits: 0,
+                steps: 0
+            }
+        });
+
+        let players = {
+            left: createPlayerState('p1'),
+            right: createPlayerState('p2')
+        };
+
+        // --- Initialization ---
+        async function init() {
+            video = document.getElementById('video');
+            canvas = document.getElementById('output');
+            ctx = canvas.getContext('2d');
+
+            // Set Resolution
+            video.width = VIDEO_WIDTH;
+            video.height = VIDEO_HEIGHT;
+            canvas.width = VIDEO_WIDTH;
+            canvas.height = VIDEO_HEIGHT;
+
+            // Load Model
+            const detectorConfig = { modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING };
+            detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
+            
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('instructions').classList.remove('hidden');
+        }
+
+        async function startApp() {
+            if (isRunning) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT, facingMode: 'user' } 
+                });
+                video.srcObject = stream;
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+                video.play();
+                isRunning = true;
+                document.getElementById('startBtn').innerText = "Running...";
+                document.getElementById('startBtn').classList.add('opacity-50', 'cursor-not-allowed');
+                render();
+            } catch (err) {
+                alert("Error accessing camera: " + err.message);
+            }
+        }
+
+        // --- Core Logic Loop ---
+        async function render() {
+            if (!isRunning) return;
+
+            const poses = await detector.estimatePoses(video, {
+                maxPoses: 2,
+                flipHorizontal: false 
+            });
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Logic: Process poses only if we have roughly 2 people
+            if (poses.length > 0) {
+                processGameLogic(poses);
+            }
+
+            animationId = requestAnimationFrame(render);
+        }
+
+        function processGameLogic(poses) {
+            // 1. Sort poses by X coordinate to assign Left (P1) and Right (P2)
+            // Note: Since video is mirrored in CSS but not logic, Left in logic is Right on screen. 
+            // We'll calculate logic in "True" coordinates (Camera view).
+            
+            let sortedPoses = poses.sort((a, b) => {
+                // Use nose or mid-hip x
+                const xA = (a.keypoints[0].x + a.keypoints[11].x + a.keypoints[12].x) / 3;
+                const xB = (b.keypoints[0].x + b.keypoints[11].x + b.keypoints[12].x) / 3;
+                return xA - xB;
+            });
+
+            const p1Pose = sortedPoses[0]; // Left Person
+            const p2Pose = sortedPoses.length > 1 ? sortedPoses[1] : null; // Right Person
+
+            if(p1Pose) updatePlayer(players.left, p1Pose, p2Pose, 'blue');
+            if(p2Pose) updatePlayer(players.right, p2Pose, p1Pose, 'red');
+        }
+
+        function updatePlayer(player, pose, opponentPose, color) {
+            const kp = pose.keypoints;
+            
+            // Helpers
+            const get = (name) => kp.find(k => k.name === name);
+            const nose = get('nose');
+            const leftWrist = get('left_wrist');
+            const rightWrist = get('right_wrist');
+            const leftElbow = get('left_elbow');
+            const rightElbow = get('right_elbow');
+            const leftShoulder = get('left_shoulder');
+            const rightShoulder = get('right_shoulder');
+            const leftHip = get('left_hip');
+            const rightHip = get('right_hip');
+
+            // Draw Skeleton
+            drawSkeleton(pose, color);
+
+            // --- 1. Step Counting ---
+            // Calculate center of hips
+            if (leftHip && rightHip && leftHip.score > 0.3 && rightHip.score > 0.3) {
+                const hipCenterX = (leftHip.x + rightHip.x) / 2;
+                const hipCenterY = (leftHip.y + rightHip.y) / 2;
+
+                if (player.prevKeypoints) {
+                    const prevLHip = player.prevKeypoints.find(k => k.name === 'left_hip');
+                    const prevRHip = player.prevKeypoints.find(k => k.name === 'right_hip');
+                    if (prevLHip && prevRHip) {
+                        const prevHipCenterX = (prevLHip.x + prevRHip.x) / 2;
+                        const prevHipCenterY = (prevLHip.y + prevRHip.y) / 2;
+                        
+                        // Check displacement
+                        const dist = Math.sqrt(Math.pow(hipCenterX - prevHipCenterX, 2) + Math.pow(hipCenterY - prevHipCenterY, 2));
+                        
+                        if (dist > STEP_MOVEMENT_THRESHOLD && player.stepCooldown <= 0) {
+                            player.stats.steps++;
+                            player.stepCooldown = STEP_COOLDOWN;
+                            updateUI(player.id);
+                        }
+                    }
+                }
+            }
+            if (player.stepCooldown > 0) player.stepCooldown--;
+
+
+            // --- 2. Punch Detection ---
+            // Check both arms
+            checkArmPunch(player, leftWrist, leftElbow, leftShoulder, opponentPose);
+            checkArmPunch(player, rightWrist, rightElbow, rightShoulder, opponentPose);
+            
+            if (player.punchCooldown > 0) player.punchCooldown--;
+
+            // Update History
+            player.prevKeypoints = kp;
+        }
+
+        function checkArmPunch(player, wrist, elbow, shoulder, opponentPose) {
+            if (!wrist || !elbow || !shoulder || wrist.score < 0.3) return;
+
+            // Previous Wrist Pos
+            let prevWrist = null;
+            if (player.prevKeypoints) {
+                prevWrist = player.prevKeypoints.find(k => k.name === wrist.name);
+            }
+
+            if (prevWrist) {
+                // 1. Calculate Velocity
+                const velocity = Math.sqrt(Math.pow(wrist.x - prevWrist.x, 2) + Math.pow(wrist.y - prevWrist.y, 2));
+
+                // 2. Calculate Extension (Angle at elbow)
+                // Angle logic omitted for brevity, using velocity + distance from shoulder heuristic
+                const distWristShoulder = Math.sqrt(Math.pow(wrist.x - shoulder.x, 2) + Math.pow(wrist.y - shoulder.y, 2));
+                
+                // Heuristic: High velocity moving AWAY from body
+                if (velocity > PUNCH_VELOCITY_THRESHOLD && player.punchCooldown <= 0) {
+                    // It's a punch motion
+                    player.stats.punches++;
+                    player.punchCooldown = 10; // short cooldown to prevent double count
+                    updateUI(player.id);
+                    
+                    // --- 3. Hit Detection (Only if punching and opponent exists) ---
+                    if (opponentPose) {
+                        detectHit(player, wrist, opponentPose);
+                    }
+                }
+            }
+        }
+
+        function detectHit(attacker, fist, victimPose) {
+            const vkp = victimPose.keypoints;
+            const vGet = (name) => vkp.find(k => k.name === name);
+
+            const vNose = vGet('nose');
+            const vLShoulder = vGet('left_shoulder');
+            const vRShoulder = vGet('right_shoulder');
+            const vLHip = vGet('left_hip');
+            const vRHip = vGet('right_hip');
+            
+            // Hitboxes
+            let hitRegistered = false;
+
+            // A. Head Hit (Radius around nose)
+            if (vNose && vNose.score > 0.3) {
+                const dist = Math.sqrt(Math.pow(fist.x - vNose.x, 2) + Math.pow(fist.y - vNose.y, 2));
+                if (dist < 40) { // 40px radius approximation
+                    attacker.stats.headHits++;
+                    hitRegistered = true;
+                    drawHitEffect(fist.x, fist.y, 'red');
+                }
+            }
+
+            // B. Body Hit (Rectangle between shoulders and hips)
+            if (!hitRegistered && vLShoulder && vRShoulder && vLHip && vRHip) {
+                // Simple box
+                const minX = Math.min(vLShoulder.x, vRShoulder.x, vLHip.x, vRHip.x);
+                const maxX = Math.max(vLShoulder.x, vRShoulder.x, vLHip.x, vRHip.x);
+                const minY = Math.min(vLShoulder.y, vRShoulder.y);
+                const maxY = Math.max(vLHip.y, vRHip.y);
+
+                if (fist.x > minX && fist.x < maxX && fist.y > minY && fist.y < maxY) {
+                    attacker.stats.bodyHits++;
+                    hitRegistered = true;
+                    drawHitEffect(fist.x, fist.y, 'yellow');
+                }
+            }
+
+            // C. Arm Hit (Near opponent wrists) - Simplified
+            if (!hitRegistered) {
+                const vLWrist = vGet('left_wrist');
+                const vRWrist = vGet('right_wrist');
+                const hitArm = [vLWrist, vRWrist].some(w => {
+                     if(!w || w.score < 0.3) return false;
+                     const dist = Math.sqrt(Math.pow(fist.x - w.x, 2) + Math.pow(fist.y - w.y, 2));
+                     return dist < 40;
+                });
+
+                if (hitArm) {
+                    attacker.stats.armHits++;
+                    hitRegistered = true;
+                    drawHitEffect(fist.x, fist.y, 'orange');
+                }
+            }
+
+            if (hitRegistered) {
+                attacker.punchCooldown = HIT_COOLDOWN; // Longer cooldown if hit landed
+                updateUI(attacker.id);
+            }
+        }
+
+        // --- Visualization & UI ---
+
+        function drawSkeleton(pose, colorStr) {
+            const color = colorStr === 'blue' ? '#3b82f6' : '#ef4444';
+            ctx.fillStyle = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+
+            pose.keypoints.forEach(keypoint => {
+                if (keypoint.score > 0.3) {
+                    ctx.beginPath();
+                    ctx.arc(keypoint.x, keypoint.y, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            });
+
+            // Draw connections (simplified list)
+            const edges = [
+                ['nose', 'left_eye'], ['nose', 'right_eye'],
+                ['left_shoulder', 'right_shoulder'],
+                ['left_shoulder', 'left_elbow'], ['left_elbow', 'left_wrist'],
+                ['right_shoulder', 'right_elbow'], ['right_elbow', 'right_wrist'],
+                ['left_shoulder', 'left_hip'], ['right_shoulder', 'right_hip'],
+                ['left_hip', 'right_hip'],
+                ['left_hip', 'left_knee'], ['left_knee', 'left_ankle'],
+                ['right_hip', 'right_knee'], ['right_knee', 'right_ankle']
+            ];
+
+            const kpMap = {};
+            pose.keypoints.forEach(kp => kpMap[kp.name] = kp);
+
+            edges.forEach(([p1, p2]) => {
+                if (kpMap[p1] && kpMap[p2] && kpMap[p1].score > 0.3 && kpMap[p2].score > 0.3) {
+                    ctx.beginPath();
+                    ctx.moveTo(kpMap[p1].x, kpMap[p1].y);
+                    ctx.lineTo(kpMap[p2].x, kpMap[p2].y);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function drawHitEffect(x, y, color) {
+            ctx.beginPath();
+            ctx.arc(x, y, 30, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.6;
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+
+        function updateUI(playerId) {
+            const p = playerId === 'p1' ? players.left : players.right;
+            
+            // Update Text
+            document.getElementById(`${playerId}-punches`).innerText = p.stats.punches;
+            document.getElementById(`${playerId}-steps`).innerText = p.stats.steps;
+            document.getElementById(`${playerId}-head`).innerText = p.stats.headHits;
+            document.getElementById(`${playerId}-body`).innerText = p.stats.bodyHits;
+            document.getElementById(`${playerId}-arm`).innerText = p.stats.armHits;
+
+            // Update Bars (Max value assumed 20 for visual scaling)
+            const updateBar = (type, val) => {
+                const pct = Math.min((val / 20) * 100, 100);
+                document.getElementById(`${playerId}-${type}-bar`).style.width = `${pct}%`;
+            };
+            
+            updateBar('head', p.stats.headHits);
+            updateBar('body', p.stats.bodyHits);
+            updateBar('arm', p.stats.armHits);
+        }
+
+        function resetStats() {
+            players.left.stats = { punches: 0, headHits: 0, bodyHits: 0, armHits: 0, steps: 0 };
+            players.right.stats = { punches: 0, headHits: 0, bodyHits: 0, armHits: 0, steps: 0 };
+            updateUI('p1');
+            updateUI('p2');
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
+
