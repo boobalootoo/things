@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Little Steps - Parent Guide</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Fredoka:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #fdfbf7;
+            -webkit-font-smoothing: antialiased;
+        }
+        h1, h2, h3, h4, .font-heading {
+            font-family: 'Fredoka', sans-serif;
+        }
+        /* Hide Scrollbar but keep functionality */
+        .hide-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scroll {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .active-filter {
+            transform: scale(1.05);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        /* DATA TABLE STYLES */
+        .sticky-header th {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            background-color: #f9fafb; /* gray-50 */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        
+        /* New style for the filter row to stick just below the header */
+        .sticky-filter th {
+            position: sticky;
+            top: 45px; /* Approx height of header row */
+            z-index: 19;
+            background-color: #f3f4f6; /* gray-100 */
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        /* CHECKBOX STYLES */
+        .custom-checkbox:checked {
+            background-color: #f59e0b; /* amber-500 */
+            border-color: #f59e0b;
+        }
+        .strikethrough-checked:checked + span {
+            text-decoration: line-through;
+            color: #9ca3af; /* gray-400 */
+        }
+
+        /* PRINT STYLES */
+        @media print {
+            body {
+                background-color: white;
+            }
+            header, #view-home, #view-glossary, #view-about, #view-checks, #view-data, .no-print, #filters-container, #search-container {
+                display: none !important;
+            }
+            #app-container {
+                padding-bottom: 0 !important;
+            }
+            #view-activity {
+                display: block !important;
+                position: static !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                opacity: 1 !important;
+                animation: none !important;
+            }
+            .print-border {
+                border: 2px solid #e5e7eb;
+                border-radius: 0;
+                box-shadow: none !important;
+                padding: 20px !important;
+            }
+            /* Ensure text is black for printing */
+            p, h1, h2, h3 {
+                color: black !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 cursor-pointer" onclick="switchView('home')">
+                <div class="bg-amber-400 p-2 rounded-xl text-white">
+                    <i data-lucide="baby"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-heading font-bold text-gray-800 leading-none">Little Steps</h1>
+                    <p class="text-xs text-gray-500 font-semibold">Parent Guide to EYFS</p>
+                </div>
+            </div>
+            <nav class="hidden md:flex gap-4">
+                <button onclick="switchView('home')" class="text-gray-600 hover:text-amber-500 font-semibold">Guide</button>
+                <button onclick="switchView('checks')" class="text-gray-600 hover:text-amber-500 font-semibold">Health Checks</button>
+                <button onclick="switchView('data')" class="text-gray-600 hover:text-amber-500 font-semibold flex items-center gap-1"><i data-lucide="table" class="w-4 h-4"></i> Data</button>
+                <button onclick="switchView('glossary')" class="text-gray-600 hover:text-amber-500 font-semibold">Jargon Buster</button>
+                <button onclick="switchView('about')" class="text-gray-600 hover:text-amber-500 font-semibold">About</button>
+            </nav>
+            <div class="flex gap-4 md:hidden">
+                 <button onclick="switchView('checks')" class="text-gray-500 hover:text-amber-500">
+                    <i data-lucide="stethoscope"></i>
+                </button>
+                <button onclick="switchView('data')" class="text-gray-500 hover:text-amber-500">
+                    <i data-lucide="table"></i>
+                </button>
+                <button onclick="switchView('glossary')" class="text-gray-500 hover:text-amber-500">
+                    <i data-lucide="book"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN APP CONTAINER -->
+    <main id="app-container" class="pb-20">
+        
+        <!-- HOME VIEW -->
+        <div id="view-home">
+            <!-- Hero -->
+            <div id="search-container" class="bg-amber-50 px-4 py-8 md:py-12 border-b border-amber-100">
+                <div class="max-w-4xl mx-auto text-center">
+                    <h2 class="text-2xl md:text-4xl font-heading font-bold text-gray-800 mb-3">
+                        Helping your child grow
+                    </h2>
+                    <p class="text-gray-600 md:text-lg max-w-xl mx-auto mb-6">
+                        Click on any milestone below to see a full activity sheet with instructions, resources, and adaptations.
+                    </p>
+                    
+                    <!-- Search Bar -->
+                    <div class="relative max-w-md mx-auto">
+                        <i data-lucide="search" class="absolute left-3 top-3.5 text-gray-400 w-5 h-5"></i>
+                        <input 
+                            type="text" 
+                            id="search-input"
+                            placeholder="Search for 'walking', 'sharing', 'reading'..." 
+                            class="w-full pl-10 pr-4 py-3 rounded-2xl border-none shadow-sm focus:ring-2 focus:ring-amber-400 outline-none"
+                            oninput="handleSearch(this.value)"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="max-w-5xl mx-auto px-4 py-6">
+                
+                <!-- Filters Container (Hidden when searching) -->
+                <div id="filters-container">
+                    <!-- Age Selector -->
+                    <div class="mb-6">
+                        <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Select Age Range</h3>
+                        <div class="flex gap-2 overflow-x-auto hide-scroll pb-2" id="age-buttons">
+                            <!-- Injected via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Area Selector -->
+                    <div class="mb-8">
+                        <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Area of Learning</h3>
+                        <div class="flex gap-2 overflow-x-auto hide-scroll pb-2" id="area-buttons">
+                            <!-- Injected via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Header -->
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="font-heading font-bold text-xl text-gray-800" id="results-title">What to expect</h2>
+                    <span id="results-count" class="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-md">0 Items</span>
+                </div>
+
+                <!-- Content Grid -->
+                <div id="content-grid" class="grid md:grid-cols-2 gap-4">
+                    <!-- Cards Injected via JS -->
+                </div>
+                
+                 <!-- Footer Info -->
+                 <div class="mt-12 text-center border-t border-gray-100 pt-8 no-print">
+                    <p class="text-xs text-gray-400 max-w-lg mx-auto leading-relaxed">
+                        This guide is a simplified summary for parents. It combines guidance from <span class="font-bold">Development Matters</span>, <span class="font-bold">Birth to 5 Matters</span>, and the <span class="font-bold">Statutory EYFS Framework</span>.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ACTIVITY DETAIL VIEW (Hidden by default) -->
+        <div id="view-activity" class="hidden max-w-4xl mx-auto p-4 fade-in">
+            <!-- Nav Actions -->
+            <div class="flex items-center justify-between mb-6 no-print">
+                <button onclick="switchView('home')" class="flex items-center gap-2 text-gray-600 hover:text-amber-500 font-bold bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-200">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+                </button>
+                <button onclick="window.print()" class="flex items-center gap-2 text-white bg-indigo-600 hover:bg-indigo-700 font-bold px-4 py-2 rounded-xl shadow-sm">
+                    <i data-lucide="printer" class="w-4 h-4"></i> Print Activity Sheet
+                </button>
+            </div>
+
+            <!-- Printable Activity Sheet -->
+            <div id="activity-content" class="bg-white rounded-3xl border border-gray-200 shadow-lg p-6 md:p-10 print-border">
+                <!-- Content injected via JS -->
+            </div>
+        </div>
+
+        <!-- HEALTH CHECKS VIEW (Hidden by default) -->
+        <div id="view-checks" class="hidden max-w-5xl mx-auto p-4 fade-in">
+             <button onclick="switchView('home')" class="mb-4 flex items-center gap-1 text-gray-500 hover:text-amber-500">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Guide
+            </button>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Main Checks Column -->
+                <div class="md:col-span-2 space-y-6">
+                    <h2 class="text-3xl font-heading font-bold text-gray-800 mb-2">Statutory Health Checks</h2>
+                    <p class="text-gray-600 mb-6">In the UK, all children have regular health and development reviews (Healthy Child Programme). These are the big ones to look out for.</p>
+
+                    <!-- 2 Year Check Card -->
+                    <div class="bg-white rounded-3xl p-6 border border-emerald-100 shadow-sm">
+                        <div class="flex items-center gap-3 mb-4">
+                             <div class="bg-emerald-100 p-2 rounded-full text-emerald-600">
+                                <i data-lucide="calendar-clock" class="w-6 h-6"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">The 2 to 2½ Year Review</h3>
+                        </div>
+                        <p class="text-gray-600 mb-4">Usually carried out by a Health Visitor or Nursery Nurse. It may happen at your home, a GP surgery, or a children's centre.</p>
+                        
+                        <div class="bg-emerald-50 rounded-xl p-4 mb-4">
+                            <h4 class="font-bold text-emerald-800 mb-2">What they look for:</h4>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500"></i> <strong>General Development:</strong> Movement, speech, social skills.</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500"></i> <strong>Growth:</strong> Height and weight check.</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500"></i> <strong>Teeth:</strong> Advice on brushing and dentist visits.</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500"></i> <strong>Behavior:</strong> Sleeping, eating, and potty training support.</li>
+                            </ul>
+                        </div>
+                        <p class="text-sm text-gray-500 italic">Tip: If your child attends nursery, the key person will also do a "Progress Check at Age 2" which feeds into this.</p>
+                    </div>
+
+                    <!-- School Entry Check Card -->
+                     <div class="bg-white rounded-3xl p-6 border border-indigo-100 shadow-sm">
+                        <div class="flex items-center gap-3 mb-4">
+                             <div class="bg-indigo-100 p-2 rounded-full text-indigo-600">
+                                <i data-lucide="school" class="w-6 h-6"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">School Entry Review (Age 4-5)</h3>
+                        </div>
+                        <p class="text-gray-600 mb-4">Usually happens when your child starts Reception class. It assesses if they are ready for school learning.</p>
+                        
+                        <div class="bg-indigo-50 rounded-xl p-4">
+                            <h4 class="font-bold text-indigo-800 mb-2">Key Areas:</h4>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex gap-2"><i data-lucide="eye" class="w-4 h-4 text-indigo-500"></i> <strong>Vision & Hearing:</strong> Detecting any issues early.</li>
+                                <li class="flex gap-2"><i data-lucide="ruler" class="w-4 h-4 text-indigo-500"></i> <strong>Growth:</strong> Measuring height and weight (National Child Measurement Programme).</li>
+                                <li class="flex gap-2"><i data-lucide="activity" class="w-4 h-4 text-indigo-500"></i> <strong>Vaccinations:</strong> Checking 4-in-1 pre-school booster.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Red Flags Column -->
+                <div>
+                     <div class="bg-rose-50 rounded-3xl p-6 border border-rose-100 h-full">
+                        <h2 class="text-xl font-heading font-bold text-rose-800 mb-4 flex items-center gap-2">
+                            <i data-lucide="alert-triangle" class="w-6 h-6"></i> When to ask for help
+                        </h2>
+                        <p class="text-sm text-rose-900 mb-6">Children develop at different rates, but you should speak to a GP or Health Visitor if you notice these signs.</p>
+
+                        <div class="space-y-6">
+                            <div>
+                                <h4 class="font-bold text-gray-800 mb-1">By 18 Months</h4>
+                                <ul class="text-sm text-gray-600 space-y-1 list-disc pl-4">
+                                    <li>Not walking independently.</li>
+                                    <li>Not saying any single words.</li>
+                                    <li>Does not point to show you things.</li>
+                                </ul>
+                            </div>
+
+                             <div>
+                                <h4 class="font-bold text-gray-800 mb-1">By 2 Years</h4>
+                                <ul class="text-sm text-gray-600 space-y-1 list-disc pl-4">
+                                    <li>Does not put two words together (e.g., "More milk").</li>
+                                    <li>Does not run.</li>
+                                    <li>Doesn't copy actions or words.</li>
+                                </ul>
+                            </div>
+
+                             <div>
+                                <h4 class="font-bold text-gray-800 mb-1">By 3 Years</h4>
+                                <ul class="text-sm text-gray-600 space-y-1 list-disc pl-4">
+                                    <li>Speech is unclear to strangers.</li>
+                                    <li>Falls over a lot or finds stairs difficult.</li>
+                                    <li>Doesn't play make-believe.</li>
+                                </ul>
+                            </div>
+
+                             <div>
+                                <h4 class="font-bold text-gray-800 mb-1">General Red Flags</h4>
+                                <ul class="text-sm text-gray-600 space-y-1 list-disc pl-4">
+                                    <li><strong>Regression:</strong> Losing skills they once had.</li>
+                                    <li><strong>Eye Contact:</strong> Avoiding eye contact.</li>
+                                    <li><strong>Hearing:</strong> Not responding to their name.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="mt-8 pt-6 border-t border-rose-200">
+                            <p class="font-bold text-rose-800 text-sm mb-2">Who to contact?</p>
+                            <p class="text-xs text-rose-700">Your local GP, Health Visitor, or the SENCO at your child's nursery/preschool are the best first steps.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DATA VIEW (Hidden by default) -->
+        <div id="view-data" class="hidden max-w-6xl mx-auto p-4 fade-in">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-heading font-bold text-gray-800">Birth to 5 Matters Data</h2>
+                <div class="flex gap-2">
+                    <!-- Column Visibility Toggle -->
+                    <div class="relative">
+                        <button onclick="toggleColMenu()" class="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium shadow-sm hover:bg-gray-50">
+                            <i data-lucide="columns" class="w-4 h-4"></i> Columns
+                        </button>
+                        <div id="col-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 p-2 z-50">
+                            <!-- Injected via JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Controls -->
+            <div class="bg-white p-4 rounded-t-xl border border-gray-200 border-b-0 flex items-center gap-4">
+                <div class="relative flex-1">
+                    <i data-lucide="search" class="absolute left-3 top-2.5 text-gray-400 w-4 h-4"></i>
+                    <input 
+                        type="text" 
+                        id="data-filter" 
+                        oninput="filterData(this.value)"
+                        placeholder="Filter data..." 
+                        class="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none"
+                    >
+                </div>
+                <div class="text-xs text-gray-500" id="data-count">Loading...</div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="bg-white border border-gray-200 rounded-b-xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto max-h-[70vh]">
+                    <table class="w-full text-left text-sm text-gray-600">
+                        <thead class="sticky-header text-gray-700 font-bold uppercase tracking-wider text-xs">
+                            <tr id="data-header">
+                                <!-- Headers injected via JS -->
+                            </tr>
+                        </thead>
+                        <tbody id="data-body" class="divide-y divide-gray-100">
+                            <!-- Rows injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- GLOSSARY VIEW (Hidden by default) -->
+        <div id="view-glossary" class="hidden max-w-4xl mx-auto p-4 fade-in">
+            <button onclick="switchView('home')" class="mb-4 flex items-center gap-1 text-gray-500 hover:text-amber-500">
+                <i data-lucide="x" class="w-4 h-4"></i> Close Glossary
+            </button>
+            <h2 class="text-2xl font-heading font-bold text-gray-800 mb-6">Jargon Buster</h2>
+            <div id="glossary-grid" class="grid gap-4">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+
+        <!-- ABOUT VIEW (Hidden by default) -->
+        <div id="view-about" class="hidden max-w-4xl mx-auto p-4 fade-in">
+            <button onclick="switchView('home')" class="mb-4 flex items-center gap-1 text-gray-500 hover:text-amber-500">
+                <i data-lucide="x" class="w-4 h-4"></i> Back to Guide
+            </button>
+            <div class="bg-white p-6 rounded-3xl border border-indigo-100 shadow-sm">
+                <h2 class="text-2xl font-heading font-bold text-gray-800 mb-4">About These Documents</h2>
+                <p class="text-gray-600 mb-4">In England, early years providers follow specific frameworks. It can be confusing for parents, so here is the breakdown:</p>
+                
+                <div class="space-y-4">
+                    <div class="flex gap-4 items-start">
+                        <div class="bg-rose-100 p-3 rounded-full text-rose-600 mt-1"><i data-lucide="check-circle" class="w-5 h-5"></i></div>
+                        <div>
+                            <h3 class="font-bold text-gray-800">EYFS (Statutory Framework)</h3>
+                            <p class="text-sm text-gray-600">The Law. It sets the standards for safety, ratios, and what children must achieve by age 5.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4 items-start">
+                        <div class="bg-blue-100 p-3 rounded-full text-blue-600 mt-1"><i data-lucide="book-open" class="w-5 h-5"></i></div>
+                        <div>
+                            <h3 class="font-bold text-gray-800">Development Matters</h3>
+                            <p class="text-sm text-gray-600">Guidance on how children learn. It's not a tick-list, but a guide to help professionals support your child.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4 items-start">
+                        <div class="bg-emerald-100 p-3 rounded-full text-emerald-600 mt-1"><i data-lucide="heart" class="w-5 h-5"></i></div>
+                        <div>
+                            <h3 class="font-bold text-gray-800">Birth to 5 Matters</h3>
+                            <p class="text-sm text-gray-600">Alternative guidance created by the Early Years Coalition. It focuses heavily on the unique child and positive relationships.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // --- MAPPING RANGES TO AGES ---
+        // This transforms the raw CSV data (e.g., "Range 1") into user-friendly text.
+        const RANGE_MAP = {
+            'Range 1': 'Birth - 6 Months',
+            'Range 2': '6 - 12 Months',
+            'Range 3': '12 - 18 Months',
+            'Range 4': '18 - 24 Months',
+            'Range 5': '24 - 36 Months',
+            'Range 6': '36 - 60+ Months'
+        };
+
+        // --- EXISTING DATA (For Home Tab Cards) ---
+        const AGES = [
+            { id: 'range1', label: 'Birth - 6 Months', color: 'bg-teal-100 text-teal-700 border-teal-200' },
+            { id: 'range2', label: '6 - 12 Months', color: 'bg-green-100 text-green-700 border-green-200' },
+            { id: 'range3', label: '12 - 18 Months', color: 'bg-lime-100 text-lime-700 border-lime-200' },
+            { id: 'range4', label: '18 - 24 Months', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+            { id: 'range5', label: '24 - 36 Months', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+            { id: 'range6', label: '36 - 48 Months', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+            { id: 'range7', label: '48 - 60 Months', color: 'bg-slate-200 text-slate-700 border-slate-300' },
+            { id: 'range8', label: '60+ Months', color: 'bg-slate-300 text-slate-800 border-slate-400' }
+        ];
+
+        const AREAS = [
+            { id: 'all', label: 'All Areas', icon: 'users', color: 'text-gray-600' },
+            { id: 'cl', label: 'Communication & Language', icon: 'message-circle', color: 'text-blue-500' },
+            { id: 'psed', label: 'Personal, Social & Emotional', icon: 'heart', color: 'text-rose-500' },
+            { id: 'pd', label: 'Physical Development', icon: 'sun', color: 'text-orange-500' },
+            { id: 'lit', label: 'Literacy', icon: 'book-open', color: 'text-indigo-500' },
+            { id: 'math', label: 'Mathematics', icon: 'calculator', color: 'text-emerald-500' },
+            { id: 'uw', label: 'Understanding the World', icon: 'monitor', color: 'text-cyan-500' },
+            { id: 'ead', label: 'Expressive Arts & Design', icon: 'palette', color: 'text-purple-500' },
+        ];
+        
+        // Note: The Home tab content below is curated for the "What to Expect" cards.
+        // The Data tab strictly uses the CSV file loaded via initData().
+        const CONTENT = [
+            // Sample content mapped to ranges (kept brief for this example)
+            { id: 1, ageGroup: 'range1', area: 'cl', title: 'Watching & Listening', description: 'Your baby will turn towards familiar sounds.', tip: 'Talk to your baby during nappy changes.', source: 'Birth to 5 Matters', resources: ['Face', 'Rattle'], prep: 'Quiet time.', instructions: ['Hold baby close', 'Talk softly'], adaptations: {easier: 'High contrast toys', harder: 'Move further away'} },
+            { id: 2, ageGroup: 'range3', area: 'pd', title: 'First Steps', description: 'Pulling to stand and cruising.', tip: 'Safe spaces to pull up.', source: 'Development Matters', resources: ['Furniture'], prep: 'Clear hazards', instructions: ['Put toy on sofa', 'Encourage standing'], adaptations: {easier: 'Hold hands', harder: 'Walk between gaps'} },
+             { id: 3, ageGroup: 'range7', area: 'math', title: 'Number Bonds', description: 'Knowing which two numbers make 10.', tip: 'Use fingers.', source: 'EYFS', resources: ['Fingers'], prep: 'None', instructions: ['Show 10 fingers', 'Hide 3', 'Ask how many left'], adaptations: {easier: 'Bonds to 5', harder: 'Write sums'} },
+        ];
+
+        const GLOSSARY = [
+            { term: 'Fine Motor Skills', def: 'Small movements using hands and fingers.' },
+            { term: 'Gross Motor Skills', def: 'Large movements using the whole body.' },
+            { term: 'ELG', def: 'Early Learning Goal - Expected standard at end of Reception.' },
+        ];
+
+        // --- STATE ---
+        let state = {
+            age: 'range1',
+            area: 'all',
+            search: '',
+            // Table State
+            dataRows: [],
+            dataHeaders: [],
+            sortCol: null,
+            sortAsc: true,
+            filterText: '',
+            hiddenCols: new Set(),
+            checkedItems: {}, // Format: { rowId_bulletIndex: true }
+            colFilters: {} // NEW: { ColumnName: "FilterValue" }
+        };
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState(); // Load persistence first
+            initData();
+            renderFilters();
+            renderGlossary();
+            updateDisplay();
+        });
+
+        // --- PERSISTENCE ---
+        function loadState() {
+            const saved = localStorage.getItem('littleStepsState');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                state.hiddenCols = new Set(parsed.hiddenCols || []);
+                state.checkedItems = parsed.checkedItems || {};
+                state.filterText = parsed.filterText || '';
+                state.colFilters = parsed.colFilters || {}; // Load column filters
+                
+                // Update input if it exists
+                const input = document.getElementById('data-filter');
+                if(input) input.value = state.filterText;
+            }
+        }
+
+        function saveState() {
+            const toSave = {
+                hiddenCols: Array.from(state.hiddenCols),
+                checkedItems: state.checkedItems,
+                filterText: state.filterText,
+                colFilters: state.colFilters // Save column filters
+            };
+            localStorage.setItem('littleStepsState', JSON.stringify(toSave));
+        }
+
+        // --- DATA PROCESSING ---
+        async function initData() {
+            const loadingIndicator = document.getElementById('data-count');
+            if(loadingIndicator) loadingIndicator.innerText = "Loading CSV...";
+
+            try {
+                const response = await fetch('birthto5.csv');
+                if (!response.ok) throw new Error(`Failed to fetch CSV: ${response.statusText}`);
+                const text = await response.text();
+                processCSV(text);
+                console.log('Loaded birthto5.csv successfully');
+            } catch (err) {
+                console.error('Error loading data:', err);
+                // Show error in table
+                const tableBody = document.getElementById('data-body');
+                if (tableBody) {
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="100%" class="px-4 py-8 text-center">
+                                <div class="flex flex-col items-center gap-2 text-rose-500">
+                                    <i data-lucide="alert-triangle" class="w-8 h-8"></i>
+                                    <span class="font-bold">Could not load 'birthto5.csv'</span>
+                                    <span class="text-sm text-gray-500">Please ensure the file is in the same folder and you are running a local server (if viewing locally).</span>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }
+                if(loadingIndicator) loadingIndicator.innerText = "Error loading data";
+                lucide.createIcons();
+            }
+        }
+
+        function processCSV(text) {
+            const rows = parseCSV(text);
+            if (rows.length > 0) {
+                state.dataHeaders = rows[0];
+                const rawRows = rows.slice(1);
+                
+                // Map array to object based on headers and generate unique ID
+                state.dataRows = rawRows.map((rowArray, rowIndex) => {
+                    let obj = { _id: `row_${rowIndex}` }; // Unique ID for persistence
+                    state.dataHeaders.forEach((h, i) => {
+                        let val = rowArray[i] || '';
+                        
+                        // Age Range Replacement Logic
+                        if (h.toLowerCase().includes('range')) {
+                            // Normalize string to match map keys (e.g. "Range 1" or "Range 1 (Birth..)")
+                            const match = val.match(/(Range\s*\d+)/i);
+                            if (match && RANGE_MAP[match[1]]) {
+                                val = RANGE_MAP[match[1]]; // Replace with "Birth - 6 Months"
+                            }
+                        }
+                        obj[h] = val;
+                    });
+                    return obj;
+                });
+                
+                renderTable();
+            }
+        }
+
+        // Robust CSV Parser (handles commas inside quotes)
+        function parseCSV(text) {
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+
+                if (char === '"') {
+                    if (inQuotes && nextChar === '"') {
+                        currentCell += '"'; // Escaped quote
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    currentRow.push(currentCell.trim());
+                    currentCell = '';
+                } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+                    currentRow.push(currentCell.trim());
+                    rows.push(currentRow);
+                    currentRow = [];
+                    currentCell = '';
+                    if (char === '\r') i++;
+                } else {
+                    currentCell += char;
+                }
+            }
+            // Add last cell/row if exists
+            if (currentCell || currentRow.length) {
+                currentRow.push(currentCell.trim());
+                rows.push(currentRow);
+            }
+            return rows;
+        }
+
+        // --- TABLE LOGIC ---
+        function toggleCheck(id) {
+            if (state.checkedItems[id]) {
+                delete state.checkedItems[id];
+            } else {
+                state.checkedItems[id] = true;
+            }
+            saveState(); // Save to localStorage
+            // Let's just update the DOM element directly for performance.
+            const checkbox = document.getElementById(id);
+            const label = checkbox.nextElementSibling;
+            if (state.checkedItems[id]) {
+                label.classList.add('line-through', 'text-gray-400');
+            } else {
+                label.classList.remove('line-through', 'text-gray-400');
+            }
+        }
+
+        function formatCellContent(content, rowId) {
+            // check if content contains bullet points
+            if (content.includes('•')) {
+                const items = content.split('•').filter(i => i.trim().length > 0);
+                return `
+                    <div class="flex flex-col gap-2">
+                        ${items.map((item, idx) => {
+                            const checkId = `${rowId}_${idx}`;
+                            const isChecked = state.checkedItems[checkId];
+                            return `
+                            <label class="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                                <input 
+                                    type="checkbox" 
+                                    id="${checkId}"
+                                    onchange="toggleCheck('${checkId}')"
+                                    class="mt-1 w-4 h-4 text-amber-500 rounded border-gray-300 focus:ring-amber-500 custom-checkbox transition-all flex-shrink-0"
+                                    ${isChecked ? 'checked' : ''}
+                                >
+                                <span class="text-sm leading-snug ${isChecked ? 'line-through text-gray-400' : 'text-gray-700'}">${item.trim()}</span>
+                            </label>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+            return content;
+        }
+
+        function toggleColMenu() {
+            document.getElementById('col-menu').classList.toggle('hidden');
+        }
+
+        function toggleColumn(header) {
+            if (state.hiddenCols.has(header)) {
+                state.hiddenCols.delete(header);
+            } else {
+                state.hiddenCols.add(header);
+            }
+            saveState(); // Save to localStorage
+            renderTable(); 
+        }
+
+        function sortData(col) {
+            if (state.sortCol === col) {
+                state.sortAsc = !state.sortAsc;
+            } else {
+                state.sortCol = col;
+                state.sortAsc = true;
+            }
+            renderTable();
+        }
+
+        function filterData(val) {
+            state.filterText = val.toLowerCase();
+            saveState(); // Save filters
+            renderTable();
+        }
+
+        // NEW: Update specific column filter
+        function updateColFilter(col, val) {
+            if (val === '') {
+                delete state.colFilters[col];
+            } else {
+                state.colFilters[col] = val;
+            }
+            saveState();
+            renderTable();
+        }
+
+        // NEW: Helper to get unique values for dropdowns
+        function getUniqueValues(col) {
+            const values = new Set(state.dataRows.map(row => row[col]));
+            return Array.from(values).sort();
+        }
+
+        function renderTable() {
+            // 1. Filter (Global + Column Specific)
+            let filtered = state.dataRows.filter(row => {
+                // Global Search
+                if (state.filterText) {
+                    const globalMatch = Object.values(row).some(v => String(v).toLowerCase().includes(state.filterText));
+                    if (!globalMatch) return false;
+                }
+
+                // Column Specific Filters
+                for (const [col, filterVal] of Object.entries(state.colFilters)) {
+                    if (!filterVal) continue;
+                    const cellValue = String(row[col]).toLowerCase();
+                    const searchVal = filterVal.toLowerCase();
+                    // Exact match for dropdown-like behavior if it seems like a category, otherwise contains
+                    // For simplicity in this UI, we use 'includes' for text inputs and exact for selects (handled by UI value)
+                    if (!cellValue.includes(searchVal)) return false;
+                }
+
+                return true;
+            });
+
+            // 2. Sort
+            if (state.sortCol) {
+                filtered.sort((a, b) => {
+                    let valA = a[state.sortCol];
+                    let valB = b[state.sortCol];
+                    
+                    // Simple numeric check
+                    if (!isNaN(valA) && !isNaN(valB)) {
+                        valA = Number(valA);
+                        valB = Number(valB);
+                    }
+
+                    if (valA < valB) return state.sortAsc ? -1 : 1;
+                    if (valA > valB) return state.sortAsc ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            document.getElementById('data-count').innerText = `Showing ${filtered.length} rows`;
+
+            // 3. Render Headers & Filters
+            const visibleHeaders = state.dataHeaders.filter(h => !state.hiddenCols.has(h));
+            const tableHead = document.getElementById('data-header');
+            
+            // Header Row
+            let headerHTML = visibleHeaders.map(h => `
+                <th onclick="sortData('${h}')" class="px-4 py-3 cursor-pointer hover:bg-gray-100 border-b border-gray-200 select-none bg-gray-50 min-w-[150px]">
+                    <div class="flex items-center justify-between gap-2">
+                        <span>${h}</span>
+                        ${state.sortCol === h ? (state.sortAsc ? '<i data-lucide="chevron-up" class="w-3 h-3 text-amber-500"></i>' : '<i data-lucide="chevron-down" class="w-3 h-3 text-amber-500"></i>') : '<i data-lucide="chevrons-up-down" class="w-3 h-3 text-gray-300"></i>'}
+                    </div>
+                </th>
+            `).join('');
+            
+            // Filter Row (New)
+            const thead = document.querySelector('thead');
+            thead.innerHTML = `
+                <tr class="sticky-header text-gray-700 font-bold uppercase tracking-wider text-xs">
+                    ${headerHTML}
+                </tr>
+                <tr class="sticky-filter bg-gray-100">
+                    ${visibleHeaders.map(h => {
+                        const uniqueVals = getUniqueValues(h);
+                        const currentVal = state.colFilters[h] || '';
+                        
+                        // Use dropdown if < 15 unique values, else text input
+                        if (uniqueVals.length > 0 && uniqueVals.length < 15) {
+                            return `
+                                <th class="px-2 py-2">
+                                    <select 
+                                        onchange="updateColFilter('${h}', this.value)"
+                                        class="w-full text-xs p-1 border border-gray-300 rounded focus:ring-amber-500 focus:border-amber-500 font-normal text-gray-600"
+                                    >
+                                        <option value="">All</option>
+                                        ${uniqueVals.map(v => `<option value="${v}" ${currentVal === v ? 'selected' : ''}>${v}</option>`).join('')}
+                                    </select>
+                                </th>
+                            `;
+                        } else {
+                            return `
+                                <th class="px-2 py-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Filter..." 
+                                        value="${currentVal}"
+                                        oninput="updateColFilter('${h}', this.value)"
+                                        class="w-full text-xs p-1 border border-gray-300 rounded focus:ring-amber-500 focus:border-amber-500 font-normal"
+                                    >
+                                </th>
+                            `;
+                        }
+                    }).join('')}
+                </tr>
+            `;
+
+            // 4. Render Body
+            document.getElementById('data-body').innerHTML = filtered.map(row => `
+                <tr class="hover:bg-amber-50/30 transition-colors border-b border-gray-100 last:border-0 group">
+                    ${visibleHeaders.map(h => `
+                        <td class="px-4 py-4 align-top text-gray-600">
+                            ${formatCellContent(row[h], row._id)}
+                        </td>
+                    `).join('')}
+                </tr>
+            `).join('');
+
+            // 5. Render Column Menu Options
+            document.getElementById('col-menu').innerHTML = state.dataHeaders.map(h => `
+                <label class="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 rounded cursor-pointer text-sm">
+                    <input type="checkbox" ${!state.hiddenCols.has(h) ? 'checked' : ''} onchange="toggleColumn('${h}')" class="rounded text-amber-500 focus:ring-amber-400">
+                    <span class="text-gray-700">${h}</span>
+                </label>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        // --- EXISTING RENDER FUNCTIONS ---
+        function renderFilters() {
+             const ageContainer = document.getElementById('age-buttons');
+            ageContainer.innerHTML = AGES.map(age => `
+                <button 
+                    onclick="setAge('${age.id}')"
+                    class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm transition-all border ${state.age === age.id ? `${age.color} active-filter shadow-sm` : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}"
+                >
+                    ${age.label}
+                </button>
+            `).join('');
+
+            const areaContainer = document.getElementById('area-buttons');
+            areaContainer.innerHTML = AREAS.map(area => {
+                const isActive = state.area === area.id;
+                return `
+                <button 
+                    onclick="setArea('${area.id}')"
+                    class="whitespace-nowrap px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-2 border transition-all ${isActive ? 'bg-gray-800 text-white border-gray-800 shadow-lg active-filter' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}"
+                >
+                    <i data-lucide="${area.icon}" class="w-4 h-4 ${isActive ? 'text-amber-400' : area.color}"></i>
+                    ${area.label}
+                </button>
+            `}).join('');
+        }
+        function renderGlossary() { 
+             const container = document.getElementById('glossary-grid');
+            container.innerHTML = GLOSSARY.map(item => `
+                <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                    <h3 class="font-bold text-amber-600 text-lg mb-1">${item.term}</h3>
+                    <p class="text-gray-600">${item.def}</p>
+                </div>
+            `).join('');
+        }
+        function updateDisplay() {
+            const grid = document.getElementById('content-grid');
+            const filtersContainer = document.getElementById('filters-container');
+            const titleEl = document.getElementById('results-title');
+            const countEl = document.getElementById('results-count');
+
+            if (state.search.length > 0) {
+                filtersContainer.classList.add('hidden');
+                titleEl.innerText = 'Search Results';
+            } else {
+                filtersContainer.classList.remove('hidden');
+                titleEl.innerText = 'What to expect';
+            }
+
+            const filtered = CONTENT.filter(item => {
+                if (state.search.length > 0) {
+                    const q = state.search.toLowerCase();
+                    return item.title.toLowerCase().includes(q) || 
+                           item.description.toLowerCase().includes(q);
+                }
+                const ageMatch = item.ageGroup === state.age;
+                const areaMatch = state.area === 'all' || item.area === state.area;
+                return ageMatch && areaMatch;
+            });
+
+            countEl.innerText = `${filtered.length} Items`;
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '<div class="col-span-full text-center py-12 text-gray-400">No milestones found.</div>';
+            } else {
+                grid.innerHTML = filtered.map(item => {
+                    const areaObj = AREAS.find(a => a.id === item.area) || AREAS[0];
+                    const ageObj = AGES.find(a => a.id === item.ageGroup) || AGES[0];
+                    return `
+                    <div onclick="openActivity(${item.id})" class="cursor-pointer group bg-white rounded-3xl p-5 shadow-sm border border-gray-100 hover:shadow-lg hover:border-amber-200 hover:-translate-y-1 transition-all fade-in">
+                        <div class="flex justify-between items-start mb-3">
+                            <div class="flex items-center gap-2 text-sm font-bold ${areaObj.color}">
+                                <i data-lucide="${areaObj.icon}" class="w-4 h-4"></i>
+                                <span>${areaObj.label}</span>
+                            </div>
+                             <span class="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full uppercase font-bold tracking-wider">
+                                ${ageObj.label.split(' ')[0]} 
+                            </span>
+                        </div>
+                        <h3 class="text-lg font-bold text-gray-800 mb-2 leading-tight group-hover:text-amber-600 transition-colors">${item.title}</h3>
+                        <p class="text-gray-600 mb-4 leading-relaxed">${item.description}</p>
+                         <div class="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                            <div class="flex items-center justify-between mb-1 text-amber-700 font-bold text-sm">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="sun" class="w-4 h-4"></i>
+                                    <span>Try this at home</span>
+                                </div>
+                                <i data-lucide="arrow-right" class="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                            </div>
+                            <p class="text-sm text-amber-900">${item.tip}</p>
+                        </div>
+                    </div>
+                `}).join('');
+            }
+            lucide.createIcons();
+        }
+
+        // --- ACTIONS ---
+        function setAge(id) { state.age = id; updateDisplay(); }
+        function setArea(id) { state.area = id; updateDisplay(); }
+        function handleSearch(val) { state.search = val.trim(); updateDisplay(); }
+        
+        function openActivity(id) {
+             const item = CONTENT.find(i => i.id === id);
+            if (!item) return;
+
+             const areaObj = AREAS.find(a => a.id === item.area) || AREAS[0];
+            const ageObj = AGES.find(a => a.id === item.ageGroup) || AGES[0];
+
+            const container = document.getElementById('activity-content');
+            container.innerHTML = `
+                <div class="flex items-start justify-between mb-6 border-b border-gray-100 pb-6">
+                    <div>
+                        <div class="flex items-center gap-2 text-sm font-bold ${areaObj.color} mb-2 uppercase tracking-wider">
+                            <i data-lucide="${areaObj.icon}" class="w-5 h-5"></i>
+                            <span>${areaObj.label}</span>
+                        </div>
+                        <h1 class="text-3xl md:text-4xl font-heading font-bold text-gray-900 mb-2">${item.title}</h1>
+                        <p class="text-gray-600 text-lg">${item.description}</p>
+                    </div>
+                    <div class="hidden md:block bg-gray-100 text-gray-500 px-3 py-1 rounded-lg font-bold text-sm text-center">
+                        <span class="block text-xs uppercase text-gray-400 mb-1">Age Range</span>
+                        ${ageObj.label}
+                    </div>
+                </div>
+                <div class="grid md:grid-cols-2 gap-8 mb-8">
+                     <div class="bg-indigo-50 rounded-2xl p-6 border border-indigo-100">
+                        <h3 class="font-bold text-indigo-800 text-lg mb-4 flex items-center gap-2"><i data-lucide="list-checks" class="w-5 h-5"></i> Resources</h3>
+                        <ul class="space-y-2 mb-6">${item.resources.map(r => `<li class="flex items-center gap-2 text-gray-700"><div class="w-1.5 h-1.5 rounded-full bg-indigo-400"></div> ${r}</li>`).join('')}</ul>
+                        <h3 class="font-bold text-indigo-800 text-lg mb-4 flex items-center gap-2"><i data-lucide="clipboard-check" class="w-5 h-5"></i> Preparation</h3>
+                        <p class="text-gray-700">${item.prep}</p>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-gray-800 text-xl mb-4 flex items-center gap-2"><i data-lucide="layers" class="w-6 h-6 text-amber-500"></i> Step-by-Step</h3>
+                        <div class="space-y-4">${item.instructions.map((step, index) => `<div class="flex gap-4"><div class="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold text-sm">${index + 1}</div><p class="text-gray-700 pt-1">${step}</p></div>`).join('')}</div>
+                    </div>
+                </div>
+                <div class="border-t border-gray-100 pt-8">
+                    <h3 class="font-bold text-gray-800 text-xl mb-6 text-center">Differentiation & Support</h3>
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="border border-green-100 bg-green-50/50 rounded-2xl p-5"><div class="flex items-center gap-2 font-bold text-green-700 mb-2"><i data-lucide="arrow-down-circle" class="w-5 h-5"></i> Make it Easier</div><p class="text-gray-700 text-sm leading-relaxed">${item.adaptations.easier}</p></div>
+                        <div class="border border-rose-100 bg-rose-50/50 rounded-2xl p-5"><div class="flex items-center gap-2 font-bold text-rose-700 mb-2"><i data-lucide="arrow-up-circle" class="w-5 h-5"></i> Make it Harder</div><p class="text-gray-700 text-sm leading-relaxed">${item.adaptations.harder}</p></div>
+                    </div>
+                </div>
+                <div class="mt-8 pt-4 border-t border-gray-100 flex justify-between items-center text-xs text-gray-400"><span>Source: ${item.source}</span><span>Little Steps Parent Guide</span></div>
+            `;
+            lucide.createIcons();
+            switchView('activity');
+        }
+
+        function switchView(viewName) {
+            const views = ['home', 'glossary', 'about', 'activity', 'checks', 'data'];
+            views.forEach(v => {
+                const el = document.getElementById('view-' + v);
+                if(el) el.classList.add('hidden');
+            });
+            const selected = document.getElementById('view-' + viewName);
+            if(selected) selected.classList.remove('hidden');
+            window.scrollTo(0, 0);
+            setTimeout(() => lucide.createIcons(), 50);
+        }
+    </script>
+</body>
+</html>
