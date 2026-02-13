@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GB Camera Filter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #e0e0e0;
+            image-rendering: pixelated;
+        }
+        
+        /* The Game Boy Screen Color */
+        .gb-screen-bg {
+            background-color: #9bbc0f;
+        }
+        
+        /* Custom Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none; 
+            background: transparent; 
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 0;
+            background: #306230;
+            cursor: pointer;
+            margin-top: -8px; 
+            box-shadow: 2px 2px 0px #0f380f;
+        }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #8bac0f;
+            border: 1px solid #0f380f;
+        }
+
+        .pixelated-canvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        /* Device Shell */
+        .device-shell {
+            background-color: #c0c0c0; /* Classic Grey */
+            box-shadow: 
+                inset 4px 4px 10px rgba(255,255,255,0.5),
+                inset -4px -4px 10px rgba(0,0,0,0.2),
+                10px 10px 20px rgba(0,0,0,0.3);
+            border-radius: 10px 10px 40px 10px;
+        }
+
+        .screen-lens {
+            background-color: #555;
+            border-radius: 10px 10px 30px 10px;
+            box-shadow: inset 2px 2px 5px rgba(0,0,0,0.5);
+        }
+        
+        .led-power {
+            background-color: #ff0000;
+            box-shadow: 0 0 5px #ff0000;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.8; }
+            50% { opacity: 1; box-shadow: 0 0 8px #ff0000; }
+            100% { opacity: 0.8; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- Main Console Container -->
+    <div class="device-shell w-full max-w-md p-6 flex flex-col items-center border-b-8 border-r-8 border-gray-500">
+        
+        <!-- Header -->
+        <div class="w-full flex justify-between items-end mb-4 px-2 text-gray-700 text-xs">
+            <span>DOT MATRIX WITH STEREO SOUND</span>
+        </div>
+
+        <!-- Screen Lens Area -->
+        <div class="screen-lens w-full p-8 pb-10 relative mb-6">
+            
+            <!-- Battery LED -->
+            <div class="absolute top-3 left-3 flex flex-col items-center gap-1">
+                <div class="led-power w-2 h-2 rounded-full"></div>
+                <span class="text-[8px] text-gray-400 font-sans tracking-tighter">BATTERY</span>
+            </div>
+
+            <!-- The Actual Screen -->
+            <div class="gb-screen-bg border-4 border-[#8bac0f] shadow-inner mx-auto overflow-hidden relative" style="width: 256px; height: 224px;">
+                <!-- Placeholder Text -->
+                <div id="placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-[#0f380f] text-center p-4">
+                    <p class="mb-4 text-sm leading-6">NO IMAGE<br>LOADED</p>
+                    <p class="text-[10px]">CLICK UPLOAD</p>
+                </div>
+                
+                <!-- The Canvas (Hidden until needed) -->
+                <canvas id="gbCanvas" width="128" height="112" class="w-full h-full pixelated-canvas hidden"></canvas>
+            </div>
+        </div>
+
+        <!-- Brand -->
+        <div class="w-full mb-6 pl-4">
+            <h1 class="text-2xl font-bold text-blue-800 italic tracking-tighter" style="font-family: sans-serif; font-style: italic; font-weight: 900;">Nintendo <span class="text-xl font-normal ml-1">GAME BOY</span>TM</h1>
+        </div>
+
+        <!-- Controls Area -->
+        <div class="w-full bg-[#d0d0d0] p-4 rounded border-2 border-[#a0a0a0] mb-4">
+            
+            <!-- File Input -->
+            <div class="mb-6">
+                <label class="block text-[10px] text-gray-600 mb-2 uppercase">1. Insert Cartridge (Upload)</label>
+                <input type="file" id="imageInput" accept="image/*" class="w-full text-xs text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-white file:bg-[#306230] hover:file:bg-[#0f380f] cursor-pointer bg-white border border-gray-400 p-1">
+            </div>
+
+            <!-- Sliders -->
+            <div class="space-y-4 mb-6">
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-[10px] text-gray-600 uppercase">Contrast</label>
+                        <span id="contrastVal" class="text-[10px] text-gray-600">100%</span>
+                    </div>
+                    <input type="range" id="contrast" min="0" max="300" value="100" class="w-full">
+                </div>
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-[10px] text-gray-600 uppercase">Brightness</label>
+                        <span id="brightnessVal" class="text-[10px] text-gray-600">100%</span>
+                    </div>
+                    <input type="range" id="brightness" min="0" max="200" value="100" class="w-full">
+                </div>
+                
+                <!-- Dither Toggle -->
+                <div class="flex items-center gap-3 mt-4 cursor-pointer" id="ditherToggleBtn">
+                     <div id="ditherBox" class="w-4 h-4 border-2 border-gray-600 bg-[#306230]"></div>
+                     <label class="text-[10px] text-gray-600 uppercase cursor-pointer select-none">Dithering: ON</label>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <button id="downloadBtn" class="w-full py-3 bg-[#306230] text-[#9bbc0f] text-xs uppercase border-b-4 border-r-4 border-[#0f380f] active:border-0 active:translate-y-1 hover:bg-[#204220] transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                Print Photo (Download)
+            </button>
+        </div>
+        
+    </div>
+
+    <script>
+        // --- Constants & Config ---
+        const CANVAS_WIDTH = 128;
+        const CANVAS_HEIGHT = 112;
+        
+        // The Classic GB Palette
+        const PALETTE = [
+            [15, 56, 15],    // #0f380f (Darkest)
+            [48, 98, 48],    // #306230 (Dark)
+            [139, 172, 15],  // #8bac0f (Light)
+            [155, 188, 15]   // #9bbc0f (Lightest)
+        ];
+
+        // Bayer Matrix 4x4 for Ordered Dithering
+        const BAYER_MATRIX = [
+            [ 1,  9,  3, 11 ],
+            [ 13, 5, 15, 7 ],
+            [ 4, 12, 2, 10 ],
+            [ 16, 8, 14, 6 ]
+        ];
+
+        // --- State ---
+        let originalImage = null;
+        let isDitheringOn = true;
+
+        // --- Elements ---
+        const canvas = document.getElementById('gbCanvas');
+        const ctx = canvas.getContext('2d');
+        const placeholder = document.getElementById('placeholder');
+        const imageInput = document.getElementById('imageInput');
+        const contrastSlider = document.getElementById('contrast');
+        const brightnessSlider = document.getElementById('brightness');
+        const contrastVal = document.getElementById('contrastVal');
+        const brightnessVal = document.getElementById('brightnessVal');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const ditherToggleBtn = document.getElementById('ditherToggleBtn');
+        const ditherBox = document.getElementById('ditherBox');
+        const ditherLabel = ditherToggleBtn.querySelector('label');
+
+        // --- Event Listeners ---
+        imageInput.addEventListener('change', handleImageUpload);
+        contrastSlider.addEventListener('input', updateFilter);
+        brightnessSlider.addEventListener('input', updateFilter);
+        downloadBtn.addEventListener('click', downloadImage);
+        ditherToggleBtn.addEventListener('click', toggleDither);
+
+        function toggleDither() {
+            isDitheringOn = !isDitheringOn;
+            ditherBox.style.backgroundColor = isDitheringOn ? '#306230' : 'transparent';
+            ditherLabel.textContent = `Dithering: ${isDitheringOn ? 'ON' : 'OFF'}`;
+            if (originalImage) processImage();
+        }
+
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    originalImage = img;
+                    placeholder.classList.add('hidden');
+                    canvas.classList.remove('hidden');
+                    downloadBtn.disabled = false;
+                    
+                    // Reset sliders for new image
+                    contrastSlider.value = 100;
+                    brightnessSlider.value = 100;
+                    contrastVal.innerText = '100%';
+                    brightnessVal.innerText = '100%';
+
+                    processImage();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateFilter() {
+            if (!originalImage) return;
+            contrastVal.innerText = `${contrastSlider.value}%`;
+            brightnessVal.innerText = `${brightnessSlider.value}%`;
+            processImage();
+        }
+
+        function processImage() {
+            // 1. Draw original image resized to canvas
+            // We use "contain" logic to fit image within 128x112 without stretching
+            ctx.fillStyle = '#9bbc0f'; // Fill background with lightest color
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            const scale = Math.min(CANVAS_WIDTH / originalImage.width, CANVAS_HEIGHT / originalImage.height);
+            const x = (CANVAS_WIDTH / 2) - (originalImage.width / 2) * scale;
+            const y = (CANVAS_HEIGHT / 2) - (originalImage.height / 2) * scale;
+            
+            // Turn off smoothing for the draw to keep it sharp-ish before we process pixels
+            ctx.imageSmoothingEnabled = false; 
+            ctx.drawImage(originalImage, x, y, originalImage.width * scale, originalImage.height * scale);
+
+            // 2. Get Pixel Data
+            const imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            const data = imageData.data;
+
+            const contrast = parseInt(contrastSlider.value) / 100;
+            const brightness = parseInt(brightnessSlider.value) / 100;
+
+            // 3. Process Pixels
+            for (let y = 0; y < CANVAS_HEIGHT; y++) {
+                for (let x = 0; x < CANVAS_WIDTH; x++) {
+                    const i = (y * CANVAS_WIDTH + x) * 4;
+
+                    // Grayscale conversion (Luma)
+                    let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+
+                    // Apply Contrast & Brightness
+                    // Formula: factor * (color - 128) + 128 + brightness_offset
+                    gray = contrast * (gray - 128) + 128 + (brightness - 1) * 255;
+                    
+                    // Clamp
+                    if (gray < 0) gray = 0;
+                    if (gray > 255) gray = 255;
+
+                    // Dithering
+                    if (isDitheringOn) {
+                        // Map 0-255 to 0-4 range loosely
+                        // Bayer matrix value is 1-16. We scale it.
+                        // Standard Ordered Dither logic:
+                        const threshold = (BAYER_MATRIX[y % 4][x % 4] / 17) * 255;
+                        // To allow 4 levels, we need to stagger the thresholding or just add noise.
+                        // A simpler ordered dither approach for multi-level:
+                        // val + (threshold - 0.5) * spread
+                        
+                        // Let's use a simpler logic for 4-color quantization with dither:
+                        // Add dither value to the source gray, then quantize.
+                        // We want 4 colors, so 3 steps. Step size approx 85.
+                        // Bayer value is roughly -40 to +40 modification range.
+                        
+                        const ditherLevel = (BAYER_MATRIX[y % 4][x % 4] - 8.5) * 8; // Adjust multiplier for dither strength
+                        gray = gray + ditherLevel;
+                    }
+
+                    // Quantize to 4 buckets
+                    let colorIndex = 0;
+                    if (gray < 50) colorIndex = 0;       // Darkest
+                    else if (gray < 110) colorIndex = 1; // Dark
+                    else if (gray < 180) colorIndex = 2; // Light
+                    else colorIndex = 3;                 // Lightest
+
+                    const color = PALETTE[colorIndex];
+
+                    data[i] = color[0];     // R
+                    data[i + 1] = color[1]; // G
+                    data[i + 2] = color[2]; // B
+                    data[i + 3] = 255;      // Alpha
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function downloadImage() {
+            if (!originalImage) return;
+
+            // Create a temporary canvas to scale up the image for export
+            // Because 128x112 is tiny on modern screens.
+            const exportScale = 10;
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = CANVAS_WIDTH * exportScale;
+            exportCanvas.height = CANVAS_HEIGHT * exportScale;
+            const eCtx = exportCanvas.getContext('2d');
+            
+            // Disable smoothing for sharp pixels
+            eCtx.imageSmoothingEnabled = false;
+            
+            // Draw the current small canvas onto the big one
+            eCtx.drawImage(canvas, 0, 0, exportCanvas.width, exportCanvas.height);
+
+            // Trigger download
+            const link = document.createElement('a');
+            link.download = 'gb-camera-photo.png';
+            link.href = exportCanvas.toDataURL('image/png');
+            link.click();
+        }
+    </script>
+</body>
+</html>
