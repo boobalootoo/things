@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activity Resource Generator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React and ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- PapaParse for CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* Print specific styles */
+        @media print {
+            @page {
+                size: A4;
+                margin: 0; /* Let the container handle margins */
+            }
+            
+            body {
+                background-color: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+
+            .print-page {
+                break-after: page;
+                page-break-after: always;
+                height: 100vh;
+                width: 100vw;
+                margin: 0;
+                padding: 20px; /* Safe print margin */
+                border: none !important; /* Remove screen-only visual borders if needed */
+                box-shadow: none !important;
+            }
+            
+            /* Ensure borders print correctly */
+            * {
+                border-color: #000 !important;
+            }
+        }
+
+        /* Screen only visualization helpers */
+        .screen-page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 20px auto;
+            background: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        /* Editable highlight on hover */
+        [contenteditable]:hover {
+            background-color: #fef9c3;
+            outline: 1px dashed #ca8a04;
+            cursor: text;
+        }
+        [contenteditable]:focus {
+            background-color: white;
+            outline: 2px solid #2563eb;
+        }
+        
+        /* Ensure empty editable fields are still visible/clickable */
+        [contenteditable]:empty:before {
+            content: "\00a0"; /* Non-breaking space */
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // Helper to get value from row data safely
+        const getRowValue = (data, keySnippet) => {
+            if (!data) return "";
+            if (data[keySnippet]) return data[keySnippet];
+            const key = Object.keys(data).find(k => k.toLowerCase().includes(keySnippet));
+            return key ? data[key] : "";
+        };
+
+        // Helper to extract YouTube ID
+        const getYouTubeThumbnail = (url) => {
+            if (!url) return null;
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) 
+            ? `https://img.youtube.com/vi/${match[2]}/hqdefault.jpg` 
+            : null;
+        }
+
+        // A reusable editable text component
+        const EditableText = ({ text, className, placeholder, tag = "div" }) => {
+            const Tag = tag;
+            return (
+                <Tag
+                    contentEditable
+                    suppressContentEditableWarning
+                    className={`outline-none min-h-[1.5em] ${className}`}
+                    dangerouslySetInnerHTML={{ __html: text || '' }}
+                    title="Click to edit"
+                />
+            );
+        };
+
+        const IntroPage = () => {
+            return (
+                <div className="print-page screen-page flex flex-col border-2 border-black text-black p-8 md:p-12 text-center relative">
+                    <h1 className="text-3xl font-bold mb-6 underline">Guide for Parents & Carers</h1>
+                    
+                    <div className="max-w-3xl text-left space-y-4 text-base flex-grow">
+                        
+                        {/* Importance of Play */}
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <h2 className="font-bold text-lg mb-1 flex items-center gap-2 text-blue-800">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5c0-5.523 4.477-10 10-10z"/><path d="M8.5 8.5a2.5 2.5 0 0 0 0 5"/><path d="M15.5 15.5a2.5 2.5 0 0 0 0-5"/></svg>
+                                Why Play & Sensory Experience Matters
+                            </h2>
+                            <p className="text-sm leading-relaxed text-blue-900">
+                                Play is the brain's favorite way of learning. In the early years, varied sensory experiences—touching, moving, listening, and seeing—build the neural connections that form the foundation for all future learning. These activities are designed not just to occupy time, but to stimulate curiosity, develop motor skills, and foster emotional regulation through safe, engaging exploration.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Finding */}
+                            <div className="p-4 bg-gray-50 border border-black rounded-lg">
+                                <h2 className="font-bold text-lg mb-1 flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg>
+                                    Finding Activities
+                                </h2>
+                                <p className="text-sm">If viewing digitally, use the <strong>Find</strong> feature (Ctrl+F / Cmd+F) to search for specific skills or materials.</p>
+                            </div>
+
+                            {/* Printing */}
+                            <div className="p-4 bg-gray-50 border border-black rounded-lg">
+                                <h2 className="font-bold text-lg mb-1 flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+                                    Printing
+                                </h2>
+                                <p className="text-sm">Each activity fits on A4. Save paper by selecting specific page numbers in your print dialog.</p>
+                            </div>
+                        </div>
+
+                         {/* Links */}
+                        <div className="p-4 bg-gray-50 border border-black rounded-lg">
+                            <h2 className="font-bold text-lg mb-1 flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><link x1="10" y1="13" x2="14" y2="17"></link><path d="M15 7h3a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3m-6 0H6a5 5 0 0 1-5-5 5 5 0 0 1 5-5h3"></path></svg>
+                                Links
+                            </h2>
+                            <p className="text-sm">The links provided take you to demonstrations or further resources. If printed, simply type the URL into your browser. If viewing the PDF digitally, <strong>click the main image</strong> to watch the video.</p>
+                        </div>
+
+                        {/* Sourcing/Watermarks */}
+                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <h2 className="font-bold text-lg mb-1 flex items-center gap-2 text-yellow-800">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                Note on Images & Sources
+                            </h2>
+                            <p className="text-sm text-yellow-900 leading-relaxed">
+                                Some ideas here may be curated from talented creators around the web. If you see a watermark on a thumbnail, or want to find the original source for more details:
+                                <ul className="list-disc list-inside mt-1 ml-1 font-semibold">
+                                    <li>Check the provided link for the original video/article.</li>
+                                    <li>Right-click the image and select <strong>"Search image with Google"</strong> (or Google Lens) to find the original creator.</li>
+                                </ul>
+                            </p>
+                        </div>
+
+                    </div>
+                    
+                    <div className="mt-8 text-xs text-gray-400">
+                        Generated with Activity Resource Generator
+                    </div>
+                </div>
+            )
+        }
+
+        const Card = ({ data }) => {
+            const title = getRowValue(data, 'title');
+            const skills = getRowValue(data, 'skills');
+            const description = getRowValue(data, 'description');
+            
+            // Link Logic
+            // 1. Primary Video/Activity Link
+            const videoLink = data['url'] || getRowValue(data, 'url') || getRowValue(data, 'link to video') || getRowValue(data, 'video');
+            
+            // 2. Explicit Thumbnail Link
+            const rawThumb = getRowValue(data, 'thumbnail');
+
+            const [thumbnailSrc, setThumbnailSrc] = useState(null);
+            
+            useEffect(() => {
+                // Case 1: We have a thumbnail in CSV
+                if (rawThumb) {
+                    setThumbnailSrc(rawThumb);
+                    return;
+                }
+
+                // Case 2: No thumbnail, try to use URL column
+                if (videoLink) {
+                    // 2a. YouTube
+                    const ytThumb = getYouTubeThumbnail(videoLink);
+                    if (ytThumb) {
+                        setThumbnailSrc(ytThumb);
+                        return;
+                    } 
+                    
+                    // 2b. Direct Image
+                    if (videoLink.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+                        setThumbnailSrc(videoLink);
+                        return;
+                    }
+
+                    // 2c. Pinterest (Special Scraper)
+                    if (videoLink.includes('pinterest.com/pin/')) {
+                        fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(videoLink)}`)
+                            .then(response => {
+                                if (response.ok) return response.json();
+                                throw new Error('Network response was not ok.');
+                            })
+                            .then(data => {
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(data.contents, "text/html");
+                                const metaImg = doc.querySelector('meta[property="og:image"]');
+                                if (metaImg && metaImg.content) {
+                                    setThumbnailSrc(metaImg.content);
+                                } else {
+                                    setThumbnailSrc(null); 
+                                }
+                            })
+                            .catch(error => {
+                                console.warn("Could not fetch Pinterest thumbnail:", error);
+                                setThumbnailSrc(null);
+                            });
+                        return;
+                    }
+
+                    // 2d. Fallback: just try the link
+                    setThumbnailSrc(videoLink);
+                }
+            }, [data, videoLink, rawThumb]);
+            
+            const variations = getRowValue(data, 'variations');
+            const needs = getRowValue(data, 'what you\'ll need') || getRowValue(data, 'need');
+            const instructions = getRowValue(data, 'instructions');
+
+            // Construct Links for Display
+            // We want to show the video/activity link. 
+            // If the thumbnail comes from a different URL (and is a link), we show that too.
+            const linksToDisplay = [];
+            if (videoLink) linksToDisplay.push(videoLink);
+            if (rawThumb && rawThumb.startsWith('http') && rawThumb !== videoLink) linksToDisplay.push(rawThumb);
+            
+            // Join them with breaks for the EditableText
+            const linksHtml = linksToDisplay.length > 0 ? linksToDisplay.join('<br/><br/>') : '';
+            
+            const renderImage = () => {
+                if (!thumbnailSrc) {
+                     return <div className="text-gray-300 italic">No image provided</div>;
+                }
+
+                const imgElement = (
+                     <div className="relative group w-full h-full flex justify-center items-center">
+                        <img 
+                            src={thumbnailSrc} 
+                            alt="Activity thumbnail" 
+                            className="max-h-[250px] object-contain border border-gray-300 shadow-sm bg-white" 
+                            onError={(e) => {
+                                e.target.onerror = null; 
+                                e.target.style.display = 'none'; 
+                            }}
+                        />
+                        {videoLink && (
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div className="bg-black/50 rounded-full p-4 text-white group-hover:bg-red-600/80 transition-colors shadow-lg backdrop-blur-sm print:bg-black/20 print:text-black">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+
+                if (videoLink) {
+                    return (
+                        <a href={videoLink} target="_blank" rel="noopener noreferrer" className="block w-full h-full flex justify-center items-center">
+                           {imgElement}
+                        </a>
+                    );
+                }
+
+                return imgElement;
+            };
+
+            return (
+                <div className="print-page screen-page flex flex-col border-2 border-black text-black">
+                    {/* Header: Title and Skills */}
+                    <div className="flex border-b-2 border-black min-h-[60px]">
+                        <div className="w-2/3 p-4 flex items-center">
+                            <h1 
+                                contentEditable 
+                                suppressContentEditableWarning
+                                className="text-3xl font-bold underline outline-none w-full"
+                            >
+                                {title || "Activity Title"}
+                            </h1>
+                        </div>
+                        <div className="w-1/3 border-l-2 border-black p-2 flex flex-col justify-center bg-gray-50">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Skills it develops:</span>
+                            <EditableText 
+                                text={skills} 
+                                className="text-sm font-medium leading-tight"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Description 1 */}
+                    <div className="p-4 border-b-2 border-black bg-white">
+                        <EditableText 
+                            text={description} 
+                            className="text-lg leading-relaxed" 
+                        />
+                    </div>
+
+                    {/* Pictures/Thumbnail */}
+                    <div className="p-4 border-b-2 border-black flex justify-center items-center bg-gray-50 min-h-[200px]">
+                        {renderImage()}
+                    </div>
+
+                    {/* Variations */}
+                    <div className="p-4 border-b-2 border-black bg-white">
+                        <span className="block text-xs font-bold uppercase text-gray-500 mb-1">Variations / Details:</span>
+                        <EditableText 
+                            text={variations} 
+                            className="text-base" 
+                        />
+                    </div>
+
+                    {/* Links Section */}
+                    <div className="p-4 border-b-2 border-black bg-white">
+                        <h3 className="font-bold text-lg mb-2">Links:</h3>
+                        <div className="bg-gray-50 p-3 border border-gray-200">
+                            <EditableText 
+                                text={linksHtml} 
+                                className="text-blue-600 underline text-sm break-all font-mono" 
+                            />
+                        </div>
+                    </div>
+
+                    {/* What you'll need */}
+                    <div className="p-4 border-b-2 border-black bg-white">
+                        <h3 className="font-bold text-lg mb-2">What you'll need:</h3>
+                        <EditableText 
+                            text={needs} 
+                            className="text-base italic" 
+                        />
+                    </div>
+
+                    {/* Instructions */}
+                    <div className="p-4 flex-grow bg-white">
+                        <h3 className="font-bold text-lg mb-2">Step by step instructions:</h3>
+                        <EditableText 
+                            text={instructions ? instructions.replace(/\n/g, '<br/>') : ''} 
+                            className="text-base space-y-2 whitespace-pre-wrap" 
+                        />
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [url, setUrl] = useState('https://github.com/boobalootoo/things/blob/main/EYed/activities.csv');
+            const [data, setData] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            
+            // Feature State
+            const [selectedIndices, setSelectedIndices] = useState(new Set());
+            const [sortOption, setSortOption] = useState('title-asc');
+            const [showIntro, setShowIntro] = useState(false);
+            
+            // Dropdown State
+            const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+            const dropdownRef = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                        setIsDropdownOpen(false);
+                    }
+                };
+                document.addEventListener("mousedown", handleClickOutside);
+                return () => document.removeEventListener("mousedown", handleClickOutside);
+            }, []);
+
+            const handleFetch = async () => {
+                if (!url) return;
+                setLoading(true);
+                setError(null);
+                setData([]);
+                setSelectedIndices(new Set()); 
+
+                try {
+                    let fetchUrl = url;
+                    if (url.includes('github.com') && url.includes('/blob/')) {
+                        fetchUrl = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+                    }
+
+                    const response = await fetch(fetchUrl);
+                    if (!response.ok) throw new Error("Failed to fetch CSV. Check the URL and permissions.");
+                    
+                    const csvText = await response.text();
+                    
+                    Papa.parse(csvText, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: (results) => {
+                            if (results.errors.length > 0) {
+                                console.warn("CSV Parse warnings:", results.errors);
+                            }
+                            // Store original index with data for stable selection handling
+                            const indexedData = results.data.map((row, idx) => ({ ...row, _originalIndex: idx }));
+                            setData(indexedData);
+                            setLoading(false);
+                        },
+                        error: (err) => {
+                            throw err;
+                        }
+                    });
+
+                } catch (err) {
+                    setError(err.message);
+                    setLoading(false);
+                }
+            };
+
+            const toggleSelection = (index) => {
+                const newSet = new Set(selectedIndices);
+                if (newSet.has(index)) {
+                    newSet.delete(index);
+                } else {
+                    newSet.add(index);
+                }
+                setSelectedIndices(newSet);
+            };
+
+            const toggleSelectAll = () => {
+                if (selectedIndices.size === data.length) {
+                    setSelectedIndices(new Set());
+                } else {
+                    setSelectedIndices(new Set(data.map(d => d._originalIndex)));
+                }
+            };
+
+            // Calculate displayed data based on selection and sort
+            const displayedData = useMemo(() => {
+                // 1. Filter
+                let filtered = data;
+                if (selectedIndices.size > 0) {
+                    filtered = data.filter(item => selectedIndices.has(item._originalIndex));
+                }
+
+                // 2. Sort
+                return [...filtered].sort((a, b) => {
+                    if (sortOption === 'title-asc') {
+                        return (getRowValue(a, 'title') || '').localeCompare(getRowValue(b, 'title') || '');
+                    }
+                    if (sortOption === 'title-desc') {
+                        return (getRowValue(b, 'title') || '').localeCompare(getRowValue(a, 'title') || '');
+                    }
+                    if (sortOption === 'skills') {
+                        return (getRowValue(a, 'skills') || '').localeCompare(getRowValue(b, 'skills') || '');
+                    }
+                    return 0; // original
+                });
+            }, [data, selectedIndices, sortOption]);
+
+            return (
+                <div className="min-h-screen">
+                    {/* Control Panel - Hidden when printing */}
+                    <div className="no-print bg-slate-800 text-white p-6 shadow-lg relative z-50">
+                        <div className="max-w-6xl mx-auto">
+                            <h1 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" x2="21" y1="9" y2="9"/><line x1="9" x2="9" y1="21" y2="9"/></svg>
+                                CSV to Resource Card Generator
+                            </h1>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                                <div className="md:col-span-4">
+                                    <label className="block text-sm text-slate-300 mb-1">CSV URL</label>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            value={url}
+                                            onChange={(e) => setUrl(e.target.value)}
+                                            className="w-full p-2 rounded text-black bg-slate-100 border border-slate-600 focus:border-blue-500 outline-none"
+                                            placeholder="https://..."
+                                        />
+                                        <button 
+                                            onClick={handleFetch}
+                                            disabled={loading}
+                                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition disabled:opacity-50"
+                                        >
+                                            {loading ? '...' : 'Go'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Filter Dropdown */}
+                                <div className="md:col-span-2 relative" ref={dropdownRef}>
+                                    <label className="block text-sm text-slate-300 mb-1">Filter</label>
+                                    <button 
+                                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                        disabled={data.length === 0}
+                                        className={`w-full flex justify-between items-center gap-2 font-bold py-2 px-3 rounded transition border ${
+                                            isDropdownOpen || selectedIndices.size > 0 
+                                            ? 'bg-slate-700 border-blue-500 text-white' 
+                                            : 'bg-slate-700 border-slate-600 text-slate-300 hover:text-white'
+                                        } disabled:opacity-50`}
+                                    >
+                                        <span>{selectedIndices.size === 0 ? 'All Items' : `${selectedIndices.size} Selected`}</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                                    </button>
+
+                                    {isDropdownOpen && (
+                                        <div className="absolute top-full left-0 mt-2 w-80 bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 overflow-hidden z-50 flex flex-col max-h-[60vh]">
+                                            <div className="p-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                                                <span className="text-xs font-bold uppercase text-slate-500">Select Items</span>
+                                                <button 
+                                                    onClick={toggleSelectAll}
+                                                    className="text-xs text-blue-600 hover:underline font-semibold"
+                                                >
+                                                    {selectedIndices.size === data.length ? 'Deselect All' : 'Select All'}
+                                                </button>
+                                            </div>
+                                            <div className="overflow-y-auto p-1">
+                                                {data.map((row) => {
+                                                    const idx = row._originalIndex;
+                                                    const title = getRowValue(row, 'title') || `Activity ${idx + 1}`;
+                                                    return (
+                                                        <label key={idx} className="flex items-start gap-3 p-2 hover:bg-slate-100 rounded cursor-pointer transition">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={selectedIndices.has(idx)}
+                                                                onChange={() => toggleSelection(idx)}
+                                                                className="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                            />
+                                                            <div className="text-sm font-semibold truncate">{title}</div>
+                                                        </label>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Sort Dropdown */}
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm text-slate-300 mb-1">Sort By</label>
+                                    <select 
+                                        value={sortOption}
+                                        onChange={(e) => setSortOption(e.target.value)}
+                                        disabled={data.length === 0}
+                                        className="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded focus:ring-blue-500 focus:border-blue-500 block p-2.5 disabled:opacity-50"
+                                    >
+                                        <option value="original">CSV Order</option>
+                                        <option value="title-asc">Title (A-Z)</option>
+                                        <option value="title-desc">Title (Z-A)</option>
+                                        <option value="skills">Skills</option>
+                                    </select>
+                                </div>
+
+                                {/* Intro Page Toggle */}
+                                <div className="md:col-span-2 flex items-center h-full pb-3">
+                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={showIntro}
+                                            onChange={(e) => setShowIntro(e.target.checked)}
+                                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm font-medium text-slate-300">Add Intro Page</span>
+                                    </label>
+                                </div>
+
+                                {/* Print Button */}
+                                <div className="md:col-span-2">
+                                    <button 
+                                        onClick={() => window.print()}
+                                        disabled={data.length === 0}
+                                        className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+                                        Print
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {error && (
+                                <div className="mt-4 bg-red-500/20 border border-red-500 text-red-100 p-3 rounded">
+                                    Error: {error}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Preview Area */}
+                    <div className="p-0 md:p-8 bg-gray-100 print:bg-white print:p-0">
+                        {data.length === 0 && !loading && !error && (
+                            <div className="text-center text-gray-500 mt-20 no-print">
+                                <p className="text-xl">Enter a CSV URL above to generate cards.</p>
+                                <p className="mt-2 text-sm">Supported Columns: title, skills, description, thumbnail, variations, url, what you'll need, instructions</p>
+                            </div>
+                        )}
+
+                        {showIntro && data.length > 0 && <IntroPage />}
+
+                        {displayedData.map((row) => (
+                            <Card key={row._originalIndex} data={row} />
+                        ))}
+                        
+                        {data.length > 0 && displayedData.length === 0 && (
+                            <div className="text-center text-gray-500 mt-20 no-print">
+                                <p className="text-xl">No activities match your current selection.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
