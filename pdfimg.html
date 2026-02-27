@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Composer Studio</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PDF.js for parsing PDFs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
+    <style>
+        /* Custom styles for the grid background and utilities */
+        body {
+            background-color: #f3f4f6;
+            overflow: hidden; /* App takes full screen, internal scrolling */
+        }
+        
+        .bg-grid {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+                linear-gradient(to bottom, #e5e7eb 1px, transparent 1px);
+        }
+
+        .page-item {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transition: box-shadow 0.2s;
+        }
+        
+        .page-item:hover {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        /* Crop selection box styling */
+        #crop-selection {
+            border: 2px dashed #3b82f6;
+            background-color: rgba(59, 130, 246, 0.2);
+            position: absolute;
+            pointer-events: none;
+            display: none;
+        }
+
+        /* Hide scrollbar for cleaner look in modals */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex text-gray-800 font-sans">
+
+    <!-- Sidebar / Controls -->
+    <aside class="w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-lg z-20 flex-shrink-0">
+        <div class="p-6 border-b border-gray-100">
+            <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <i class="fa-solid fa-layer-group text-blue-500"></i> PDF Composer
+            </h1>
+            <p class="text-sm text-gray-500 mt-1">Upload, arrange, and export.</p>
+        </div>
+
+        <div class="p-6 flex-1 overflow-y-auto space-y-8">
+            
+            <!-- Upload Section -->
+            <section>
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">1. Add Pages</h2>
+                <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition">
+                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 mb-2"></i>
+                        <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload PDF</span></p>
+                    </div>
+                    <input type="file" id="pdf-upload" accept="application/pdf" class="hidden" />
+                </label>
+                <div id="loading-indicator" class="hidden mt-3 text-sm text-blue-600 flex items-center gap-2 font-medium">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i> Processing PDF pages...
+                </div>
+            </section>
+
+            <!-- Export Settings -->
+            <section>
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">2. Export Options</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Format</label>
+                        <select id="export-format" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                            <option value="image/png">PNG (High Quality, Transparent)</option>
+                            <option value="image/jpeg">JPEG (Smaller Size, White BG)</option>
+                            <option value="image/webp">WebP (Modern, Small Size)</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input id="transparent-bg" type="checkbox" value="" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" checked>
+                        <label for="transparent-bg" class="ml-2 text-sm font-medium text-gray-700">Transparent Background</label>
+                    </div>
+
+                    <button id="export-btn" class="w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-3 text-center transition flex justify-center items-center gap-2">
+                        <i class="fa-solid fa-download"></i> Export Composition
+                    </button>
+                </div>
+            </section>
+
+            <!-- Format Explanation -->
+            <section class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <h3 class="text-sm font-bold text-blue-900 mb-2"><i class="fa-solid fa-circle-info"></i> Which format is best?</h3>
+                <ul class="text-xs text-blue-800 space-y-3">
+                    <li>
+                        <strong>PNG:</strong> Best for text-heavy PDFs and diagrams. Preserves sharp edges without artifacts. Supports transparent backgrounds. <span class="text-gray-500">(Larger file size)</span>
+                    </li>
+                    <li>
+                        <strong>JPEG:</strong> Best if your PDF is mostly photographs. Does NOT support transparency (background will default to white). Can cause slight blurring around small text. <span class="text-gray-500">(Smallest file size)</span>
+                    </li>
+                    <li>
+                        <strong>WebP:</strong> The modern web standard. Offers high quality like PNG but at a much smaller file size. Supports transparency. Best for using the result on a website.
+                    </li>
+                </ul>
+            </section>
+        </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 relative overflow-auto bg-gray-200" id="workspace-container">
+        <!-- The actual draggable area (much larger than the screen) -->
+        <div id="workspace" class="relative w-[6000px] h-[6000px] bg-grid transform origin-top-left">
+            <!-- Pages will be injected here -->
+        </div>
+        
+        <!-- Zoom Controls (Fixed to bottom right of viewport) -->
+        <div class="fixed bottom-6 right-6 flex gap-2 shadow-lg rounded-lg overflow-hidden bg-white z-10 border border-gray-200">
+            <button id="zoom-out" class="w-10 h-10 flex items-center justify-center hover:bg-gray-100 text-gray-700 transition"><i class="fa-solid fa-minus"></i></button>
+            <div id="zoom-level" class="w-16 flex items-center justify-center text-sm font-medium text-gray-700 border-x border-gray-200">100%</div>
+            <button id="zoom-in" class="w-10 h-10 flex items-center justify-center hover:bg-gray-100 text-gray-700 transition"><i class="fa-solid fa-plus"></i></button>
+        </div>
+    </main>
+
+    <!-- Crop Modal -->
+    <div id="crop-modal" class="fixed inset-0 bg-black bg-opacity-80 z-50 hidden flex-col items-center justify-center">
+        <div class="bg-white rounded-lg shadow-2xl flex flex-col max-w-[90vw] max-h-[90vh]">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-lg font-bold">Crop Page</h3>
+                <button id="close-crop-btn" class="text-gray-500 hover:text-red-500"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="p-4 overflow-auto flex-1 relative bg-gray-100 flex items-center justify-center" id="crop-area-container">
+                <div class="relative inline-block select-none" id="crop-image-wrapper">
+                    <!-- Original Canvas will be cloned here -->
+                    <div id="crop-selection"></div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t bg-gray-50 flex justify-between items-center rounded-b-lg">
+                <p class="text-sm text-gray-500"><i class="fa-solid fa-mouse-pointer"></i> Click and drag to draw a crop box.</p>
+                <div class="space-x-2">
+                    <button id="cancel-crop-btn" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100">Cancel</button>
+                    <button id="apply-crop-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Apply Crop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        // State
+        const state = {
+            items: [], // Array of { id, canvas, x, y, width, height }
+            zIndexCounter: 10,
+            zoom: 1.0,
+            cropTargetId: null,
+            cropRect: null // {x, y, w, h}
+        };
+
+        // DOM Elements
+        const uploadInput = document.getElementById('pdf-upload');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const workspace = document.getElementById('workspace');
+        const workspaceContainer = document.getElementById('workspace-container');
+        
+        // Export DOM
+        const exportBtn = document.getElementById('export-btn');
+        const formatSelect = document.getElementById('export-format');
+        const transparentCheck = document.getElementById('transparent-bg');
+        
+        // Zoom DOM
+        const btnZoomIn = document.getElementById('zoom-in');
+        const btnZoomOut = document.getElementById('zoom-out');
+        const txtZoomLevel = document.getElementById('zoom-level');
+
+        // Crop DOM
+        const cropModal = document.getElementById('crop-modal');
+        const cropImageWrapper = document.getElementById('crop-image-wrapper');
+        const cropSelection = document.getElementById('crop-selection');
+        const btnApplyCrop = document.getElementById('apply-crop-btn');
+        const btnCancelCrop = document.getElementById('cancel-crop-btn');
+        const btnCloseCrop = document.getElementById('close-crop-btn');
+
+        // --- PDF Processing ---
+        uploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file || file.type !== 'application/pdf') return;
+
+            loadingIndicator.classList.remove('hidden');
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                
+                // Calculate starting position based on existing items to prevent exact overlap
+                const startX = 200 + (state.items.length * 50);
+                const startY = 200 + (state.items.length * 50);
+                let currentX = startX;
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    // Use scale 2.0 for high resolution export quality
+                    const viewport = page.getViewport({ scale: 2.0 });
+                    
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    
+                    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                    const id = 'page-' + Date.now() + '-' + i;
+                    
+                    const item = {
+                        id: id,
+                        canvas: canvas,
+                        x: currentX,
+                        y: startY,
+                        width: canvas.width,
+                        height: canvas.height
+                    };
+                    
+                    state.items.push(item);
+                    renderItem(item);
+
+                    // layout horizontally for multiple pages in one go
+                    currentX += (canvas.width / 2.0) + 50; 
+                }
+
+                // Scroll to the newly added items
+                workspaceContainer.scrollTo({
+                    left: startX - 100,
+                    top: startY - 100,
+                    behavior: 'smooth'
+                });
+
+            } catch (error) {
+                console.error("Error parsing PDF:", error);
+                alert("Failed to process PDF.");
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                uploadInput.value = ''; // Reset input
+            }
+        });
+
+        // --- Rendering & Interactivity ---
+        function renderItem(item) {
+            const wrapper = document.createElement('div');
+            wrapper.id = item.id;
+            wrapper.className = 'absolute page-item group cursor-grab rounded overflow-hidden bg-white';
+            
+            // Apply scale logic visually, actual canvas is full resolution
+            // We scale it visually by 0.5 to make it manageable on screen (since we rendered at 2.0 scale)
+            const visualScale = 0.5;
+            wrapper.style.width = `${item.width * visualScale}px`;
+            wrapper.style.height = `${item.height * visualScale}px`;
+            wrapper.style.left = `${item.x}px`;
+            wrapper.style.top = `${item.y}px`;
+            wrapper.style.zIndex = state.zIndexCounter++;
+
+            // Create a styled visible canvas that mirrors the raw canvas
+            const displayCanvas = document.createElement('canvas');
+            displayCanvas.width = item.width;
+            displayCanvas.height = item.height;
+            displayCanvas.style.width = '100%';
+            displayCanvas.style.height = '100%';
+            displayCanvas.className = 'block pointer-events-none';
+            displayCanvas.getContext('2d').drawImage(item.canvas, 0, 0);
+            
+            // Toolbar (visible on hover)
+            const toolbar = document.createElement('div');
+            toolbar.className = 'absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900 bg-opacity-75 rounded-lg p-1 shadow backdrop-blur-sm pointer-events-auto';
+            
+            const cropBtn = document.createElement('button');
+            cropBtn.innerHTML = '<i class="fa-solid fa-crop-simple"></i>';
+            cropBtn.className = 'w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded transition';
+            cropBtn.title = "Crop Page";
+            cropBtn.onclick = (e) => { e.stopPropagation(); openCropModal(item.id); };
+
+            const delBtn = document.createElement('button');
+            delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            delBtn.className = 'w-8 h-8 flex items-center justify-center text-red-400 hover:text-white hover:bg-red-600 rounded transition';
+            delBtn.title = "Delete Page";
+            delBtn.onclick = (e) => { e.stopPropagation(); deleteItem(item.id); };
+
+            toolbar.appendChild(cropBtn);
+            toolbar.appendChild(delBtn);
+
+            wrapper.appendChild(displayCanvas);
+            wrapper.appendChild(toolbar);
+            workspace.appendChild(wrapper);
+
+            // Dragging Logic
+            let isDragging = false;
+            let startClientX, startClientY, startItemX, startItemY;
+
+            wrapper.addEventListener('mousedown', (e) => {
+                if(e.target.closest('button')) return; // Ignore if clicking toolbar
+                
+                isDragging = true;
+                wrapper.classList.remove('cursor-grab');
+                wrapper.classList.add('cursor-grabbing');
+                
+                // Bring to front
+                wrapper.style.zIndex = state.zIndexCounter++;
+
+                // Adjust for zoom level during drag
+                startClientX = e.clientX;
+                startClientY = e.clientY;
+                startItemX = item.x;
+                startItemY = item.y;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                
+                // Calculate movement, factoring in the current zoom scale
+                const dx = (e.clientX - startClientX) / state.zoom;
+                const dy = (e.clientY - startClientY) / state.zoom;
+                
+                item.x = startItemX + dx;
+                item.y = startItemY + dy;
+                
+                wrapper.style.left = `${item.x}px`;
+                wrapper.style.top = `${item.y}px`;
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    wrapper.classList.remove('cursor-grabbing');
+                    wrapper.classList.add('cursor-grab');
+                }
+            });
+        }
+
+        function deleteItem(id) {
+            state.items = state.items.filter(i => i.id !== id);
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        // --- Zoom Logic ---
+        function updateZoom() {
+            workspace.style.transform = `scale(${state.zoom})`;
+            txtZoomLevel.innerText = `${Math.round(state.zoom * 100)}%`;
+        }
+
+        btnZoomIn.onclick = () => { if(state.zoom < 2.5) { state.zoom += 0.1; updateZoom(); } };
+        btnZoomOut.onclick = () => { if(state.zoom > 0.2) { state.zoom -= 0.1; updateZoom(); } };
+
+        // Center workspace on load
+        window.onload = () => {
+            workspaceContainer.scrollTo({
+                left: 2500 - (window.innerWidth / 2),
+                top: 2500 - (window.innerHeight / 2)
+            });
+        }
+
+        // --- Cropping Logic ---
+        let cropStartX, cropStartY, isCropping = false;
+
+        function openCropModal(id) {
+            state.cropTargetId = id;
+            const item = state.items.find(i => i.id === id);
+            if(!item) return;
+
+            // Clear previous
+            Array.from(cropImageWrapper.children).forEach(child => {
+                if(child.id !== 'crop-selection') child.remove();
+            });
+
+            // Add original canvas clone
+            const clone = document.createElement('canvas');
+            clone.width = item.width;
+            clone.height = item.height;
+            // Scale it to fit nicely in the modal window for editing
+            clone.style.maxWidth = '100%';
+            clone.style.height = 'auto';
+            clone.style.display = 'block';
+            clone.getContext('2d').drawImage(item.canvas, 0, 0);
+            
+            cropImageWrapper.insertBefore(clone, cropSelection);
+            
+            cropSelection.style.display = 'none';
+            state.cropRect = null;
+            btnApplyCrop.disabled = true;
+
+            cropModal.classList.remove('hidden');
+            cropModal.classList.add('flex');
+        }
+
+        function closeCropModal() {
+            cropModal.classList.add('hidden');
+            cropModal.classList.remove('flex');
+            state.cropTargetId = null;
+        }
+
+        btnCloseCrop.onclick = closeCropModal;
+        btnCancelCrop.onclic
