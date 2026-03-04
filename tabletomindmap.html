@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MindMap & Table Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f8fafc;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .canvas-container {
+            background-color: #fcfcfc;
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 24px 24px;
+            cursor: grab;
+        }
+        .canvas-container:active {
+            cursor: grabbing;
+        }
+        .node-rect {
+            transition: stroke 0.2s, fill 0.2s;
+            cursor: pointer;
+        }
+        .node-group:hover .node-rect {
+            stroke: #3b82f6;
+            stroke-width: 2px;
+        }
+        .node-group:hover .add-btn-bg {
+            display: block;
+        }
+        .node-text {
+            pointer-events: none;
+            user-select: none;
+        }
+        .split-pane {
+            display: flex;
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+        .pane {
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Draggable Divider */
+        .resizer {
+            width: 8px;
+            background: #e2e8f0;
+            cursor: col-resize;
+            transition: background 0.2s;
+            z-index: 30;
+        }
+        .resizer:hover {
+            background: #3b82f6;
+        }
+        .table-scroll {
+            overflow: auto;
+            height: 100%;
+        }
+        th, td {
+            min-width: 120px;
+            border: 1px solid #e2e8f0;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        input:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: -2px;
+        }
+        .hidden-pane {
+            display: none !important;
+        }
+        .collapse-indicator {
+            fill: #94a3b8;
+            font-size: 10px;
+            pointer-events: none;
+        }
+        .add-btn-bg {
+            cursor: pointer;
+            display: none;
+        }
+        /* Simple Modal */
+        #editModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Edit Modal -->
+    <div id="editModal">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-80">
+            <h3 class="text-sm font-bold text-slate-500 mb-2 uppercase tracking-tight">Edit Label</h3>
+            <input type="text" id="nodeEditInput" class="w-full p-2 border rounded-md mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal()" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md">Cancel</button>
+                <button onclick="saveNodeEdit()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white border-b px-6 py-3 flex items-center justify-between z-20 shadow-sm">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xl font-bold text-slate-800">MindMap Studio</h1>
+            <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md text-sm font-medium cursor-pointer transition">
+                Upload CSV
+                <input type="file" id="csvInput" accept=".csv" class="hidden">
+            </label>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <!-- Orientation -->
+            <div class="flex bg-slate-100 p-1 rounded-lg">
+                <button onclick="setOrientation('horizontal')" id="orient-horiz" class="px-3 py-1 rounded-md text-xs font-bold transition bg-white shadow-sm text-blue-600">Across</button>
+                <button onclick="setOrientation('vertical')" id="orient-vert" class="px-3 py-1 rounded-md text-xs font-bold transition text-slate-600 hover:text-slate-900">Down</button>
+            </div>
+
+            <!-- View Modes -->
+            <div class="flex bg-slate-100 p-1 rounded-lg">
+                <button onclick="setView('map')" id="btn-map" class="px-4 py-1.5 rounded-md text-sm font-medium transition bg-white shadow-sm text-blue-600">Map</button>
+                <button onclick="setView('split')" id="btn-split" class="px-4 py-1.5 rounded-md text-sm font-medium transition text-slate-600 hover:text-slate-900">Split</button>
+                <button onclick="setView('table')" id="btn-table" class="px-4 py-1.5 rounded-md text-sm font-medium transition text-slate-600 hover:text-slate-900">Table</button>
+            </div>
+
+            <!-- Download Dropdown -->
+            <div class="relative group">
+                <button class="bg-slate-800 text-white px-4 py-1.5 rounded-md text-sm font-medium flex items-center gap-2">
+                    Download
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="absolute right-0 mt-1 w-40 bg-white border rounded-md shadow-lg hidden group-hover:block overflow-hidden">
+                    <button onclick="downloadCSV()" class="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 border-b">Export CSV</button>
+                    <button onclick="downloadImage()" class="w-full text-left px-4 py-2 text-sm hover:bg-slate-50">Save as PNG</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-xs text-slate-400 hidden lg:block">
+            Double-click to rename • Hover to add (+) • Drag to move
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-hidden">
+        <div id="mainContainer" class="split-pane">
+            
+            <!-- Mind Map Pane -->
+            <div id="mapPane" class="pane" style="flex: 1;">
+                <div id="canvasContainer" class="canvas-container w-full h-full relative overflow-hidden">
+                    <svg id="mindmapSvg" class="w-full h-full touch-none">
+                        <g id="viewport">
+                            <g id="linksGroup"></g>
+                            <g id="nodesGroup"></g>
+                        </g>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Resizer Handle -->
+            <div id="resizer" class="resizer hidden"></div>
+
+            <!-- Table Pane -->
+            <div id="tablePane" class="pane hidden-pane border-l bg-white" style="flex: 1;">
+                <div class="table-scroll">
+                    <table class="w-full border-collapse text-sm">
+                        <thead id="tableHead" class="sticky top-0 bg-slate-50 shadow-sm z-10"></thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                    <div class="p-4 border-t bg-white">
+                        <button onclick="addRow()" class="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add Row
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // --- State ---
+        let headers = ['category', 'continent', 'country', 'city'];
+        let dataRows = [
+            ['places', 'africa', 'Nigeria', 'lagos'],
+            ['places', 'asia', 'china', 'shanghai'],
+            ['places', 'europe', 'uk', 'london'],
+            ['places', 'north america', 'us', 'new york'],
+            ['places', 'south america', 'brazil', 'rio']
+        ];
+
+        let orientation = 'horizontal';
+        let collapsedNodes = new Set();
+        let manualOffsets = {};
+        let editingNodePath = null;
+        
+        let transform = { x: 100, y: 100, scale: 0.8 };
+        let isPanning = false;
+        let isDraggingNode = null;
+        let lastMousePos = { x: 0, y: 0 };
+        
+        const svg = document.getElementById('mindmapSvg');
+        const viewport = document.getElementById('viewport');
+        const nodesGroup = document.getElementById('nodesGroup');
+        const linksGroup = document.getElementById('linksGroup');
+
+        const NODE_WIDTH = 140;
+        const NODE_HEIGHT = 50;
+        const GUTTER_X = 80;
+        const GUTTER_Y = 30;
+
+        window.onload = () => {
+            renderAll();
+            setupInteractions();
+            setupResizer();
+            centerMap();
+        };
+
+        // --- View Controls ---
+        function setOrientation(o) {
+            orientation = o;
+            document.getElementById('orient-horiz').className = o === 'horizontal' ? 'px-3 py-1 rounded-md text-xs font-bold transition bg-white shadow-sm text-blue-600' : 'px-3 py-1 rounded-md text-xs font-bold transition text-slate-600 hover:text-slate-900';
+            document.getElementById('orient-vert').className = o === 'vertical' ? 'px-3 py-1 rounded-md text-xs font-bold transition bg-white shadow-sm text-blue-600' : 'px-3 py-1 rounded-md text-xs font-bold transition text-slate-600 hover:text-slate-900';
+            renderMindMap();
+        }
+
+        function setView(view) {
+            const mapPane = document.getElementById('mapPane');
+            const tablePane = document.getElementById('tablePane');
+            const resizer = document.getElementById('resizer');
+            
+            document.querySelectorAll('[id^="btn-"]').forEach(btn => {
+                const isActive = btn.id === `btn-${view}`;
+                btn.className = isActive 
+                    ? 'px-4 py-1.5 rounded-md text-sm font-medium transition bg-white shadow-sm text-blue-600' 
+                    : 'px-4 py-1.5 rounded-md text-sm font-medium transition text-slate-600 hover:text-slate-900';
+            });
+
+            mapPane.classList.toggle('hidden-pane', view === 'table');
+            tablePane.classList.toggle('hidden-pane', view === 'map');
+            resizer.classList.toggle('hidden', view !== 'split');
+            
+            if (view === 'split') {
+                mapPane.classList.remove('hidden-pane');
+                tablePane.classList.remove('hidden-pane');
+                mapPane.style.flex = "1";
+                tablePane.style.flex = "1";
+            }
+            
+            setTimeout(renderMindMap, 50);
+        }
+
+        function setupResizer() {
+            const resizer = document.getElementById('resizer');
+            const leftPane = document.getElementById('mapPane');
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                document.body.style.cursor = 'col-resize';
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                const containerWidth = document.getElementById('mainContainer').offsetWidth;
+                const leftWidth = (e.clientX / containerWidth) * 100;
+                leftPane.style.flex = `0 0 ${leftWidth}%`;
+                renderMindMap();
+            });
+
+            window.addEventListener('mouseup', () => {
+                isResizing = false;
+                document.body.style.cursor = '';
+            });
+        }
+
+        // --- Interactions ---
+        function setupInteractions() {
+            const container = document.getElementById('canvasContainer');
+
+            container.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.node-group')) return;
+                isPanning = true;
+                lastMousePos = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (isPanning) {
+                    const dx = e.clientX - lastMousePos.x;
+                    const dy = e.clientY - lastMousePos.y;
+                    transform.x += dx;
+                    transform.y += dy;
+                    lastMousePos = { x: e.clientX, y: e.clientY };
+                    updateViewport();
+                } else if (isDraggingNode) {
+                    const dx = (e.clientX - lastMousePos.x) / transform.scale;
+                    const dy = (e.clientY - lastMousePos.y) / transform.scale;
+                    const path = isDraggingNode.getAttribute('data-path');
+                    if (!manualOffsets[path]) manualOffsets[path] = { dx: 0, dy: 0 };
+                    manualOffsets[path].dx += dx;
+                    manualOffsets[path].dy += dy;
+                    lastMousePos = { x: e.clientX, y: e.clientY };
+                    renderMindMap();
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                isPanning = false;
+                isDraggingNode = null;
+            });
+
+            container.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const factor = Math.pow(1.1, -e.deltaY / 150);
+                const newScale = Math.max(0.1, Math.min(3, transform.scale * factor));
+                const rect = container.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const worldX = (mouseX - transform.x) / transform.scale;
+                const worldY = (mouseY - transform.y) / transform.scale;
+                transform.scale = newScale;
+                transform.x = mouseX - worldX * transform.scale;
+                transform.y = mouseY - worldY * transform.scale;
+                updateViewport();
+            }, { passive: false });
+
+            document.getElementById('csvInput').addEventListener('change', handleFileUpload);
+        }
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const text = event.target.result;
+                const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+                if (lines.length > 0) {
+                    headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                    dataRows = lines.slice(1).map(line => line.split(',').map(cell => cell.trim().replace(/"/g, '')));
+                    manualOffsets = {};
+                    collapsedNodes.clear();
+                    renderAll();
+                    centerMap();
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Editing Logic ---
+        function openEditModal(path, currentText) {
+            editingNodePath = path;
+            const input = document.getElementById('nodeEditInput');
+            input.value = currentText;
+            document.getElementById('editModal').style.display = 'flex';
+            setTimeout(() => input.focus(), 50);
+        }
+
+        function closeModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+
+        function saveNodeEdit() {
+            const newText = document.getElementById('nodeEditInput').value;
+            if (!editingNodePath) return;
+
+            const pathParts = editingNodePath.split('>');
+            const level = pathParts.length - 2; // root is index 0, so first actual data is level 0
+            const oldText = pathParts[pathParts.length - 1];
+
+            dataRows.forEach(row => {
+                let match = true;
+                for (let i = 0; i <= level; i++) {
+                    if (row[i] !== pathParts[i+1]) match = false;
+                }
+                if (match) row[level] = newText;
+            });
+
+            closeModal();
+            renderAll();
+        }
+
+        function addChildNode(parentPath) {
+            const pathParts = parentPath.split('>');
+            const parentLevel = pathParts.length - 2;
+            const childLevel = parentLevel + 1;
+
+            if (childLevel >= headers.length) {
+                // Add new column if needed
+                headers.push(`level ${headers.length + 1}`);
+            }
+
+            // Find first row matching parent and update or add new
+            let found = false;
+            for (let i = 0; i < dataRows.length; i++) {
+                let match = true;
+                for (let j = 0; j <= parentLevel; j++) {
+                    if (dataRows[i][j] !== pathParts[j+1]) match = false;
+                }
+                if (match && !dataRows[i][childLevel]) {
+                    dataRows[i][childLevel] = 'New Item';
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                const newRow = new Array(headers.length).fill('');
+                for (let j = 0; j <= parentLevel; j++) {
+                    newRow[j] = pathParts[j+1];
+                }
+                newRow[childLevel] = 'New Item';
+                dataRows.push(newRow);
+            }
+
+            renderAll();
+        }
+
+        // --- Core Rendering ---
+        function updateViewport() {
+            viewport.setAttribute('transform', `translate(${transform.x}, ${transform.y}) scale(${transform.scale})`);
+        }
+
+        function centerMap() {
+            const container = document.getElementById('canvasContainer');
+            transform.x = container.clientWidth / 2 - 100;
+            transform.y = 100;
+            transform.scale = 0.8;
+            updateViewport();
+        }
+
+        function buildTree() {
+            const root = { name: 'Root', children: {}, path: 'root' };
+            dataRows.forEach(row => {
+                let current = root;
+                let pathArr = ['root'];
+                row.forEach(cell => {
+                    if (!cell) return;
+                    pathArr.push(cell);
+                    const pathString = pathArr.join('>');
+                    if (!current.children[cell]) {
+                        current.children[cell] = { name: cell, children: {}, path: pathString };
+                    }
+                    current = current.children[cell];
+                });
+            });
+            return root;
+        }
+
+        function renderAll() {
+            renderTable();
+            renderMindMap();
+        }
+
+        function renderTable() {
+            const thead = document.getElementById('tableHead');
+            const tbody = document.getElementById('tableBody');
+            thead.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+            tbody.innerHTML = '';
+            dataRows.forEach((row, rowIndex) => {
+                const tr = document.createElement('tr');
+                row.forEach((cell, colIndex) => {
+                    const td = document.createElement('td');
+                    const input = document.createElement('input');
+                    input.className = 'w-full bg-transparent';
+                    input.value = cell;
+                    input.oninput = (e) => {
+                        dataRows[rowIndex][colIndex] = e.target.value;
+                        renderMindMap();
+                    };
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        function addRow() {
+            dataRows.push(new Array(headers.length).fill(''));
+            renderAll();
+        }
+
+        function renderMindMap() {
+            nodesGroup.innerHTML = '';
+            linksGroup.innerHTML = '';
+            const tree = buildTree();
+            
+            function getSubtreeSize(node) {
+                if (collapsedNodes.has(node.path)) return 1;
+                const childKeys = Object.keys(node.children);
+                if (childKeys.length === 0) return 1;
+                return childKeys.reduce((acc, k) => acc + getSubtreeSize(node.children[k]), 0);
+            }
+
+            let currentLeafY = 0;
+
+            function positionNode(node, level, parentX, parentY) {
+                const isCollapsed = collapsedNodes.has(node.path);
+                const childrenNames = Object.keys(node.children);
+                const subtreeSize = getSubtreeSize(node);
+                
+                let x, y;
+                if (orientation === 'horizontal') {
+                    x = level * (NODE_WIDTH + GUTTER_X);
+                    y = (currentLeafY + (subtreeSize - 1) / 2) * (NODE_HEIGHT + GUTTER_Y);
+                } else {
+                    x = (currentLeafY + (subtreeSize - 1) / 2) * (NODE_WIDTH + GUTTER_X / 2);
+                    y = level * (NODE_HEIGHT + GUTTER_Y * 2);
+                }
+
+                const offset = manualOffsets[node.path] || { dx: 0, dy: 0 };
+                const finalX = x + offset.dx;
+                const finalY = y + offset.dy;
+
+                if (parentX !== undefined) drawLink(parentX, parentY, finalX, finalY);
+
+                if (isCollapsed || childrenNames.length === 0) {
+                    currentLeafY += 1;
+                } else {
+                    childrenNames.forEach(childName => {
+                        positionNode(node.children[childName], level + 1, finalX, finalY);
+                    });
+                }
+
+                drawNode(finalX, finalY, node.name, node.path, childrenNames.length > 0, isCollapsed);
+            }
+
+            Object.keys(tree.children).forEach(r => positionNode(tree.children[r], 0));
+        }
+
+        function drawNode(x, y, text, path, hasChildren, isCollapsed) {
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            g.setAttribute('transform', `translate(${x}, ${y})`);
+            g.setAttribute('class', 'node-group');
+            g.setAttribute('data-path', path);
+            
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute('width', NODE_WIDTH);
+            rect.setAttribute('height', NODE_HEIGHT);
+            rect.setAttribute('rx', '8');
+            rect.setAttribute('fill', isCollapsed ? '#f1f5f9' : 'white');
+            rect.setAttribute('stroke', isCollapsed ? '#3b82f6' : '#e2e8f0');
+            rect.setAttribute('stroke-width', isCollapsed ? '2' : '1');
+            rect.setAttribute('class', 'node-rect shadow-sm');
+            rect.setAttribute('filter', 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.1))');
+            
+            rect.onclick = (e) => {
+                e.stopPropagation();
+                if (hasChildren) {
+                    if (collapsedNodes.has(path)) collapsedNodes.delete(path);
+                    else collapsedNodes.add(path);
+                    renderMindMap();
+                }
+            };
+
+            rect.ondblclick = (e) => {
+                e.stopPropagation();
+                openEditModal(path, text);
+            }
+
+            rect.onmousedown = (e) => {
+                e.stopPropagation();
+                isDraggingNode = g;
+                lastMousePos = { x: e.clientX, y: e.clientY };
+            };
+
+            const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            txt.setAttribute('x', NODE_WIDTH / 2);
+            txt.setAttribute('y', NODE_HEIGHT / 2 + 5);
+            txt.setAttribute('text-anchor', 'middle');
+            txt.setAttribute('class', 'node-text font-medium');
+            txt.setAttribute('fill', '#334155');
+            txt.setAttribute('font-size', '12');
+            txt.textContent = text;
+
+            // Add "+" Button
+            const addBtn = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            addBtn.setAttribute('class', 'add-btn-bg');
+            addBtn.setAttribute('transform', `translate(${NODE_WIDTH - 20}, ${NODE_HEIGHT - 20})`);
+            addBtn.innerHTML = `
+                <circle r="8" fill="#3b82f6" />
+                <text x="-3" y="4" fill="white" font-weight="bold" font-size="12" pointer-events="none">+</text>
+            `;
+            addBtn.onclick = (e) => {
+                e.stopPropagation();
+                addChildNode(path);
+            }
+
+            g.appendChild(rect);
+            g.appendChild(txt);
+            g.appendChild(addBtn);
+
+            if (hasChildren) {
+                const indicator = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                indicator.setAttribute('x', NODE_WIDTH - 15);
+                indicator.setAttribute('y', 15);
+                indicator.setAttribute('class', 'collapse-indicator');
+                indicator.textContent = isCollapsed ? '+' : '−';
+                g.appendChild(indicator);
+            }
+
+            nodesGroup.appendChild(g);
+        }
+
+        function drawLink(x1, y1, x2, y2) {
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            let d;
+            if (orientation === 'horizontal') {
+                const startX = x1 + NODE_WIDTH;
+                const startY = y1 + NODE_HEIGHT / 2;
+                const endX = x2;
+                const endY = y2 + NODE_HEIGHT / 2;
+                const midX = startX + (endX - startX) / 2;
+                d = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
+            } else {
+                const startX = x1 + NODE_WIDTH / 2;
+                const startY = y1 + NODE_HEIGHT;
+                const endX = x2 + NODE_WIDTH / 2;
+                const endY = y2;
+                const midY = startY + (endY - startY) / 2;
+                d = `M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}`;
+            }
+            path.setAttribute('d', d);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', '#cbd5e1');
+            path.setAttribute('stroke-width', '1.5');
+            linksGroup.appendChild(path);
+        }
+
+        // --- Export Functions ---
+        function downloadCSV() {
+            const rows = [headers, ...dataRows];
+            const csvContent = "data:text/csv;charset=utf-8," 
+                + rows.map(e => e.map(cell => `"${cell}"`).join(",")).join("\n");
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "mindmap_data.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function downloadImage() {
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const canvas = document.createElement("canvas");
+            const svgSize = svg.getBoundingClientRect();
+            canvas.width = svgSize.width * 2; // High DPI
+            canvas.height = svgSize.height * 2;
+            const ctx = canvas.getContext("2d");
+            const img = new Image();
+            const svgBlob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+            const url = URL.createObjectURL(svgBlob);
+            
+            img.onload = function() {
+                ctx.fillStyle = "white";
+                ctx.fillRect(0,0, canvas.width, canvas.height);
+                ctx.scale(2,2);
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                const pngUrl = canvas.toDataURL("image/png");
+                const downloadLink = document.createElement("a");
+                downloadLink.href = pngUrl;
+                downloadLink.download = "mindmap.png";
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+            };
+            img.src = url;
+        }
+
+    </script>
+</body>
+</html>
