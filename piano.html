@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Toy Piano Sheet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0fdf4; /* Light green tint */
+            color: #1e293b;
+        }
+
+        .sheet-font {
+            font-family: 'Comic Neue', cursive;
+        }
+
+        .sheet-container {
+            background-color: white;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            border-radius: 12px;
+            max-width: 900px;
+            margin: 20px auto;
+            border: 2px solid #e2e8f0;
+        }
+
+        /* EXACT Color mapping as requested: 
+           1: Orange, 2: Red, 3: Pink, 4: Purple, 5: Dark Blue, 6: Light Blue, 7: Green
+           Repeats for 8-14
+        */
+        .color-1, .color-8  { background-color: #f97316; } /* Orange */
+        .color-2, .color-9  { background-color: #ef4444; } /* Red */
+        .color-3, .color-10 { background-color: #ec4899; } /* Pink */
+        .color-4, .color-11 { background-color: #a855f7; } /* Purple */
+        .color-5, .color-12 { background-color: #1e3a8a; } /* Dark Blue */
+        .color-6, .color-13 { background-color: #38bdf8; } /* Light Blue */
+        .color-7, .color-14 { background-color: #22c55e; } /* Green */
+        .color-rest         { background-color: transparent; border: 4px dashed #cbd5e1 !important; color: #94a3b8 !important; }
+
+        .staff-line {
+            height: 2px;
+            background-color: #cbd5e1;
+            width: 100%;
+            margin: 6px 0;
+        }
+
+        .note-circle {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            border: 2px solid rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            position: absolute;
+            z-index: 10;
+        }
+
+        /* Styles for the massive flashing play mode */
+        #flashOverlay {
+            backdrop-filter: blur(8px);
+            background-color: rgba(255, 255, 255, 0.95);
+        }
+
+        .flash-circle {
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 100px;
+            font-weight: 900;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            transition: transform 0.05s ease-out;
+            font-family: 'Comic Neue', cursive;
+            border: 8px solid rgba(255,255,255,0.3);
+        }
+
+        .flash-circle.active {
+            transform: scale(1.05);
+        }
+
+        .note-column {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 40px;
+            height: 120px;
+        }
+
+        /* Custom slider styling */
+        input[type=range] {
+            accent-color: #16a34a;
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; }
+            .sheet-container { box-shadow: none; border: none; }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto">
+        <!-- Search Header -->
+        <header class="no-print mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">Toy Piano Converter & Player</h1>
+            <p class="text-slate-500 mb-6 text-sm">
+                Search the <strong>TheSession.org</strong> database. It will download the notes, convert them to 1-14, and let you play along at your own speed!
+            </p>
+            
+            <div class="flex flex-col sm:flex-row gap-2">
+                <input type="text" id="searchInput" placeholder="Try 'Polka', 'Jig', or 'March'..." 
+                       class="flex-1 p-3 rounded-xl border-2 border-slate-200 focus:border-green-500 outline-none font-bold text-lg">
+                <button id="searchBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-xl transition-colors shadow-md">
+                    Search
+                </button>
+            </div>
+            
+            <div id="statusText" class="mt-4 text-sm font-semibold text-green-600 hidden">Fetching database...</div>
+            <div id="resultsList" class="mt-4 flex flex-col gap-2 max-h-60 overflow-y-auto hidden border-t pt-4"></div>
+        </header>
+
+        <!-- Static Sheet View -->
+        <div id="sheetView" class="hidden">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 no-print px-2 gap-4">
+                <button onclick="hideSheet()" class="text-slate-500 hover:text-slate-800 font-bold flex items-center gap-1 self-start md:self-auto">
+                    <span>←</span> Search
+                </button>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <button onclick="window.print()" class="bg-slate-200 text-slate-700 px-5 py-3 rounded-xl font-bold shadow-sm hover:bg-slate-300">
+                        🖨️ Print
+                    </button>
+
+                    <!-- Speed Control -->
+                    <div class="flex items-center gap-3 bg-green-50 px-4 py-2 rounded-xl border border-green-200">
+                        <label for="speedSlider" class="text-sm font-bold text-green-800 whitespace-nowrap">Speed:</label>
+                        <input type="range" id="speedSlider" min="0.1" max="2.0" step="0.1" value="1.0" class="w-24 cursor-pointer">
+                        <span id="speedValue" class="text-sm font-bold text-green-700 w-10 text-right">1.0x</span>
+                    </div>
+
+                    <button id="playBtn" class="bg-green-600 hover:bg-green-500 text-white px-8 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 text-lg animate-pulse hover:animate-none">
+                        ▶️ PLAY
+                    </button>
+                </div>
+            </div>
+
+            <div class="sheet-container p-8">
+                <div class="mb-10 flex flex-col items-center border-b pb-6">
+                    <h2 id="songTitle" class="text-4xl font-bold sheet-font text-center text-slate-800 mb-2">Title</h2>
+                    <p id="songType" class="text-slate-500 text-sm font-bold uppercase tracking-widest">Type</p>
+                </div>
+
+                <div id="musicContainer" class="space-y-16 pb-10">
+                    <!-- Music rows generated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flashing Play Mode Overlay -->
+    <div id="flashOverlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center hidden">
+        <div class="absolute top-8 right-8">
+            <button id="stopBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg text-lg">
+                ⏹ Stop Playing
+            </button>
+        </div>
+        
+        <!-- Live Speed Adjuster (In Overlay) -->
+        <div class="absolute bottom-10 flex flex-col items-center gap-2 bg-white/80 p-4 rounded-2xl shadow-lg backdrop-blur-md">
+            <label class="text-sm font-bold text-slate-500 uppercase tracking-widest">Adjust Speed While Playing</label>
+            <div class="flex items-center gap-4">
+                <span class="text-2xl">🐢</span>
+                <input type="range" id="liveSpeedSlider" min="0.1" max="2.0" step="0.1" value="1.0" class="w-48 cursor-pointer h-3 rounded-lg appearance-none bg-slate-200">
+                <span class="text-2xl">🐇</span>
+            </div>
+            <span id="liveSpeedValue" class="font-bold text-slate-700 text-lg">1.0x</span>
+        </div>
+        
+        <h2 id="flashTitle" class="text-3xl font-bold text-slate-800 mb-12 sheet-font"></h2>
+        
+        <!-- The Flashing Element -->
+        <div id="flashCircle" class="flash-circle bg-slate-200 shadow-none border-none text-slate-400">
+            Ready
+        </div>
+
+        <div class="mt-16 text-slate-500 font-bold tracking-widest text-lg uppercase text-center max-w-md">
+            Press the matching color on your piano when it appears!
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const statusText = document.getElementById('statusText');
+        const resultsList = document.getElementById('resultsList');
+        const sheetView = document.getElementById('sheetView');
+        const musicContainer = document.getElementById('musicContainer');
+        const songTitle = document.getElementById('songTitle');
+        const songType = document.getElementById('songType');
+        
+        // Play Mode Elements
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const flashOverlay = document.getElementById('flashOverlay');
+        const flashCircle = document.getElementById('flashCircle');
+        const flashTitle = document.getElementById('flashTitle');
+
+        // Speed Control Elements
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const liveSpeedSlider = document.getElementById('liveSpeedSlider');
+        const liveSpeedValue = document.getElementById('liveSpeedValue');
+
+        // Toy Piano Setup (C Major scale over 2 octaves)
+        const NoteToToyKeyMap = {
+            'C': 1,  'D': 2,  'E': 3,  'F': 4,  'G': 5,  'A': 6,  'B': 7,
+            'c': 8,  'd': 9,  'e': 10, 'f': 11, 'g': 12, 'a': 13, 'b': 14
+        };
+
+        let currentSequence = []; 
+        let isPlaying = false;
+        const BASE_TEMPO_MS = 350; 
+        let currentSpeedFactor = 1.0;
+
+        // Synchronize both speed sliders (the toolbar one and the live overlay one)
+        function updateSpeed(newSpeed) {
+            currentSpeedFactor = parseFloat(newSpeed);
+            speedSlider.value = currentSpeedFactor;
+            liveSpeedSlider.value = currentSpeedFactor;
+            speedValue.textContent = currentSpeedFactor.toFixed(1) + 'x';
+            liveSpeedValue.textContent = currentSpeedFactor.toFixed(1) + 'x';
+        }
+
+        speedSlider.addEventListener('input', (e) => updateSpeed(e.target.value));
+        liveSpeedSlider.addEventListener('input', (e) => updateSpeed(e.target.value));
+
+        // 1. Database Search
+        async function searchDatabase() {
+            const query = searchInput.value.trim();
+            if (!query) return;
+
+            statusText.textContent = "Searching TheSession.org...";
+            statusText.classList.remove('hidden');
+            resultsList.innerHTML = '';
+            resultsList.classList.add('hidden');
+            sheetView.classList.add('hidden');
+
+            try {
+                const response = await fetch(`https://thesession.org/tunes/search?q=${encodeURIComponent(query)}&format=json`);
+                const data = await response.json();
+
+                if (data.tunes && data.tunes.length > 0) {
+                    renderSearchResults(data.tunes);
+                } else {
+                    statusText.textContent = "No tunes found. Try a different search.";
+                }
+            } catch (error) {
+                statusText.textContent = "Database connection error.";
+            }
+        }
+
+        function renderSearchResults(tunes) {
+            statusText.classList.add('hidden');
+            resultsList.classList.remove('hidden');
+
+            tunes.forEach(tune => {
+                const btn = document.createElement('button');
+                btn.className = "text-left p-4 hover:bg-green-50 bg-white rounded-xl border-2 border-slate-100 transition-all flex justify-between items-center group shadow-sm";
+                btn.innerHTML = `
+                    <div>
+                        <span class="font-bold text-slate-800 text-lg block">${tune.name}</span>
+                        <span class="text-xs font-bold tracking-wider text-green-600 uppercase">${tune.type}</span>
+                    </div>
+                    <span class="bg-green-100 text-green-700 px-3 py-1 rounded-md text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                        Get Notes
+                    </span>
+                `;
+                btn.onclick = () => fetchTuneData(tune.id, tune.name, tune.type);
+                resultsList.appendChild(btn);
+            });
+        }
+
+        async function fetchTuneData(id, name, type) {
+            statusText.textContent = `Downloading notes...`;
+            statusText.classList.remove('hidden');
+            resultsList.classList.add('hidden');
+
+            try {
+                const response = await fetch(`https://thesession.org/tunes/${id}?format=json`);
+                const data = await response.json();
+
+                if (data.settings && data.settings.length > 0) {
+                    processSheetMusic(name, type, data.settings[0].abc);
+                }
+            } catch (error) {
+                statusText.textContent = "Error downloading sheet music.";
+            }
+        }
+
+        // 2. Parse Notes AND Timing Duration
+        function processSheetMusic(title, type, abcString) {
+            statusText.classList.add('hidden');
+            sheetView.classList.remove('hidden');
+            document.querySelector('.no-print').classList.add('hidden');
+            
+            songTitle.textContent = title;
+            flashTitle.textContent = title;
+            songType.textContent = type;
+            musicContainer.innerHTML = '';
+            currentSequence = []; 
+
+            const lines = abcString.split('\n');
+            let pureMusicText = '';
+            for (let line of lines) {
+                line = line.trim();
+                if (line.match(/^[a-zA-Z]:/)) continue; 
+                line = line.replace(/"[^"]*"/g, '');
+                pureMusicText += line + ' ';
+            }
+
+            const noteRegex = /([a-gA-GzZ])([0-9]*\/?[0-9]*)/g;
+            let match;
+
+            while ((match = noteRegex.exec(pureMusicText)) !== null) {
+                const noteChar = match[1];
+                const timingStr = match[2];
+
+                let durationMultiplier = 1;
+
+                if (timingStr) {
+                    if (timingStr.includes('/')) {
+                        const parts = timingStr.split('/');
+                        const num = parts[0] ? parseFloat(parts[0]) : 1;
+                        const den = parts[1] ? parseFloat(parts[1]) : 2;
+                        durationMultiplier = num / den;
+                    } else {
+                        durationMultiplier = parseFloat(timingStr);
+                    }
+                }
+
+                const isRest = noteChar.toLowerCase() === 'z';
+                const toyKey = isRest ? null : NoteToToyKeyMap[noteChar];
+
+                if (toyKey || isRest) {
+                    currentSequence.push({
+                        key: toyKey,
+                        isRest: isRest,
+                        durationMs: BASE_TEMPO_MS * durationMultiplier
+                    });
+                }
+            }
+
+            if (currentSequence.length === 0) {
+                musicContainer.innerHTML = '<p class="text-center text-red-500 font-bold">Could not extract standard notes from this file.</p>';
+                return;
+            }
+
+            drawStaticSheet(currentSequence.slice(0, 48));
+        }
+
+        function drawStaticSheet(notesToDraw) {
+            const notesPerRow = 12;
+            let rows = [];
+            for (let i = 0; i < notesToDraw.length; i += notesPerRow) {
+                rows.push(notesToDraw.slice(i, i + notesPerRow));
+            }
+
+            rows.forEach(rowNotes => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'relative pt-8 pb-10 px-2';
+
+                const staff = document.createElement('div');
+                staff.className = 'absolute top-12 left-0 w-full z-0 opacity-40';
+                for (let i = 0; i < 5; i++) {
+                    const l = document.createElement('div');
+                    l.className = 'staff-line';
+                    staff.appendChild(l);
+                }
+                rowDiv.appendChild(staff);
+
+                const container = document.createElement('div');
+                container.className = 'relative z-10 flex justify-between px-4';
+
+                rowNotes.forEach(noteData => {
+                    const col = document.createElement('div');
+                    col.className = 'note-column';
+
+                    const circle = document.createElement('div');
+                    
+                    if (noteData.isRest) {
+                        circle.className = `note-circle color-rest`;
+                        circle.textContent = 'z';
+                        circle.style.bottom = '40px';
+                    } else if (noteData.key) {
+                        circle.className = `note-circle color-${noteData.key}`;
+                        circle.textContent = noteData.key;
+                        circle.style.bottom = `${10 + (noteData.key * 3)}px`;
+                    } else {
+                        circle.className = `note-circle bg-slate-300`;
+                        circle.textContent = '?';
+                        circle.style.bottom = '40px';
+                    }
+
+                    col.appendChild(circle);
+                    container.appendChild(col);
+                });
+
+                rowDiv.appendChild(container);
+                musicContainer.appendChild(rowDiv);
+            });
+        }
+
+        // 3. Play Mode Logic (Flashing sequence)
+        playBtn.addEventListener('click', async () => {
+            if (currentSequence.length === 0) return;
+            
+            isPlaying = true;
+            flashOverlay.classList.remove('hidden');
+            
+            // Countdown (always normal speed)
+            flashCircle.className = 'flash-circle bg-slate-800 text-white';
+            flashCircle.textContent = '3';
+            await new Promise(r => setTimeout(r, 600));
+            if(!isPlaying) return;
+            flashCircle.textContent = '2';
+            await new Promise(r => setTimeout(r, 600));
+            if(!isPlaying) return;
+            flashCircle.textContent = '1';
+            await new Promise(r => setTimeout(r, 600));
+            if(!isPlaying) return;
+
+            // Start flashing sequence
+            for (let i = 0; i < currentSequence.length; i++) {
+                if (!isPlaying) break; 
+
+                const note = currentSequence[i];
+
+                if (note.isRest || !note.key) {
+                    flashCircle.className = 'flash-circle color-rest';
+                    flashCircle.textContent = 'Rest';
+                } else {
+                    flashCircle.className = `flash-circle color-${note.key} active`;
+                    flashCircle.textContent = note.key;
+                }
+
+                // Calculate the true duration based on the live speed slider
+                // Division by currentSpeedFactor means: speed=0.5x makes duration 2x as long.
+                const actualDurationMs = note.durationMs / currentSpeedFactor;
+
+                // Hold the color on screen
+                await new Promise(r => setTimeout(r, actualDurationMs));
+
+                // Quick visual gap (articulation) before the next note
+                // Also slowed/sped up slightly depending on the tempo
+                if (isPlaying) {
+                    flashCircle.classList.remove('active');
+                    flashCircle.style.opacity = '0.5';
+                    await new Promise(r => setTimeout(r, 50 / currentSpeedFactor)); 
+                    flashCircle.style.opacity = '1';
+                }
+            }
+
+            if (isPlaying) {
+                flashCircle.className = 'flash-circle bg-green-500 text-white';
+                flashCircle.textContent = 'Done!';
+                setTimeout(stopPlaying, 2000);
+            }
+        });
+
+        function stopPlaying() {
+            isPlaying = false;
+            flashOverlay.classList.add('hidden');
+            flashCircle.textContent = 'Ready';
+        }
+
+        stopBtn.addEventListener('click', stopPlaying);
+
+        function hideSheet() {
+            sheetView.classList.add('hidden');
+            document.querySelector('.no-print').classList.remove('hidden');
+        }
+
+        searchBtn.addEventListener('click', searchDatabase);
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') searchDatabase();
+        });
+
+    </script>
+</body>
+</html>
+
+
