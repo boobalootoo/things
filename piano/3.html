@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Toy Piano Studio Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            overflow-x: hidden;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .sheet-font { font-family: 'Comic Neue', cursive; }
+
+        /* Color Mapping for White Keys */
+        .color-1, .color-8  { background-color: #f97316; } 
+        .color-2, .color-9  { background-color: #ef4444; } 
+        .color-3, .color-10 { background-color: #ec4899; } 
+        .color-4, .color-11 { background-color: #a855f7; } 
+        .color-5, .color-12 { background-color: #1e3a8a; } 
+        .color-6, .color-13 { background-color: #38bdf8; } 
+        .color-7, .color-14 { background-color: #22c55e; } 
+        .color-black        { background-color: #1e293b; color: white;} 
+
+        .staff-line {
+            height: 2px;
+            background-color: #cbd5e1;
+            width: 100%;
+            margin: 6px 0;
+        }
+
+        .note-circle {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            border: 2px solid rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            position: absolute;
+            z-index: 10;
+        }
+
+        .note-column {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 42px;
+            height: 120px;
+        }
+
+        .lyric-text {
+            position: absolute;
+            bottom: -5px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #475569;
+            white-space: nowrap;
+            text-align: center;
+        }
+
+        /* --- Interactive Keyboard Styles (Matched to Physical Toy) --- */
+        #virtualKeyboard {
+            display: flex;
+            position: relative;
+            padding-top: 40px; /* Room for the black key labels above */
+            padding-bottom: 15px;
+            min-width: max-content;
+        }
+
+        .key-wrapper {
+            position: relative;
+            flex: 0 0 55px; /* Standard white key width */
+        }
+
+        .white-key {
+            height: 180px;
+            width: 100%;
+            background: linear-gradient(to bottom, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #cbd5e1;
+            border-radius: 0 0 8px 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 5px 0 #94a3b8;
+            user-select: none;
+            transition: all 0.1s;
+        }
+
+        .white-key:active, .white-key.active {
+            transform: translateY(4px);
+            box-shadow: 0 1px 0 #94a3b8;
+            background: #f1f5f9;
+        }
+
+        .white-key.highlight { 
+            background: #fef08a; 
+            border-color: #facc15; 
+            box-shadow: 0 5px 0 #ca8a04, inset 0 0 15px rgba(234, 179, 8, 0.4);
+        }
+        .white-key.highlight.active { box-shadow: 0 1px 0 #ca8a04; }
+
+        .key-color-bar {
+            height: 26px;
+            width: 100%;
+            position: absolute;
+            bottom: 0;
+            border-radius: 0 0 8px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 900;
+            font-size: 15px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .black-key {
+            height: 105px;
+            width: 34px;
+            background: linear-gradient(to bottom, #1e293b 0%, #0f172a 100%);
+            position: absolute;
+            top: 0;
+            right: -17px; /* Centers exactly between the white keys */
+            border-radius: 0 0 6px 6px;
+            z-index: 20;
+            cursor: pointer;
+            box-shadow: 0 5px 0 #020617;
+            transition: all 0.1s;
+        }
+
+        .black-key:active, .black-key.active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 #020617;
+        }
+
+        .black-key.highlight { 
+            background: #facc15; 
+            box-shadow: 0 5px 0 #ca8a04;
+        }
+        .black-key.highlight.active { box-shadow: 0 2px 0 #ca8a04; }
+
+        .black-key-label {
+            position: absolute;
+            top: -28px;
+            right: -12px; /* Centers directly above the black key */
+            width: 24px;
+            height: 24px;
+            background-color: #1e293b;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: bold;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Overlays */
+        #flashOverlay {
+            backdrop-filter: blur(12px);
+            background-color: rgba(255, 255, 255, 0.95);
+        }
+
+        .flash-circle {
+            width: 240px;
+            height: 240px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 100px;
+            font-weight: 900;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+            transition: transform 0.05s ease-out;
+            border: 8px solid rgba(255,255,255,0.4);
+        }
+        .flash-circle.active { transform: scale(1.1); }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; }
+        }
+        
+        .keyboard-scroll::-webkit-scrollbar { height: 8px; }
+        .keyboard-scroll::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 4px; }
+        .keyboard-scroll::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+    </style>
+</head>
+<body class="pb-[260px]">
+
+    <div class="max-w-6xl mx-auto p-4 md:p-8">
+        
+        <!-- Dashboard / Library -->
+        <header id="libraryView" class="no-print bg-white p-6 md:p-10 rounded-3xl shadow-lg border border-slate-200 mb-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                <div>
+                    <h1 class="text-4xl font-black text-slate-800 tracking-tight">Toy Piano Studio</h1>
+                    <p class="text-slate-500 font-medium">Syncing with <span class="text-blue-600 font-mono">music.csv</span></p>
+                </div>
+                <div id="fetchStatus" class="bg-blue-50 text-blue-700 px-4 py-2 rounded-full text-sm font-bold animate-pulse">
+                    Connecting...
+                </div>
+            </div>
+            
+            <input type="text" id="searchInput" placeholder="Search your songs..." 
+                   class="w-full p-4 rounded-xl border-2 border-slate-200 focus:border-blue-500 outline-none font-bold text-lg mb-6 shadow-sm">
+            
+            <div id="songList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto pr-2">
+                <!-- Song buttons -->
+            </div>
+        </header>
+
+        <!-- Song Preview View -->
+        <div id="sheetView" class="hidden">
+            <div class="flex flex-col lg:flex-row justify-between items-center mb-6 no-print gap-4">
+                <button onclick="hideSheet()" class="bg-white border-2 border-slate-200 text-slate-600 px-6 py-3 rounded-2xl font-bold hover:bg-slate-50 transition-all flex items-center gap-2">
+                    ⬅ Library
+                </button>
+                
+                <div class="flex flex-wrap items-center justify-center gap-3 bg-white p-3 rounded-3xl border border-slate-200 shadow-sm w-full lg:w-auto">
+                    
+                    <!-- Advanced Instrument Selector -->
+                    <div class="flex items-center gap-2 px-4 border-r border-slate-200">
+                        <span class="text-xl">🎹</span>
+                        <select id="instrumentSelect" class="bg-transparent text-slate-700 text-sm font-bold focus:outline-none cursor-pointer py-2">
+                            <option value="acoustic">Grand Piano</option>
+                            <option value="musicbox">Music Box</option>
+                            <option value="marimba">Marimba</option>
+                            <option value="toy">Classic Toy Piano</option>
+                        </select>
+                    </div>
+
+                    <!-- Speed -->
+                    <div class="flex items-center gap-2 px-4 border-r border-slate-200">
+                        <span class="text-xs font-black text-slate-400 uppercase hidden sm:block">Speed</span>
+                        <input type="range" id="speedSlider" min="0.3" max="2.0" step="0.1" value="1.0" class="w-20">
+                    </div>
+
+                    <button id="listenBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl font-bold shadow-md transition-all flex items-center gap-2 flex-1 sm:flex-none justify-center">
+                        🔊 LISTEN
+                    </button>
+
+                    <button id="playBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-bold shadow-md transition-all flex items-center gap-2 flex-1 sm:flex-none justify-center">
+                        ✨ PLAY MODE
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 md:p-12 rounded-[2rem] shadow-xl border border-slate-200">
+                <div class="mb-12 text-center">
+                    <h2 id="songTitle" class="text-4xl md:text-5xl font-black sheet-font text-slate-900 mb-2">Title</h2>
+                    <div class="w-20 h-1.5 bg-blue-500 mx-auto rounded-full"></div>
+                </div>
+
+                <div id="musicContainer" class="flex flex-wrap gap-x-5 gap-y-16 justify-center">
+                    <!-- Music Row Content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Persistent Bottom Keyboard -->
+    <div id="pianoWrapper" class="fixed bottom-0 left-0 w-full bg-slate-200 border-t border-slate-300 p-2 z-40 hidden no-print shadow-[0_-10px_20px_rgba(0,0,0,0.1)]">
+        <div class="max-w-6xl mx-auto overflow-x-auto keyboard-scroll" style="scroll-behavior: smooth;" id="keyboardScrollContainer">
+            <div id="virtualKeyboard">
+                <!-- Keys generated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Playback Overlay -->
+    <div id="flashOverlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center hidden">
+        <button id="stopBtn" class="absolute top-8 right-8 bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-2xl shadow-xl transition-all text-lg">
+            EXIT
+        </button>
+        
+        <div class="text-center mb-8 px-4">
+            <h2 id="flashTitle" class="text-3xl font-black text-slate-900 sheet-font mb-2"></h2>
+            <p id="flashLyric" class="text-2xl text-slate-500 font-bold min-h-[1.5em] italic">Ready?</p>
+        </div>
+        
+        <div id="flashCircle" class="flash-circle bg-slate-100 text-slate-300">?</div>
+
+        <div id="modeIndicator" class="mt-8 text-blue-600 font-black tracking-widest uppercase text-sm bg-blue-50 px-6 py-2 rounded-full">
+            Listen Mode
+        </div>
+    </div>
+
+    <script>
+        const CSV_URL = 'https://boobalootoo.github.io/things/piano/music.csv';
+        const BASE_DURATION = 650;
+        
+        // Accurate Frequencies for the 14 white keys + 9 physical black keys (C4 to B5)
+        const FREQUENCIES = {
+            '1': 261.63, 'b1': 277.18, '2': 293.66, 'b2': 311.13, '3': 329.63, 
+            '4': 349.23, 'b3': 369.99, '5': 392.00, 'b4': 415.30, '6': 440.00, 'b5': 466.16, '7': 493.88,
+            '8': 523.25, 'b6': 554.37, '9': 587.33, 'b7': 622.25, '10': 659.25, 
+            '11': 698.46, 'b8': 739.99, '12': 783.99, 'b9': 830.61, '13': 880.00, '14': 987.77
+        };
+
+        // This boolean array matches the exact gaps on the toy (2, 2, 3, 2 pattern)
+        const HAS_BLACK_KEY = [true, true, false, true, true, false, true, true, true, false, true, true, false, false];
+
+        // Maps any old Sharp notation from earlier CSVs (like [1#] or [4#]) safely to the 1-9 numbering
+        const SHARP_TO_B = {
+            '1#': 'b1', '2#': 'b2', '4#': 'b3', '5#': 'b4', '6#': 'b5',
+            '8#': 'b6', '9#': 'b7', '11#': 'b8', '12#': 'b9'
+        };
+
+        // --- DOM ---
+        const searchInput = document.getElementById('searchInput');
+        const songList = document.getElementById('songList');
+        const fetchStatus = document.getElementById('fetchStatus');
+        const libraryView = document.getElementById('libraryView');
+        const sheetView = document.getElementById('sheetView');
+        const pianoWrapper = document.getElementById('pianoWrapper');
+        const virtualKeyboard = document.getElementById('virtualKeyboard');
+        const musicContainer = document.getElementById('musicContainer');
+        const songTitle = document.getElementById('songTitle');
+        const playBtn = document.getElementById('playBtn');
+        const listenBtn = document.getElementById('listenBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const flashOverlay = document.getElementById('flashOverlay');
+        const flashCircle = document.getElementById('flashCircle');
+        const flashLyric = document.getElementById('flashLyric');
+        const instrumentSelect = document.getElementById('instrumentSelect');
+        const speedSlider = document.getElementById('speedSlider');
+
+        let audioCtx = null;
+        let database = [];
+        let currentSequence = []; 
+        let isRunning = false;
+
+        // --- KEYBOARD GENERATION ---
+        function createKeyboard() {
+            virtualKeyboard.innerHTML = '';
+            let blackKeyCounter = 1;
+
+            for (let i = 1; i <= 14; i++) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'key-wrapper';
+
+                // White Key
+                const whiteKey = document.createElement('div');
+                whiteKey.className = 'white-key';
+                whiteKey.dataset.note = i.toString();
+                // Number now lives inside the colored bar at the bottom, just like the toy
+                whiteKey.innerHTML = `<div class="key-color-bar color-${i}">${i}</div>`;
+                whiteKey.addEventListener('pointerdown', (e) => { e.preventDefault(); pressKey(i.toString()); });
+                wrapper.appendChild(whiteKey);
+
+                // Black Key & Number Label
+                if (HAS_BLACK_KEY[i-1]) {
+                    const bNote = 'b' + blackKeyCounter;
+                    
+                    // The printed number dot above the key
+                    const labelDot = document.createElement('div');
+                    labelDot.className = 'black-key-label';
+                    labelDot.textContent = blackKeyCounter;
+                    wrapper.appendChild(labelDot);
+
+                    // The actual physical black key
+                    const blackKey = document.createElement('div');
+                    blackKey.className = 'black-key';
+                    blackKey.dataset.note = bNote;
+                    blackKey.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); pressKey(bNote); });
+                    wrapper.appendChild(blackKey);
+
+                    blackKeyCounter++;
+                }
+
+                virtualKeyboard.appendChild(wrapper);
+            }
+        }
+
+        function pressKey(noteStr) {
+            const freq = FREQUENCIES[noteStr];
+            if (freq) {
+                playTone(freq, 500);
+                const keyEl = document.querySelector(`[data-note="${noteStr}"]`);
+                if(keyEl) {
+                    keyEl.classList.add('active');
+                    setTimeout(() => keyEl.classList.remove('active'), 150);
+                }
+            }
+        }
+
+        function highlightKey(noteStr, duration) {
+            const keyEl = document.querySelector(`[data-note="${noteStr}"]`);
+            if (keyEl) {
+                keyEl.classList.add('highlight');
+                // Smooth scroll horizontally if the key is out of view on mobile
+                keyEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                setTimeout(() => keyEl.classList.remove('highlight'), duration);
+            }
+        }
+
+        // --- ADVANCED AUDIO SYNTHESIZER ---
+        function playTone(freq, durationMs) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const now = audioCtx.currentTime;
+            const durSec = durationMs / 1000;
+            const inst = instrumentSelect.value;
+            
+            const masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+
+            if (inst === 'acoustic') {
+                // Layered synthesis for piano depth
+                const osc1 = audioCtx.createOscillator(); osc1.type = 'triangle'; osc1.frequency.value = freq;
+                const osc2 = audioCtx.createOscillator(); osc2.type = 'sine'; osc2.frequency.value = freq * 2;
+                
+                masterGain.gain.setValueAtTime(0, now);
+                masterGain.gain.linearRampToValueAtTime(0.7, now + 0.02);
+                masterGain.gain.exponentialRampToValueAtTime(0.001, now + durSec * 1.5);
+                
+                osc1.connect(masterGain); osc2.connect(masterGain);
+                osc1.start(now); osc2.start(now);
+                osc1.stop(now + durSec * 1.5); osc2.stop(now + durSec * 1.5);
+
+            } else if (inst === 'musicbox') {
+                const osc = audioCtx.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+                const clickOsc = audioCtx.createOscillator(); clickOsc.type = 'sine'; clickOsc.frequency.value = freq * 4;
+                
+                const clickGain = audioCtx.createGain();
+                clickGain.gain.setValueAtTime(0, now);
+                clickGain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+                clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                clickOsc.connect(clickGain); clickGain.connect(masterGain);
+
+                masterGain.gain.setValueAtTime(0, now);
+                masterGain.gain.linearRampToValueAtTime(0.5, now + 0.02);
+                masterGain.gain.exponentialRampToValueAtTime(0.001, now + durSec * 2);
+                
+                osc.connect(masterGain);
+                osc.start(now); clickOsc.start(now);
+                osc.stop(now + durSec * 2); clickOsc.stop(now + 0.1);
+
+            } else if (inst === 'marimba') {
+                const osc = audioCtx.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+                
+                masterGain.gain.setValueAtTime(0, now);
+                masterGain.gain.linearRampToValueAtTime(0.8, now + 0.01);
+                masterGain.gain.exponentialRampToValueAtTime(0.001, now + durSec * 0.8);
+                
+                osc.connect(masterGain);
+                osc.start(now); osc.stop(now + durSec);
+
+            } else {
+                // Classic Toy Piano (Triangle Wave)
+                const osc = audioCtx.createOscillator(); osc.type = 'triangle'; osc.frequency.value = freq;
+                masterGain.gain.setValueAtTime(0, now);
+                masterGain.gain.linearRampToValueAtTime(0.4, now + 0.05);
+                masterGain.gain.exponentialRampToValueAtTime(0.01, now + durSec);
+                
+                osc.connect(masterGain);
+                osc.start(now); osc.stop(now + durSec);
+            }
+        }
+
+        // --- INITIALIZATION & PARSING ---
+        async function init() {
+            createKeyboard();
+            try {
+                const res = await fetch(`${CSV_URL}?t=${Date.now()}`);
+                if (!res.ok) throw new Error();
+                const text = await res.text();
+                database = parseCSV(text);
+                fetchStatus.textContent = "✓ Connected";
+                fetchStatus.className = "bg-green-50 text-green-700 px-4 py-2 rounded-full text-xs font-bold";
+                renderLibrary();
+            } catch (e) {
+                fetchStatus.textContent = "Check music.csv on GitHub";
+                fetchStatus.className = "bg-red-50 text-red-700 px-4 py-2 rounded-full text-xs font-bold";
+            }
+        }
+
+        function parseCSV(text) {
+            const lines = text.split('\n');
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                let parts = []; let current = ''; let inQuotes = false;
+                for (let char of line) {
+                    if (char === '"') inQuotes = !inQuotes;
+                    else if (char === ',' && !inQuotes) { parts.push(current); current = ''; }
+                    else current += char;
+                }
+                parts.push(current);
+                if (parts.length >= 2) data.push({ title: parts[0].trim(), raw: parts[1].trim() });
+            }
+            return data;
+        }
+
+        function renderLibrary(term = '') {
+            songList.innerHTML = '';
+            database.filter(s => s.title.toLowerCase().includes(term.toLowerCase())).forEach(song => {
+                const btn = document.createElement('button');
+                btn.className = "text-left p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-blue-300 transition-all flex justify-between items-center group";
+                btn.innerHTML = `<span class="font-bold text-slate-700 group-hover:text-blue-600">${song.title}</span><span class="text-blue-400 group-hover:translate-x-1 transition-transform">➔</span>`;
+                btn.onclick = () => openSong(song);
+                songList.appendChild(btn);
+            });
+        }
+
+        searchInput.oninput = (e) => renderLibrary(e.target.value);
+
+        function openSong(song) {
+            libraryView.classList.add('hidden');
+            sheetView.classList.remove('hidden');
+            pianoWrapper.classList.remove('hidden');
+            songTitle.textContent = song.title;
+            document.getElementById('flashTitle').textContent = song.title;
+            musicContainer.innerHTML = '';
+            currentSequence = [];
+            
+            // Handles both [b4] and legacy [5#] notation
+            const parts = song.raw.split(/(\[b?\d+#?\])/g).filter(p => p.trim() !== '');
+            let activeNote = null;
+            
+            parts.forEach(p => {
+                const noteMatch = p.match(/\[(b?\d+#?)\]/);
+                if (noteMatch) {
+                    let noteStr = noteMatch[1];
+                    // Backwards compatibility for CSV files with old '#' notation
+                    if (SHARP_TO_B[noteStr]) noteStr = SHARP_TO_B[noteStr];
+                    activeNote = noteStr;
+                }
+                else if (activeNote !== null) {
+                    const lyric = p.trim();
+                    currentSequence.push({ note: activeNote, lyric: lyric, isPause: lyric.match(/[.,!?]$/) });
+                    addNoteToSheet(activeNote, lyric);
+                    activeNote = null;
+                }
+            });
+        }
+
+        function addNoteToSheet(noteStr, text) {
+            const isBlack = noteStr.startsWith('b');
+            const col = document.createElement('div');
+            col.className = 'note-column';
+            
+            const staff = document.createElement('div');
+            staff.className = 'absolute top-10 left-0 w-full flex flex-col justify-between h-[40px] opacity-30';
+            for (let i = 0; i < 5; i++) staff.appendChild(Object.assign(document.createElement('div'), { className: 'staff-line' }));
+            
+            const circle = document.createElement('div');
+            
+            if (isBlack) {
+                const bNum = parseInt(noteStr.replace('b', ''));
+                circle.className = `note-circle color-black`;
+                circle.textContent = bNum; // Renders 1 through 9 to match toy labels
+                
+                // Height mapping for black keys based on surrounding white keys
+                const bMap = {1:1.5, 2:2.5, 3:4.5, 4:5.5, 5:6.5, 6:8.5, 7:9.5, 8:11.5, 9:12.5};
+                const visualNote = bMap[bNum] || 1;
+                circle.style.bottom = `${30 + (visualNote * 4)}px`;
+            } else {
+                const visualNote = Math.max(1, Math.min(14, parseInt(noteStr)));
+                circle.className = `note-circle color-${visualNote}`;
+                circle.textContent = noteStr;
+                circle.style.bottom = `${30 + (visualNote * 4)}px`;
+            }
+            
+            const lyric = document.createElement('div');
+            lyric.className = 'lyric-text sheet-font';
+            lyric.textContent = text;
+            
+            col.appendChild(staff);
+            col.appendChild(circle);
+            col.appendChild(lyric);
+            musicContainer.appendChild(col);
+        }
+
+        function hideSheet() {
+            sheetView.classList.add('hidden');
+            pianoWrapper.classList.add('hidden');
+            libraryView.classList.remove('hidden');
+            stop();
+        }
+
+        // --- PLAYBACK ENGINE ---
+        async function runSequence(withSound) {
+            if (isRunning) return;
+            isRunning = true;
+            flashOverlay.classList.remove('hidden');
+            document.getElementById('modeIndicator').textContent = withSound ? "Listen Mode" : "Play Mode (Tap the glowing key!)";
+            
+            flashLyric.textContent = "Get Ready...";
+            for (let i = 3; i > 0; i--) {
+                if (!isRunning) return;
+                flashCircle.textContent = i;
+                flashCircle.className = "flash-circle bg-slate-800 text-white";
+                await new Promise(r => setTimeout(r, 600));
+            }
+            
+            const speedFactor = parseFloat(speedSlider.value);
+
+            for (const step of currentSequence) {
+                if (!isRunning) break;
+                
+                const duration = (BASE_DURATION / speedFactor) * (step.isPause ? 1.4 : 1);
+                const isBlack = step.note.startsWith('b');
+                
+                if (isBlack) {
+                    const bNum = step.note.replace('b', '');
+                    flashCircle.textContent = bNum;
+                    flashCircle.className = `flash-circle color-black active`;
+                } else {
+                    const visualNote = Math.max(1, Math.min(14, parseInt(step.note)));
+                    flashCircle.textContent = step.note;
+                    flashCircle.className = `flash-circle color-${visualNote} active`;
+                }
+                
+                flashLyric.textContent = `"${step.lyric}"`;
+                
+                highlightKey(step.note, duration);
+                if (withSound && FREQUENCIES[step.note]) playTone(FREQUENCIES[step.note], duration);
+                
+                await new Promise(r => setTimeout(r, duration));
+                flashCircle.classList.remove('active');
+                await new Promise(r => setTimeout(r, 60 / speedFactor)); 
+            }
+            
+            if (isRunning) {
+                flashCircle.className = "flash-circle bg-green-500 text-white";
+                flashCircle.textContent = "✓";
+                setTimeout(stop, 1500);
+            }
+        }
+
+        function stop() { isRunning = false; flashOverlay.classList.add('hidden'); }
+        listenBtn.onclick = () => runSequence(true);
+        playBtn.onclick = () => runSequence(false);
+        stopBtn.onclick = stop;
+        
+        init();
+    </script>
+</body>
+</html>
