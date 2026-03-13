@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Soccer Sword Slasher</title>
+    <title>Soccer Sword Slasher - Deluxe</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
@@ -13,13 +13,16 @@
             overflow: hidden; 
             background-color: #87CEEB; 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            touch-action: none; /* Prevents pull-to-refresh and scrolling */
+            touch-action: none; 
         }
         
-        #game-canvas {
+        #game-container {
             display: block;
             width: 100vw;
             height: 100vh;
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 1;
         }
 
         /* UI Layer */
@@ -27,33 +30,24 @@
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
+            z-index: 10;
         }
 
-        /* Top Progress Bar */
-        .header {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 15px;
-            pointer-events: auto;
-        }
-        .level-indicator {
-            background: rgba(255, 255, 255, 0.85);
-            padding: 8px 15px;
-            border-radius: 30px;
-            display: flex;
-            gap: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-        }
-        .dot {
-            width: 28px; height: 28px;
+        /* Settings Button */
+        #settings-btn {
+            position: absolute;
+            top: 20px; right: 20px;
+            width: 50px; height: 50px;
+            background: rgba(255, 255, 255, 0.8);
             border-radius: 50%;
-            background: #ccc;
             display: flex; justify-content: center; align-items: center;
-            font-size: 14px; font-weight: bold; color: #555;
+            font-size: 28px;
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
         }
-        .dot.done { background: #4CAF50; color: white; }
-        .dot.active { background: #FF9800; color: white; transform: scale(1.15); border: 2px solid white; }
+        #settings-btn:active { transform: scale(0.9); }
 
         /* Floating Joystick */
         #joystick-base {
@@ -80,58 +74,80 @@
         .overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.5);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             pointer-events: auto;
             backdrop-filter: blur(3px);
+            z-index: 1000;
         }
+        
+        #message-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            background: rgba(0,0,0,0.4);
+            z-index: 500;
+            font-size: 50px;
+            font-weight: 900;
+            color: white;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.8);
+            text-align: center;
+        }
+
         .card {
             background: white;
             padding: 30px 40px;
             border-radius: 20px;
             text-align: center;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            max-width: 90%;
+            width: 400px;
         }
-        @keyframes popIn {
-            0% { transform: scale(0.8); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        h1 { margin: 0 0 15px 0; color: #333; font-size: 32px; }
-        p { margin: 0 0 25px 0; color: #666; font-size: 18px; }
+        
+        h1 { margin: 0 0 10px 0; color: #333; font-size: 32px; }
+        p { margin: 0 0 20px 0; color: #666; font-size: 16px; line-height: 1.4; }
+        .highlight-red { color: #d32f2f; font-weight: bold; }
+        .highlight-blue { color: #1976d2; font-weight: bold; }
+        
         button {
-            background: #FF9800;
-            color: white;
-            border: none;
-            padding: 15px 40px;
-            font-size: 20px;
-            font-weight: bold;
-            border-radius: 30px;
-            cursor: pointer;
+            background: #FF9800; color: white; border: none;
+            padding: 15px 50px; font-size: 20px; font-weight: bold;
+            border-radius: 30px; cursor: pointer;
             box-shadow: 0 4px 6px rgba(255, 152, 0, 0.4);
-            transition: transform 0.1s, background 0.2s;
+            margin-top: 15px; width: 100%;
         }
         button:active { transform: scale(0.95); }
-        button:hover { background: #F57C00; }
+        button.close-btn { background: #4CAF50; box-shadow: 0 4px 6px rgba(76, 175, 80, 0.4); }
 
         #score-display {
             position: absolute;
-            top: 80px;
+            top: 25px;
             width: 100%;
             text-align: center;
-            font-size: 36px;
+            font-size: 44px;
             font-weight: 900;
             color: white;
-            -webkit-text-stroke: 1px black;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.6);
         }
-        
-        #error-log {
-            position: absolute; bottom: 0; left: 0; background: rgba(255,0,0,0.8); color: white;
-            padding: 10px; font-family: monospace; display: none; z-index: 9999; width: 100%;
+
+        /* Settings Sliders */
+        .setting-row {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .setting-row label {
+            display: flex; justify-content: space-between;
+            font-weight: bold; color: #444; margin-bottom: 8px; font-size: 14px;
+        }
+        input[type=range] {
+            width: 100%; cursor: pointer;
         }
     </style>
 </head>
@@ -140,385 +156,409 @@
 <div id="game-container"></div>
 
 <div id="ui-layer">
-    <div class="header">
-        <div class="level-indicator">
-            <div class="dot done">23</div>
-            <div class="dot done">24</div>
-            <div class="dot active" id="current-level">25</div>
-            <div class="dot">26</div>
-            <div class="dot">27</div>
-        </div>
-    </div>
-    
     <div id="score-display">0</div>
-
+    <div id="settings-btn" onclick="openSettings()">⚙️</div>
     <div id="joystick-base">
         <div id="joystick-knob"></div>
     </div>
 </div>
 
+<div id="message-overlay">GOAL!</div>
+
+<!-- Start Screen -->
 <div id="start-screen" class="overlay">
     <div class="card">
         <h1>Soccer Slasher</h1>
-        <p>Drag to move & auto-attack.<br>Score a goal to win!</p>
-        <button id="start-btn">PLAY</button>
+        <p>Score in the <span class="highlight-red">Red Net</span>.<br>Defend your <span class="highlight-blue">Blue Net</span>!<br><br>Drag anywhere to move & attack.</p>
+        <button onclick="startGame()">PLAY</button>
     </div>
 </div>
 
-<div id="win-screen" class="overlay" style="display: none;">
+<!-- Settings Screen -->
+<div id="settings-screen" class="overlay" style="display: none;">
     <div class="card">
-        <h1>GOAL!</h1>
-        <p id="win-score">Awesome job!</p>
-        <button id="next-btn">NEXT LEVEL</button>
+        <h1>Settings</h1>
+        
+        <div class="setting-row">
+            <label>NPC Count: <span id="val-npc-count">5</span></label>
+            <input type="range" id="in-npc-count" min="1" max="20" value="5" oninput="updateVal('npc-count')">
+        </div>
+        
+        <div class="setting-row">
+            <label>NPC Speed: <span id="val-npc-speed">4.5</span></label>
+            <input type="range" id="in-npc-speed" min="2.0" max="10.0" step="0.5" value="4.5" oninput="updateVal('npc-speed')">
+        </div>
+
+        <div class="setting-row">
+            <label><span class="highlight-blue">Your Goal Size:</span> <span id="val-p-goal">8</span></label>
+            <input type="range" id="in-p-goal" min="4" max="20" value="8" oninput="updateVal('p-goal')">
+        </div>
+
+        <div class="setting-row">
+            <label><span class="highlight-red">Enemy Goal Size:</span> <span id="val-e-goal">8</span></label>
+            <input type="range" id="in-e-goal" min="4" max="20" value="8" oninput="updateVal('e-goal')">
+        </div>
+
+        <button class="close-btn" onclick="closeSettings()">RESUME</button>
     </div>
 </div>
-
-<div id="error-log"></div>
 
 <script>
-    // Global Error Handler for debugging
-    window.onerror = function(msg, url, lineNo, columnNo, error) {
-        const log = document.getElementById('error-log');
-        log.style.display = 'block';
-        log.innerHTML += `<br/>Error: ${msg} (Line: ${lineNo})`;
-        return false;
+    // --- Global Variables ---
+    let scene, camera, renderer, clock;
+    let player, ball, npcGoal, playerGoal;
+    let enemies = [], particles = [], splatters = [];
+    
+    let isRunning = false;
+    let score = 0;
+    
+    // Controls State
+    let moveDir = { x: 0, y: 0 };
+    let isDragging = false;
+    let joystickOrigin = { x: 0, y: 0 };
+    
+    // Game Settings Configuration (Adjustable)
+    let settings = {
+        npcCount: 5,
+        npcSpeed: 4.5,
+        playerGoalWidth: 8,
+        npcGoalWidth: 8
     };
 
-    // --- GAME ENGINE ---
-    const Game = {
-        scene: null, camera: null, renderer: null, clock: null,
-        player: null, ball: null, goalGroup: null,
-        enemies: [], particles: [], splatters: [],
+    const config = {
+        fieldW: 30, fieldL: 50, // 50 means z goes from -25 to +25
+        playerSpeed: 11.0, 
+        ballFriction: 0.96, kickForce: 16.0
+    };
+
+    // --- Initialization ---
+    window.onload = function() {
+        initEngine();
+    };
+
+    function startGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        isRunning = true;
+        clock = new THREE.Clock();
+        clock.start();
+        animate();
+    }
+
+    function initEngine() {
+        const container = document.getElementById('game-container');
         
-        config: {
-            fieldW: 30, fieldL: 50,
-            playerSpeed: 10.0, enemySpeed: 3.5,
-            ballFriction: 0.96, kickForce: 15.0
-        },
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
         
-        state: {
-            isRunning: false,
-            score: 0,
-            level: 25,
-            moveDir: { x: 0, y: 0 },
-            isDragging: false,
-            joystickOrigin: { x: 0, y: 0 }
-        },
+        camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(0, 15, 20);
+        camera.lookAt(0, 0, 0);
 
-        init: function() {
-            try {
-                // Setup Three.js Core
-                const container = document.getElementById('game-container');
-                this.scene = new THREE.Scene();
-                this.scene.background = new THREE.Color(0x87CEEB); // Sky blue
-                
-                this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
-                this.camera.position.set(0, 15, 15);
-                this.camera.lookAt(0, 0, 0);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
 
-                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Performance optimization
-                this.renderer.shadowMap.enabled = true;
-                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-                container.appendChild(this.renderer.domElement);
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
 
-                this.clock = new THREE.Clock();
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 30, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.left = -30;
+        dirLight.shadow.camera.right = 30;
+        dirLight.shadow.camera.top = 30;
+        dirLight.shadow.camera.bottom = -30;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        scene.add(dirLight);
 
-                // Lighting
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-                this.scene.add(ambientLight);
+        // Build World
+        buildField();
+        buildGoals();
+        spawnPlayer();
+        spawnBall();
+        spawnEnemies(settings.npcCount);
 
-                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                dirLight.position.set(20, 30, 10);
-                dirLight.castShadow = true;
-                dirLight.shadow.camera.left = -25;
-                dirLight.shadow.camera.right = 25;
-                dirLight.shadow.camera.top = 25;
-                dirLight.shadow.camera.bottom = -25;
-                dirLight.shadow.mapSize.width = 1024;
-                dirLight.shadow.mapSize.height = 1024;
-                this.scene.add(dirLight);
+        // Events
+        window.addEventListener('resize', onResize);
+        setupControls();
 
-                // Build World
-                this.buildField();
-                this.buildGoal();
-                this.spawnPlayer();
-                this.spawnBall();
-                this.spawnEnemies(6);
+        // Render first frame in background
+        renderer.render(scene, camera);
+    }
 
-                // Events
-                window.addEventListener('resize', () => this.onResize());
-                this.setupControls();
+    // --- Settings Logic ---
+    function updateVal(id) {
+        document.getElementById('val-' + id).innerText = document.getElementById('in-' + id).value;
+    }
 
-                // UI Listeners
-                document.getElementById('start-btn').addEventListener('click', () => this.startGame());
-                document.getElementById('next-btn').addEventListener('click', () => this.resetLevel());
+    function openSettings() {
+        if (!isRunning) return; // Prevent opening during a goal celebration
+        isRunning = false; // Pause game
+        isDragging = false;
+        moveDir = {x: 0, y: 0};
+        document.getElementById('joystick-base').style.display = 'none';
+        document.getElementById('settings-screen').style.display = 'flex';
+        
+        // Sync sliders to current code state just in case
+        document.getElementById('in-npc-count').value = settings.npcCount;
+        document.getElementById('in-npc-speed').value = settings.npcSpeed;
+        document.getElementById('in-p-goal').value = settings.playerGoalWidth;
+        document.getElementById('in-e-goal').value = settings.npcGoalWidth;
+        ['npc-count', 'npc-speed', 'p-goal', 'e-goal'].forEach(updateVal);
+    }
 
-                // Start Loop
-                this.animate();
-            } catch (e) {
-                console.error(e);
-                document.getElementById('error-log').style.display = 'block';
-                document.getElementById('error-log').innerText = "Init Error: " + e.message;
+    function closeSettings() {
+        document.getElementById('settings-screen').style.display = 'none';
+        
+        // Apply Settings
+        const newNpcCount = parseInt(document.getElementById('in-npc-count').value);
+        settings.npcSpeed = parseFloat(document.getElementById('in-npc-speed').value);
+        settings.playerGoalWidth = parseFloat(document.getElementById('in-p-goal').value);
+        settings.npcGoalWidth = parseFloat(document.getElementById('in-e-goal').value);
+
+        // Update NPCs
+        if (settings.npcCount !== newNpcCount) {
+            settings.npcCount = newNpcCount;
+            enemies.forEach(e => scene.remove(e));
+            enemies = [];
+            spawnEnemies(settings.npcCount);
+        } else {
+            // Just update speed of existing NPCs
+            enemies.forEach(e => { e.userData.speed = settings.npcSpeed + (Math.random() * 1.5); });
+        }
+
+        // Update Goals
+        buildGoals();
+
+        // Resume Game
+        clock.start(); // Resets the delta timer so physics don't jump forward
+        isRunning = true;
+    }
+
+
+    // --- World Building ---
+    function buildField() {
+        const geo = new THREE.PlaneGeometry(config.fieldW * 2, config.fieldL * 2);
+        const mat = new THREE.MeshLambertMaterial({ color: 0x64DD17 });
+        const ground = new THREE.Mesh(geo, mat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const midLine = new THREE.Mesh(new THREE.PlaneGeometry(config.fieldW, 0.3), lineMat);
+        midLine.rotation.x = -Math.PI / 2;
+        midLine.position.y = 0.02;
+        scene.add(midLine);
+
+        const ringGeo = new THREE.RingGeometry(4.7, 5, 32);
+        const circle = new THREE.Mesh(ringGeo, lineMat);
+        circle.rotation.x = -Math.PI / 2;
+        circle.position.y = 0.02;
+        scene.add(circle);
+    }
+
+    function buildGoals() {
+        // Remove old goals if rebuilding from settings
+        if (npcGoal) scene.remove(npcGoal);
+        if (playerGoal) scene.remove(playerGoal);
+
+        // NPC Goal (Red Net)
+        npcGoal = createGoal(0xFF0000, settings.npcGoalWidth); 
+        npcGoal.position.set(0, 0, -24);
+        scene.add(npcGoal);
+
+        // Player Goal (Blue Net)
+        playerGoal = createGoal(0x0000FF, settings.playerGoalWidth);
+        playerGoal.position.set(0, 0, 24);
+        playerGoal.rotation.y = Math.PI; 
+        scene.add(playerGoal);
+    }
+
+    function createGoal(netColorHex, width) {
+        const group = new THREE.Group();
+        const postMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        
+        const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 5), postMat);
+        leftPost.position.set(-width/2, 2.5, 0);
+        leftPost.castShadow = true;
+        
+        const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 5), postMat);
+        rightPost.position.set(width/2, 2.5, 0);
+        rightPost.castShadow = true;
+        
+        const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, width + 0.4), postMat);
+        crossbar.rotation.z = Math.PI / 2;
+        crossbar.position.set(0, 5, 0);
+        crossbar.castShadow = true;
+
+        const netMat = new THREE.MeshBasicMaterial({ color: netColorHex, transparent: true, opacity: 0.3, wireframe: true });
+        const net = new THREE.Mesh(new THREE.BoxGeometry(width, 5, 3), netMat);
+        net.position.set(0, 2.5, -1.5);
+
+        group.add(leftPost, rightPost, crossbar, net);
+        return group;
+    }
+
+    function createCharacterModel(colorHex) {
+        const group = new THREE.Group();
+        const mat = new THREE.MeshLambertMaterial({ color: colorHex });
+        
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.2, 16), mat);
+        body.position.y = 0.6;
+        body.castShadow = true;
+        
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), mat);
+        head.position.y = 1.6;
+        head.castShadow = true;
+
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyeMat);
+        eye1.position.set(-0.15, 1.7, 0.35);
+        const eye2 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyeMat);
+        eye2.position.set(0.15, 1.7, 0.35);
+
+        group.add(body, head, eye1, eye2);
+        return group;
+    }
+
+    function spawnPlayer() {
+        player = createCharacterModel(0xFFD700); 
+        player.position.set(0, 0, 10);
+        
+        const swordGroup = new THREE.Group();
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.2), new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
+        blade.position.y = 0.9;
+        const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.3), new THREE.MeshLambertMaterial({ color: 0x333333 }));
+        
+        swordGroup.add(blade, hilt);
+        swordGroup.position.set(0.6, 0.8, 0.2);
+        swordGroup.rotation.x = Math.PI / 3;
+        player.sword = swordGroup;
+        player.add(swordGroup);
+        
+        player.attackTimer = 0;
+        player.isAttacking = false;
+        scene.add(player);
+    }
+
+    function spawnBall() {
+        const geo = new THREE.IcosahedronGeometry(0.6, 1);
+        const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+        ball = new THREE.Mesh(geo, mat);
+        
+        const lines = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true }));
+        ball.add(lines);
+
+        ball.position.set(0, 0.6, 0);
+        ball.castShadow = true;
+        ball.velocity = new THREE.Vector3(0, 0, 0);
+        scene.add(ball);
+    }
+
+    function spawnEnemies(count) {
+        for(let i=0; i<count; i++) {
+            const enemy = createCharacterModel(0xFFCA28); 
+            enemy.position.set(
+                (Math.random() - 0.5) * 20,
+                0,
+                (Math.random() - 0.5) * 20 
+            );
+            enemy.userData = { 
+                speed: settings.npcSpeed + (Math.random() * 1.5),
+                offset: Math.random() * Math.PI * 2
+            };
+            enemies.push(enemy);
+            scene.add(enemy);
+        }
+    }
+
+    // --- Controls ---
+    function setupControls() {
+        const joyBase = document.getElementById('joystick-base');
+        const joyKnob = document.getElementById('joystick-knob');
+        const maxRadius = 50;
+
+        const startDrag = (x, y) => {
+            if(!isRunning) return;
+            isDragging = true;
+            joystickOrigin = { x, y };
+            joyBase.style.display = 'block';
+            joyBase.style.left = x + 'px';
+            joyBase.style.top = y + 'px';
+            joyKnob.style.transform = `translate(-50%, -50%)`;
+            moveDir = { x: 0, y: 0 };
+        };
+
+        const moveDrag = (x, y) => {
+            if(!isDragging) return;
+            let dx = x - joystickOrigin.x;
+            let dy = y - joystickOrigin.y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if(dist > maxRadius) {
+                dx = (dx / dist) * maxRadius;
+                dy = (dy / dist) * maxRadius;
             }
-        },
-
-        buildField: function() {
-            // Grass
-            const geo = new THREE.PlaneGeometry(this.config.fieldW * 2, this.config.fieldL * 2);
-            const mat = new THREE.MeshLambertMaterial({ color: 0x64DD17 });
-            const ground = new THREE.Mesh(geo, mat);
-            ground.rotation.x = -Math.PI / 2;
-            ground.receiveShadow = true;
-            this.scene.add(ground);
-
-            // Lines (Slightly raised to prevent z-fighting)
-            const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
             
-            // Center line
-            const midLine = new THREE.Mesh(new THREE.PlaneGeometry(this.config.fieldW, 0.3), lineMat);
-            midLine.rotation.x = -Math.PI / 2;
-            midLine.position.y = 0.02;
-            this.scene.add(midLine);
+            joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+            moveDir.x = dx / maxRadius;
+            moveDir.y = dy / maxRadius;
+        };
 
-            // Center circle
-            const ringGeo = new THREE.RingGeometry(4.7, 5, 32);
-            const circle = new THREE.Mesh(ringGeo, lineMat);
-            circle.rotation.x = -Math.PI / 2;
-            circle.position.y = 0.02;
-            this.scene.add(circle);
-        },
+        const endDrag = () => {
+            isDragging = false;
+            joyBase.style.display = 'none';
+            moveDir = { x: 0, y: 0 };
+        };
 
-        buildGoal: function() {
-            this.goalGroup = new THREE.Group();
-            this.goalGroup.position.set(0, 0, -20); // Back of field
+        // Touch Listeners
+        document.addEventListener('touchstart', (e) => {
+            // Ignore if clicking a button or setting slider
+            if(e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.id === 'settings-btn') return;
+            startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+        
+        document.addEventListener('touchmove', (e) => {
+            if(isDragging) e.preventDefault();
+            moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+        
+        document.addEventListener('touchend', endDrag);
 
-            const postMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        // Mouse Fallback
+        document.addEventListener('mousedown', (e) => {
+            if(e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.id === 'settings-btn') return;
+            startDrag(e.clientX, e.clientY);
+        });
+        document.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
+        document.addEventListener('mouseup', endDrag);
+    }
+
+    // --- Game Logic ---
+    function handleGoal(message, scoreChange) {
+        isRunning = false; // Pause physics
+        isDragging = false;
+        moveDir = {x: 0, y: 0};
+        document.getElementById('joystick-base').style.display = 'none';
+        
+        score += scoreChange;
+        document.getElementById('score-display').innerText = score;
+        
+        const overlay = document.getElementById('message-overlay');
+        overlay.innerHTML = message;
+        overlay.style.display = 'flex';
+
+        setTimeout(() => {
+            overlay.style.display = 'none';
             
-            // Left Post
-            const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 5), postMat);
-            leftPost.position.set(-4, 2.5, 0);
-            leftPost.castShadow = true;
+            player.position.set(0, 0, 10);
+            player.rotation.set(0, 0, 0);
             
-            // Right Post
-            const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 5), postMat);
-            rightPost.position.set(4, 2.5, 0);
-            rightPost.castShadow = true;
-            
-            // Crossbar
-            const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 8.4), postMat);
-            crossbar.rotation.z = Math.PI / 2;
-            crossbar.position.set(0, 5, 0);
-            crossbar.castShadow = true;
-
-            // Simple Net (Transparent blueish box)
-            const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2, wireframe: true });
-            const net = new THREE.Mesh(new THREE.BoxGeometry(8, 5, 3), netMat);
-            net.position.set(0, 2.5, -1.5);
-
-            this.goalGroup.add(leftPost, rightPost, crossbar, net);
-            this.scene.add(this.goalGroup);
-        },
-
-        createCharacterModel: function(colorHex) {
-            const group = new THREE.Group();
-            const mat = new THREE.MeshLambertMaterial({ color: colorHex });
-            
-            // Body
-            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.2, 16), mat);
-            body.position.y = 0.6;
-            body.castShadow = true;
-            
-            // Head
-            const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), mat);
-            head.position.y = 1.6;
-            head.castShadow = true;
-
-            // Eyes
-            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-            const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyeMat);
-            eye1.position.set(-0.15, 1.7, 0.35);
-            const eye2 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyeMat);
-            eye2.position.set(0.15, 1.7, 0.35);
-
-            group.add(body, head, eye1, eye2);
-            return group;
-        },
-
-        spawnPlayer: function() {
-            this.player = this.createCharacterModel(0xFFD700); // Yellow
-            this.player.position.set(0, 0, 10);
-            
-            // Add Sword
-            const swordGroup = new THREE.Group();
-            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.2), new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
-            blade.position.y = 0.9;
-            const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.3), new THREE.MeshLambertMaterial({ color: 0x333333 }));
-            
-            swordGroup.add(blade, hilt);
-            swordGroup.position.set(0.6, 0.8, 0.2);
-            swordGroup.rotation.x = Math.PI / 3;
-            this.player.sword = swordGroup;
-            this.player.add(swordGroup);
-            
-            this.player.attackTimer = 0;
-            this.player.isAttacking = false;
-
-            this.scene.add(this.player);
-        },
-
-        spawnBall: function() {
-            // Using Icosahedron for a cool low-poly soccer ball look
-            const geo = new THREE.IcosahedronGeometry(0.6, 1);
-            const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-            this.ball = new THREE.Mesh(geo, mat);
-            
-            // Black patches overlay
-            const lines = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true }));
-            this.ball.add(lines);
-
-            this.ball.position.set(0, 0.6, 0);
-            this.ball.castShadow = true;
-            this.ball.velocity = new THREE.Vector3(0, 0, 0);
-            
-            this.scene.add(this.ball);
-        },
-
-        spawnEnemies: function(count) {
-            for(let i=0; i<count; i++) {
-                const enemy = this.createCharacterModel(0xFFCA28); // Slightly different yellow
-                // Random position in front half of field
-                enemy.position.set(
-                    (Math.random() - 0.5) * 20,
-                    0,
-                    -5 - Math.random() * 15
-                );
-                enemy.userData = { 
-                    speed: this.config.enemySpeed + (Math.random() * 1.5),
-                    offset: Math.random() * Math.PI * 2
-                };
-                this.enemies.push(enemy);
-                this.scene.add(enemy);
-            }
-        },
-
-        setupControls: function() {
-            const uiLayer = document.getElementById('ui-layer');
-            const joyBase = document.getElementById('joystick-base');
-            const joyKnob = document.getElementById('joystick-knob');
-            const maxRadius = 50;
-
-            const startDrag = (x, y) => {
-                if(!this.state.isRunning) return;
-                this.state.isDragging = true;
-                this.state.joystickOrigin = { x, y };
-                joyBase.style.display = 'block';
-                joyBase.style.left = x + 'px';
-                joyBase.style.top = y + 'px';
-                joyKnob.style.transform = `translate(-50%, -50%)`;
-                this.state.moveDir = { x: 0, y: 0 };
-            };
-
-            const moveDrag = (x, y) => {
-                if(!this.state.isDragging) return;
-                let dx = x - this.state.joystickOrigin.x;
-                let dy = y - this.state.joystickOrigin.y;
-                let dist = Math.sqrt(dx*dx + dy*dy);
-                
-                // Clamp joystick knob
-                if(dist > maxRadius) {
-                    dx = (dx / dist) * maxRadius;
-                    dy = (dy / dist) * maxRadius;
-                }
-                
-                joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-                
-                // Normalize for game engine (-1 to 1)
-                this.state.moveDir.x = dx / maxRadius;
-                this.state.moveDir.y = dy / maxRadius;
-            };
-
-            const endDrag = () => {
-                this.state.isDragging = false;
-                joyBase.style.display = 'none';
-                this.state.moveDir = { x: 0, y: 0 };
-            };
-
-            // Touch
-            document.addEventListener('touchstart', (e) => {
-                if(e.target.tagName === 'BUTTON') return;
-                startDrag(e.touches[0].clientX, e.touches[0].clientY);
-            }, { passive: false });
-            
-            document.addEventListener('touchmove', (e) => {
-                if(this.state.isDragging) e.preventDefault();
-                moveDrag(e.touches[0].clientX, e.touches[0].clientY);
-            }, { passive: false });
-            
-            document.addEventListener('touchend', endDrag);
-
-            // Mouse fallback
-            document.addEventListener('mousedown', (e) => {
-                if(e.target.tagName === 'BUTTON') return;
-                startDrag(e.clientX, e.clientY);
-            });
-            document.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
-            document.addEventListener('mouseup', endDrag);
-        },
-
-        startGame: function() {
-            document.getElementById('start-screen').style.display = 'none';
-            this.state.isRunning = true;
-            this.clock.start();
-        },
-
-        resetLevel: function() {
-            document.getElementById('win-screen').style.display = 'none';
-            this.state.level++;
-            document.getElementById('current-level').innerText = this.state.level;
-            
-            // Reset entities
-            this.player.position.set(0, 0, 10);
-            this.ball.position.set(0, 0.6, 0);
-            this.ball.velocity.set(0,0,0);
-            
-            // Clear enemies & splatters
-            this.enemies.forEach(e => this.scene.remove(e));
-            this.enemies = [];
-            this.splatters.forEach(s => this.scene.remove(s));
-            this.splatters = [];
-            
-            this.spawnEnemies(6 + Math.floor(this.state.level/2)); // Get harder
-            
-            this.state.isRunning = true;
-            this.clock.start();
-        },
-
-        triggerWin: function() {
-            this.state.isRunning = false;
-            this.state.isDragging = false;
-            this.state.moveDir = {x:0, y:0};
-            document.getElementById('joystick-base').style.display = 'none';
-            
-            setTimeout(() => {
-                document.getElementById('win-screen').style.display = 'flex';
-                document.getElementById('win-score').innerText = `Score: ${this.state.score}`;
-            }, 500);
-        },
-
-        updatePlayer: function(dt) {
-            // Movement
-            if(this.state.moveDir.x !== 0 || this.state.moveDir.y !== 0) {
-                // Map joystick 2D screen space to 3D world space (x/z)
-                this.player.position.x += this.state.moveDir.x * this.config.playerSpeed * dt;
-                this.player.position.z += this.state.moveDir.y * this.config.playerSpeed * dt;
-                
-                // Rotation
-                const angle = Math.atan2(this.state.moveDir.x, this.state.moveDir.y);
-                // Smooth rotation
-                const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), angle);
-                this.player.quaternion.slerp(targetQ, 0.15);
-
-                // Walk bobbing
-                this.player.children[0].position.y = 0.6 + Math.abs(Math.sin(this.clock.elapsedT
+            ball.position.set(0, 0.6, 0);
+            ball.velocity.set(0, 0
