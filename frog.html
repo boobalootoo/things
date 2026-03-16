@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Starry Leap</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050b14;
+            font-family: 'Georgia', serif;
+            color: #fff;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        /* Canvas texture overlay to make it feel like a painting */
+        #texture-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.3)), 
+                        url('data:image/svg+xml;utf8,<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><filter id="noiseFilter"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noiseFilter)" opacity="0.1"/></svg>');
+            z-index: 5;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to canvas */
+        }
+        .panel {
+            background: rgba(10, 27, 63, 0.85);
+            border: 4px solid #f4c430;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: auto; /* Re-enable clicks for buttons */
+            transition: opacity 0.3s;
+        }
+        .hidden {
+            display: none !important;
+        }
+        h1 {
+            font-family: 'Brush Script MT', 'Lucida Handwriting', cursive;
+            font-size: 3.5rem;
+            color: #f4c430;
+            margin: 0 0 10px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        p {
+            font-size: 1.2rem;
+            color: #a2bce0;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #f4c430;
+            color: #0a1b3f;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Brush Script MT', 'Lucida Handwriting', cursive;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 3px 3px 0px #b89424;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        button:active {
+            transform: translate(3px, 3px);
+            box-shadow: 0px 0px 0px #b89424;
+        }
+        #score-display {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Brush Script MT', 'Lucida Handwriting', cursive;
+            font-size: 4rem;
+            color: #fff;
+            text-shadow: 3px 3px 0px #0a1b3f, -2px -2px 0px #0a1b3f, 2px -2px 0px #0a1b3f, -2px 2px 0px #0a1b3f;
+            z-index: 10;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="texture-overlay"></div>
+
+    <div id="score-display" class="hidden">0</div>
+
+    <div id="ui-layer">
+        <div id="start-panel" class="panel">
+            <h1>Starry Leap</h1>
+            <p>Tap, Click, or Space to jump.<br>Navigate the painted logs.</p>
+            <button id="start-btn">Leap!</button>
+        </div>
+
+        <div id="game-over-panel" class="panel hidden">
+            <h1>Masterpiece Ruined</h1>
+            <p>Score: <span id="final-score">0</span></p>
+            <button id="restart-btn">Paint Again</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const uiLayer = document.getElementById('ui-layer');
+        const startPanel = document.getElementById('start-panel');
+        const gameOverPanel = document.getElementById('game-over-panel');
+        const scoreDisplay = document.getElementById('score-display');
+        const finalScoreText = document.getElementById('final-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // Game Constants & Variables
+        let w, h;
+        let frames = 0;
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let score = 0;
+
+        // Entities
+        let frog = { x: 0, y: 0, velocity: 0, size: 0 };
+        let logs = [];
+        
+        // Dynamic Scaling Variables
+        let gravity = 0;
+        let jumpStrength = 0;
+        let logSpeed = 0;
+        let logWidth = 0;
+        let gapSize = 0;
+
+        function resize() {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+
+            // Responsive physics and sizing
+            frog.x = w * 0.2;
+            frog.size = Math.min(w, h) * 0.04;
+            
+            gravity = h * 0.0006;
+            jumpStrength = -h * 0.012;
+            
+            logSpeed = w * 0.005;
+            logWidth = Math.max(60, w * 0.1);
+            gapSize = h * 0.28;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function resetGame() {
+            frog.y = h * 0.4;
+            frog.velocity = 0;
+            logs = [];
+            score = 0;
+            frames = 0;
+            scoreDisplay.innerText = score;
+        }
+
+        function jump() {
+            if (gameState === 'PLAYING') {
+                frog.velocity = jumpStrength;
+            } else if (gameState === 'START') {
+                startGame();
+            } else if (gameState === 'GAMEOVER') {
+                // Prevent immediate jump after game over
+                if (frames > 30) { 
+                    resetGame();
+                    startGame();
+                }
+            }
+        }
+
+        function startGame() {
+            gameState = 'PLAYING';
+            startPanel.classList.add('hidden');
+            gameOverPanel.classList.add('hidden');
+            scoreDisplay.classList.remove('hidden');
+            resetGame();
+            jump(); // Initial jump
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            frames = 0; // Reset frames for the cooldown timer
+            finalScoreText.innerText = score;
+            scoreDisplay.classList.add('hidden');
+            gameOverPanel.classList.remove('hidden');
+        }
+
+        // --- Impressionist Drawing Functions ---
+
+        function drawBackground() {
+            // Sky gradient
+            let grad = ctx.createLinearGradient(0, 0, 0, h);
+            grad.addColorStop(0, '#041530');
+            grad.addColorStop(0.6, '#1a3c75');
+            grad.addColorStop(1, '#a2bce0');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Swirling Stars
+            const time = Date.now() * 0.001;
+            drawStar(w * 0.2, h * 0.2, Math.min(w, h) * 0.1, time, '#f4c430', '#fff4cc');
+            drawStar(w * 0.75, h * 0.15, Math.min(w, h) * 0.15, time * 0.8, '#ffeb73', '#ffffff');
+            drawStar(w * 0.5, h * 0.35, Math.min(w, h) * 0.05, time * 1.5, '#ffffff', '#e0ecff');
+
+            // Wind lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for(let i=0; i<w; i+=50) {
+                let y = h*0.3 + Math.sin(i*0.01 + time)*50;
+                if(i===0) ctx.moveTo(i, y);
+                else ctx.lineTo(i, y);
+            }
+            ctx.stroke();
+
+            // River
+            let riverY = h * 0.85;
+            let riverH = h * 0.15;
+            ctx.fillStyle = '#0f2c59';
+            ctx.fillRect(0, riverY, w, riverH);
+            
+            // River brush strokes
+            for(let i=0; i<30; i++) {
+                let strokeX = (time * 100 + i * 200) % (w + 200) - 100;
+                let strokeY = riverY + (i % 5) * (riverH / 5) + Math.sin(strokeX*0.05)*10;
+                ctx.fillStyle = i % 2 === 0 ? '#325d9c' : '#5786c7';
+                ctx.beginPath();
+                ctx.ellipse(strokeX, strokeY, 40, 6, 0, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+
+        function drawStar(x, y, radius, time, color1, color2) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(time * 0.5);
+            
+            // Core
+            ctx.fillStyle = color2;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Swirls (dashed arcs)
+            ctx.strokeStyle = color1;
+            ctx.lineWidth = Math.max(2, radius * 0.1);
+            ctx.setLineDash([radius * 0.3, radius * 0.4]);
+            
+            for(let r = radius * 0.4; r <= radius; r += radius * 0.3) {
+                ctx.beginPath();
+                ctx.arc(0, 0, r, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.rotate(0.5); // Offset dashes
+            }
+            
+            ctx.restore();
+        }
+
+        function drawFrog() {
+            ctx.save();
+            ctx.translate(frog.x, frog.y);
+            // Tilt based on velocity
+            let rotation = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, frog.velocity * 0.1));
+            ctx.rotate(rotation);
+
+            let s = frog.size;
+
+            // Back legs
+            ctx.strokeStyle = '#3e5c20';
+            ctx.lineWidth = s * 0.3;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-s*0.5, s*0.2);
+            ctx.lineTo(-s*1.2, s*0.8);
+            ctx.lineTo(-s*0.8, s*1.2);
+            ctx.stroke();
+
+            // Body (layered blobs for painted look)
+            ctx.fillStyle = '#264211'; // Dark green base
+            ctx.beginPath();
+            ctx.ellipse(0, 0, s, s * 0.75, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#557a2c'; // Mid green
+            ctx.beginPath();
+            ctx.ellipse(0, -s*0.1, s*0.8, s * 0.6, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#7a9e40'; // Highlight
+            ctx.beginPath();
+            ctx.ellipse(0, -s*0.2, s*0.6, s * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Front legs
+            ctx.beginPath();
+            ctx.moveTo(s*0.3, s*0.4);
+            ctx.lineTo(s*0.6, s*1.1);
+            ctx.stroke();
+
+            // Eyes (swirly Van Gogh style)
+            ctx.translate(s*0.5, -s*0.5);
+            ctx.fillStyle = '#f4c430';
+            ctx.beginPath();
+            ctx.arc(0, 0, s*0.4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#041530';
+            ctx.lineWidth = s*0.08;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            // Spiral eye
+            for(let i=0; i<Math.PI*3; i+=0.1) {
+                let r = (s*0.35) * (i / (Math.PI*3));
+                let ex = Math.cos(i) * r;
+                let ey = Math.sin(i) * r;
+                if(i===0) ctx.moveTo(ex, ey);
+                else ctx.lineTo(ex, ey);
+            }
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawLog(x, y, w, h, isTop) {
+            // Base shadow
+            ctx.fillStyle = '#2b1704';
+            ctx.fillRect(x, y, w, h);
+
+            // Painted grain strokes
+            const strokeColors = ['#5e340b', '#804b16', '#a66928', '#c98a3c'];
+            
+            // Generate pseudo-random deterministic strokes based on position
+            let seed = x + y; 
+            for(let cy = y; cy < y + h; cy += 15) {
+                seed += 123;
+                let color = strokeColors[Math.abs(Math.floor(Math.sin(seed) * strokeColors.length))];
+                let widthOffset = Math.sin(seed * 2) * 10;
+                let heightOffset = 8 + Math.sin(seed) * 5;
+                
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.ellipse(x + w/2 + widthOffset, cy + heightOffset/2, w/2 - 5, heightOffset/2, 0, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // End caps (stumps)
+            ctx.fillStyle = '#e3ab68';
+            let capY = isTop ? y + h : y;
+            ctx.beginPath();
+            ctx.ellipse(x + w/2, capY, w/2, 12, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Rings on stump
+            ctx.strokeStyle = '#804b16';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(x + w/2, capY, w*0.3, 6, 0, 0, Math.PI*2);
+            ctx.stroke();
+        }
+
+        // --- Main Game Loop ---
+
+        function update() {
+            frames++;
+
+            if (gameState === 'PLAYING') {
+                // Physics
+                frog.velocity += gravity;
+                frog.y += frog.velocity;
+
+                // Log Spawning
+                // Spawn log when the last log is a certain distance away
+                let spawnDist = w * 0.45; // Distance between logs
+                if (logs.length === 0 || (w - logs[logs.length-1].x) >= spawnDist) {
+                    // Random Y position for the gap
+                    let minGapY = h * 0.2;
+                    let maxGapY = h * 0.8 - gapSize;
+                    let gapY = Math.random() * (maxGapY - minGapY) + minGapY;
+
+                    logs.push({
+                        x: w,
+                        topBottom: gapY,
+                        passed: false
+                    });
+                }
+
+                // Update Logs & Collision
+                for (let i = logs.length - 1; i >= 0; i--) {
+                    let log = logs[i];
+                    log.x -= logSpeed;
+
+                    // Hitboxes (made slightly smaller than visual size for fairness)
+                    let hitboxShrink = frog.size * 0.6;
+                    let fLeft = frog.x - frog.size + hitboxShrink;
+                    let fRight = frog.x + frog.size - hitboxShrink;
+                    let fTop = frog.y - frog.size + hitboxShrink;
+                    let fBottom = frog.y + frog.size - hitboxShrink;
+
+                    let lLeft = log.x;
+                    let lRight = log.x + logWidth;
+                    let topLogBottom = log.topBottom;
+                    let botLogTop = log.topBottom + gapSize;
+
+                    // Check Collision
+                    if (fRight > lLeft && fLeft < lRight) {
+                        if (fTop < topLogBottom || fBottom > botLogTop) {
+                            gameOver();
+                        }
+                    }
+
+                    // Score Update
+                    if (log.x + logWidth < frog.x && !log.passed) {
+                        score++;
+                        scoreDisplay.innerText = score;
+                        log.passed = true;
+                        
+                        // Slightly increase difficulty over time
+                        if(score % 5 === 0) logSpeed += w * 0.0002;
+                    }
+
+                    // Remove off-screen logs
+                    if (log.x + logWidth < 0) {
+                        logs.splice(i, 1);
+                    }
+                }
+
+                // Floor / Ceiling Collision
+                if (frog.y + frog.size > h || frog.y - frog.size < 0) {
+                    gameOver();
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, w, h);
+            
+            drawBackground();
+
+            if (gameState !== 'START') {
+                for (let log of logs) {
+                    // Top log
+                    drawLog(log.x, 0, logWidth, log.topBottom, true);
+                    // Bottom log
+                    drawLog(log.x, log.topBottom + gapSize, logWidth, h - (log.topBottom + gapSize), false);
+                }
+            }
+
+            drawFrog();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // --- Input Handling ---
+        
+        function handleInput(e) {
+            // Only prevent default on touch to stop scrolling/zooming, allow button clicks to pass
+            if(e.type === 'touchstart' && e.target.tagName !== 'BUTTON') {
+                e.preventDefault(); 
+            }
+            if (e.target.tagName === 'BUTTON') return; // Let HTML buttons work normally
+            
+            if (e.type === 'keydown' && e.code !== 'Space') return;
+            
+            jump();
+        }
+
+        window.addEventListener('keydown', handleInput);
+        window.addEventListener('mousedown', handleInput);
+        window.addEventListener('touchstart', handleInput, {passive: false});
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', () => {
+            resetGame();
+            startGame();
+        });
+
+        // Start Loop
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+</html>
+
+      
