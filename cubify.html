@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D to Cuboid Net Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
+
+    <style>
+        body { margin: 0; background-color: #f1f5f9; font-family: 'Inter', sans-serif; overflow: hidden; }
+        #loading-overlay { transition: opacity 0.3s ease; }
+
+        .net-wrapper {
+            position: relative;
+            margin: 0 auto;
+            background: white;
+        }
+
+        .svg-overlay {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .face-img {
+            position: absolute;
+            object-fit: fill; 
+            background-color: transparent; 
+            z-index: 5;
+        }
+
+        /* Orientations are now naturally handled by cameras for outside-in folding */
+        /* No CSS flips needed to maintain correct wrap-around logic */
+
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #2563eb; cursor: pointer; margin-top: -6px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #cbd5e1; border-radius: 2px; }
+
+        #preview-section {
+            height: 40vh; min-height: 200px; max-height: 80vh;
+            resize: vertical; overflow: hidden;
+            border-bottom: 4px solid #cbd5e1;
+            flex-shrink: 0; position: relative;
+        }
+
+        #preview-container { width: 100%; height: 100%; }
+        .print-container { flex-grow: 1; overflow-y: auto; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area {
+                position: absolute;
+                left: 0; top: 0;
+                width: 100%; height: 100%;
+                margin: 0; padding: 0;
+                box-shadow: none; border: none;
+            }
+            .net-wrapper { margin: 0; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+    </style>
+</head>
+<body class="h-screen flex text-slate-800">
+
+    <div class="w-80 bg-white border-r border-slate-200 flex flex-col shadow-xl z-20 shrink-0">
+        <div class="p-6 flex-grow overflow-y-auto">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                </div>
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight">CubeNet</h1>
+            </div>
+            <p class="text-xs text-slate-500 mb-6">Accurate 3D to 2D net unrolling.</p>
+
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">1. Upload Model</label>
+                    <div class="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center hover:border-blue-500 hover:bg-blue-50 transition-colors cursor-pointer relative group">
+                        <input type="file" id="file-upload" multiple accept=".obj,.stl,.mtl,.png,.jpg,.jpeg" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                        <svg class="mx-auto h-6 w-6 text-slate-400 group-hover:text-blue-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        <span class="text-[11px] text-slate-600 font-semibold block">Select .OBJ (with .MTL) or .STL</span>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-4">
+                    <label class="block text-sm font-bold text-slate-700 border-b border-blue-200 pb-2">2. Cuboid Net (cm)</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <span class="block text-[9px] font-bold text-slate-500 mb-1 text-center">WIDTH (X)</span>
+                            <input type="number" id="boxw-num" min="0.5" step="0.5" value="10" class="w-full text-center border border-slate-300 rounded p-1 text-sm font-bold">
+                        </div>
+                        <div>
+                            <span class="block text-[9px] font-bold text-slate-500 mb-1 text-center">HEIGHT (Y)</span>
+                            <input type="number" id="boxh-num" min="0.5" step="0.5" value="10" class="w-full text-center border border-slate-300 rounded p-1 text-sm font-bold">
+                        </div>
+                        <div>
+                            <span class="block text-[9px] font-bold text-slate-500 mb-1 text-center">DEPTH (Z)</span>
+                            <input type="number" id="boxd-num" min="0.5" step="0.5" value="10" class="w-full text-center border border-slate-300 rounded p-1 text-sm font-bold">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+                    <label class="block text-sm font-bold text-slate-700 border-b border-slate-200 pb-2">3. Internal Adjustments</label>
+                    <div>
+                        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-2">
+                            <span>Scale</span>
+                            <input type="number" id="scale-num" min="0.1" step="0.1" value="1.0" class="w-16 text-right border border-slate-300 rounded px-1">
+                        </div>
+                        <input type="range" id="scale-slider" min="0.1" max="10.0" step="0.1" value="1.0" class="w-full">
+                    </div>
+                    
+                    <div>
+                        <div class="flex justify-between text-[10px] font-bold text-slate-600 mb-1">
+                            <span>MOVE X</span><span id="posx-val">0.0</span>
+                        </div>
+                        <input type="range" id="posx-slider" min="-15" max="15" step="0.1" value="0" class="w-full">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] font-bold text-slate-600 mb-1">
+                            <span>MOVE Y</span><span id="posy-val">0.0</span>
+                        </div>
+                        <input type="range" id="posy-slider" min="-15" max="15" step="0.1" value="0" class="w-full">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] font-bold text-slate-600 mb-1">
+                            <span>MOVE Z</span><span id="posz-val">0.0</span>
+                        </div>
+                        <input type="range" id="posz-slider" min="-15" max="15" step="0.1" value="0" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-[10px] font-bold text-slate-600 mb-1 mt-4">
+                            <span>ROTATE Y (Unroll axis)</span><span id="roty-val">0°</span>
+                        </div>
+                        <input type="range" id="roty-slider" min="-180" max="180" value="0" class="w-full">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6 bg-slate-50 border-t border-slate-200">
+            <button id="print-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex justify-center items-center gap-2">
+                Print Net
+            </button>
+        </div>
+    </div>
+
+    <div class="flex-grow flex flex-col h-screen relative bg-slate-100">
+        <div id="loading-overlay" class="absolute inset-0 bg-slate-100/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center hidden">
+            <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600 mb-4"></div>
+            <p class="text-blue-900 font-bold" id="loading-text">Processing...</p>
+        </div>
+
+        <div id="preview-section" class="bg-slate-50 shadow-inner">
+            <div id="preview-container"></div>
+        </div>
+
+        <div class="print-container p-8 flex items-start justify-center">
+            <div id="print-area" class="bg-white shadow-xl p-8 rounded-2xl border border-slate-200">
+                <div class="net-wrapper">
+                    <div id="faces-container" class="absolute inset-0"></div>
+                    <svg id="svg-overlay" class="svg-overlay"></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="render-target" style="display:none;"></div>
+
+    <script>
+        let scene, renderCamera, renderer;
+        let previewScene, previewCamera, previewRenderer, previewControls;
+        let currentGroup = new THREE.Scene(); 
+        let previewGroup = new THREE.Group(); 
+        
+        let globalModel = null;
+        let bpWrapper = null, prevWrapper = null;
+        let modelCenterOffset = new THREE.Vector3();
+        let baseScaleFactor = 1.0;
+
+        let boxW = 10, boxH = 10, boxD = 10;
+        let inwardPlanes = [], outwardPlanes = [];
+        let boxLines;
+        
+        const state = {
+            userScale: 1.0,
+            userRotX: 0, userRotY: 0, userRotZ: 0,
+            userPosX: 0, userPosY: 0, userPosZ: 0
+        };
+
+        const RENDER_RES = 1024;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff);
+            renderCamera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
+            renderer.localClippingEnabled = true;
+            document.getElementById('render-target').appendChild(renderer.domElement);
+
+            // Bright lighting for accurate colors
+            scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+            const dl = new THREE.DirectionalLight(0xffffff, 0.6);
+            dl.position.set(5, 10, 7);
+            scene.add(dl);
+            scene.add(currentGroup);
+
+            const previewCont = document.getElementById('preview-container');
+            previewScene = new THREE.Scene();
+            previewScene.background = new THREE.Color('#f8fafc');
+            previewCamera = new THREE.PerspectiveCamera(45, previewCont.clientWidth / previewCont.clientHeight, 0.1, 2000);
+            previewCamera.position.set(20, 15, 25);
+            previewRenderer = new THREE.WebGLRenderer({ antialias: true });
+            previewRenderer.localClippingEnabled = true;
+            previewRenderer.setSize(previewCont.clientWidth, previewCont.clientHeight);
+            previewCont.appendChild(previewRenderer.domElement);
+            previewControls = new THREE.OrbitControls(previewCamera, previewRenderer.domElement);
+
+            previewScene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            const pDl = new THREE.DirectionalLight(0xffffff, 0.7);
+            pDl.position.set(10, 20, 10);
+            previewScene.add(pDl);
+
+            inwardPlanes = [
+                new THREE.Plane(new THREE.Vector3(-1, 0, 0), 5), new THREE.Plane(new THREE.Vector3(1, 0, 0), 5),
+                new THREE.Plane(new THREE.Vector3(0, -1, 0), 5), new THREE.Plane(new THREE.Vector3(0, 1, 0), 5),
+                new THREE.Plane(new THREE.Vector3(0, 0, -1), 5), new THREE.Plane(new THREE.Vector3(0, 0, 1), 5)
+            ];
+            outwardPlanes = [
+                new THREE.Plane(new THREE.Vector3(1, 0, 0), -5), new THREE.Plane(new THREE.Vector3(-1, 0, 0), -5),
+                new THREE.Plane(new THREE.Vector3(0, 1, 0), -5), new THREE.Plane(new THREE.Vector3(0, -1, 0), -5),
+                new THREE.Plane(new THREE.Vector3(0, 0, 1), -5), new THREE.Plane(new THREE.Vector3(0, 0, -1), -5)
+            ];
+
+            const boxEdges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+            boxLines = new THREE.LineSegments(boxEdges, new THREE.LineBasicMaterial({ color: 0x2563eb, transparent: true, opacity: 0.5 }));
+            previewScene.add(boxLines);
+            previewScene.add(previewGroup);
+
+            window.addEventListener('resize', () => {
+                if (!previewCont) return;
+                previewCamera.aspect = previewCont.clientWidth / previewCont.clientHeight;
+                previewCamera.updateProjectionMatrix();
+                previewRenderer.setSize(previewCont.clientWidth, previewCont.clientHeight);
+            });
+
+            animatePreview();
+            loadDefaultModel();
+            setupUIListeners();
+        }
+
+        function animatePreview() {
+            requestAnimationFrame(animatePreview);
+            previewControls.update();
+            previewRenderer.render(previewScene, previewCamera);
+        }
+
+        function showLoading(text) { 
+            document.getElementById('loading-text').innerText = text;
+            document.getElementById('loading-overlay').classList.remove('hidden'); 
+        }
+        function hideLoading() { document.getElementById('loading-overlay').classList.add('hidden'); }
+
+        async function processNewModel(sourceObject) {
+            globalModel = sourceObject;
+            const box = new THREE.Box3().setFromObject(globalModel);
+            const size = box.getSize(new THREE.Vector3());
+            modelCenterOffset.copy(box.getCenter(new THREE.Vector3()));
+            
+            baseScaleFactor = 10 / Math.max(size.x, size.y, size.z);
+            boxW = parseFloat((size.x * baseScaleFactor).toFixed(1));
+            boxH = parseFloat((size.y * baseScaleFactor).toFixed(1));
+            boxD = parseFloat((size.z * baseScaleFactor).toFixed(1));
+
+            document.getElementById('boxw-num').value = boxW;
+            document.getElementById('boxh-num').value = boxH;
+            document.getElementById('boxd-num').value = boxD;
+
+            updateClippingPlanes();
+            rebuildScenes();
+        }
+
+        function updateClippingPlanes() {
+            inwardPlanes[0].constant = boxW/2; inwardPlanes[1].constant = boxW/2;
+            inwardPlanes[2].constant = boxH/2; inwardPlanes[3].constant = boxH/2;
+            inwardPlanes[4].constant = boxD/2; inwardPlanes[5].constant = boxD/2;
+            outwardPlanes[0].constant = -boxW/2; outwardPlanes[1].constant = -boxW/2;
+            outwardPlanes[2].constant = -boxH/2; outwardPlanes[3].constant = -boxH/2;
+            outwardPlanes[4].constant = -boxD/2; outwardPlanes[5].constant = -boxD/2;
+            if(boxLines) boxLines.scale.set(boxW, boxH, boxD);
+        }
+
+        function rebuildScenes() {
+            currentGroup.clear();
+            previewGroup.clear();
+            bpWrapper = new THREE.Group();
+            prevWrapper = new THREE.Group();
+
+            // Net Model (Preserving original materials/colors)
+            const bpObj = globalModel.clone();
+            bpObj.position.set(-modelCenterOffset.x, -modelCenterOffset.y, -modelCenterOffset.z);
+            setupMaterial(bpObj, true, inwardPlanes, false);
+            bpWrapper.add(bpObj);
+
+            // Preview Standard Model
+            const prevObj = globalModel.clone();
+            prevObj.position.set(-modelCenterOffset.x, -modelCenterOffset.y, -modelCenterOffset.z);
+            setupMaterial(prevObj, false, inwardPlanes, false);
+            prevWrapper.add(prevObj);
+
+            // Preview Red Highlight (Clipping outside)
+            const prevRedObj = globalModel.clone();
+            prevRedObj.position.set(-modelCenterOffset.x, -modelCenterOffset.y, -modelCenterOffset.z);
+            prevRedObj.traverse(child => {
+                if (child.isMesh) {
+                    child.material = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide, clippingPlanes: outwardPlanes, clipIntersection: true });
+                }
+            });
+            prevWrapper.add(prevRedObj);
+
+            currentGroup.add(bpWrapper);
+            previewGroup.add(prevWrapper);
+            applyTransforms();
+            
+            buildNetLayout();
+            generateNetImages();
+        }
+
+        function setupMaterial(obj, isBP, cPlanes, cInt) {
+            obj.traverse(child => {
+                if (child.isMesh) {
+                    // Clone original material to maintain colors/textures
+                    let originalMat = Array.isArray(child.material) ? child.material[0] : child.material;
+                    const mat = originalMat.clone();
+                    
+                    mat.clippingPlanes = cPlanes;
+                    mat.clipIntersection = cInt;
+                    
+                    if (isBP) {
+                        // Keep color but add subtle edges to assist assembly
+                        mat.polygonOffset = true; 
+                        mat.polygonOffsetFactor = 1; 
+                        mat.polygonOffsetUnits = 1;
+                        
+                        const edges = new THREE.EdgesGeometry(child.geometry, 15);
+                        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ 
+                            color: 0x000000, 
+                            transparent: true,
+                            opacity: 0.15,
+                            clippingPlanes: cPlanes 
+                        }));
+                        child.add(line);
+                    }
+                    child.material = mat;
+                }
+            });
+        }
+
+        function applyTransforms() {
+            if (!bpWrapper) return;
+            const s = baseScaleFactor * state.userScale;
+            [bpWrapper, prevWrapper].forEach(w => {
+                w.scale.setScalar(s);
+                w.rotation.set(THREE.MathUtils.degToRad(state.userRotX), THREE.MathUtils.degToRad(state.userRotY), THREE.MathUtils.degToRad(state.userRotZ));
+                w.position.set(state.userPosX, state.userPosY, state.userPosZ);
+            });
+        }
+
+        function buildNetLayout() {
+            const totalW = 2*boxW + 2*boxD, totalH = boxH + 2*boxD;
+            const X1 = boxW, X2 = boxW + boxD, X3 = 2*boxW + boxD;
+            const Y1 = boxD, Y2 = boxD + boxH;
+            
+            const wrapper = document.querySelector('.net-wrapper');
+            wrapper.style.width = `${totalW}cm`;
+            wrapper.style.height = `${totalH}cm`;
+            
+            document.getElementById('faces-container').innerHTML = `
+                <img id="face-top" class="face-img" style="left:${(X2/totalW)*100}%; top:0; width:${(boxW/totalW)*100}%; height:${(boxD/totalH)*100}%;" />
+                <img id="face-back" class="face-img" style="left:0; top:${(Y1/totalH)*100}%; width:${(boxW/totalW)*100}%; height:${(boxH/totalH)*100}%;" />
+                <img id="face-left" class="face-img" style="left:${(X1/totalW)*100}%; top:${(Y1/totalH)*100}%; width:${(boxD/totalW)*100}%; height:${(boxH/totalH)*100}%;" />
+                <img id="face-front" class="face-img" style="left:${(X2/totalW)*100}%; top:${(Y1/totalH)*100}%; width:${(boxW/totalW)*100}%; height:${(boxH/totalH)*100}%;" />
+                <img id="face-right" class="face-img" style="left:${(X3/totalW)*100}%; top:${(Y1/totalH)*100}%; width:${(boxD/totalW)*100}%; height:${(boxH/totalH)*100}%;" />
+                <img id="face-bottom" class="face-img" style="left:${(X2/totalW)*100}%; top:${(Y2/totalH)*100}%; width:${(boxW/totalW)*100}%; height:${(boxD/totalH)*100}%;" />
+            `;
+
+            const svg = document.getElementById('svg-overlay');
+            svg.setAttribute('viewBox', `0 0 ${totalW} ${totalH}`);
+            svg.innerHTML = generateNetSVG(boxW, boxH, boxD);
+        }
+
+        function generateNetSVG(W, H, D) {
+            const T = Math.min(Math.min(W, H, D) * 0.25, 1.5);
+            const X1 = W, X2 = W + D, X3 = 2 * W + D, X4 = 2 * W + 2 * D;
+            const Y1 = D, Y2 = D + H, Y3 = 2 * D + H;
+
+            const tab = (x1, y1, x2, y2, nx, ny) => {
+                const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+                const s = T * 0.4;
+                const i = Math.min(len * 0.15, T);
+                const ux = dx/len, uy = dy/len;
+                return ` L ${x1+ux*i},${y1+uy*i} L ${x1+ux*(i+s)+nx*T},${y1+uy*(i+s)+ny*T} L ${x2-ux*(i+s)+nx*T},${y2-uy*(i+s)+ny*T} L ${x2-ux*i},${y2-uy*i} L ${x2},${y2}`;
+            };
+
+            let d = `M ${X2},0` + tab(X2,0, X3,0, 0,-1) + tab(X3,0, X3,Y1, 1,0);
+            d += ` L ${X4},Y1` + tab(X4,Y1, X4,Y2, 1,0) + ` L ${X3},Y2`;
+            d += tab(X3,Y2, X3,Y3, 1,0) + tab(X3,Y3, X2,Y3, 0,1) + tab(X2,Y3, X2,Y2, -1,0);
+            d += ` L ${0},Y2 L ${0},Y1 L ${X1},Y1 L ${X2},Y1` + tab(X2,Y1, X2,0, -1,0) + ' Z';
+
+            return `
+                <path d="${d}" fill="none" stroke="black" stroke-width="0.05" stroke-linejoin="round"/>
+                <g stroke="#94a3b8" stroke-width="0.03" stroke-dasharray="0.2,0.2">
+                    <line x1="${X1}" y1="${Y1}" x2="${X1}" y2="${Y2}" />
+                    <line x1="${X2}" y1="${Y1}" x2="${X2}" y2="${Y2}" />
+                    <line x1="${X3}" y1="${Y1}" x2="${X3}" y2="${Y2}" />
+                    <line x1="${X2}" y1="${Y1}" x2="${X3}" y2="${Y1}" />
+                    <line x1="${X2}" y1="${Y2}" x2="${X3}" y2="${Y2}" />
+                </g>
+            `;
+        }
+
+        function generateNetImages() {
+            if(!bpWrapper) return;
+            const camDist = 50;
+            const views = [
+                { id: 'face-front',  w: boxW, h: boxH, pos: [0, 0, camDist], look: [0,0,0], up: [0,1,0] },
+                { id: 'face-left',   w: boxD, h: boxH, pos: [-camDist, 0, 0], look: [0,0,0], up: [0,1,0] },
+                { id: 'face-right',  w: boxD, h: boxH, pos: [camDist, 0, 0], look: [0,0,0], up: [0,1,0] },
+                { id: 'face-back',   w: boxW, h: boxH, pos: [0, 0, -camDist], look: [0,0,0], up: [0,1,0] },
+                { id: 'face-top',    w: boxW, h: boxD, pos: [0, camDist, 0], look: [0,0,0], up: [0,0,-1] },
+                { id: 'face-bottom', w: boxW, h: boxD, pos: [0, -camDist, 0], look: [0,0,0], up: [0,0,1] }
+            ];
+
+            views.forEach(v => {
+                renderCamera.left = -v.w/2; renderCamera.right = v.w/2;
+                renderCamera.top = v.h/2; renderCamera.bottom = -v.h/2;
+                renderCamera.position.set(...v.pos);
+                renderCamera.up.set(...v.up);
+                renderCamera.lookAt(...v.look);
+                renderCamera.updateProjectionMatrix();
+
+                const max = Math.max(v.w, v.h);
+                renderer.setSize(Math.ceil((v.w/max)*RENDER_RES), Math.ceil((v.h/max)*RENDER_RES));
+                renderer.setClearColor(0xffffff, 0);
+                renderer.render(scene, renderCamera);
+                document.getElementById(v.id).src = renderer.domElement.toDataURL();
+            });
+        }
+
+        function setupUIListeners() {
+            const bind = (id, key, isRot = false) => {
+                const s = document.getElementById(id+'-slider');
+                const v = document.getElementById(id+'-val') || document.getElementById(id+'-num');
+                const update = (val) => {
+                    state[key] = parseFloat(val);
+                    if(v.tagName === 'INPUT') v.value = state[key]; else v.innerText = isRot ? Math.round(state[key])+'°' : state[key].toFixed(1);
+                    applyTransforms();
+                };
+                s.addEventListener('input', e => update(e.target.value));
+                s.addEventListener('change', () => { generateNetImages(); });
+                if(v.tagName === 'INPUT') v.addEventListener('change', e => { update(e.target.value); generateNetImages(); });
+            };
+
+            bind('scale', 'userScale');
+            bind('roty', 'userRotY', true);
+            bind('posx', 'userPosX'); bind('posy', 'userPosY'); bind('posz', 'userPosZ');
+
+            ['boxw', 'boxh', 'boxd'].forEach(id => {
+                document.getElementById(id+'-num').addEventListener('change', () => {
+                    boxW = parseFloat(document.getElementById('boxw-num').value);
+                    boxH = parseFloat(document.getElementById('boxh-num').value);
+                    boxD = parseFloat(document.getElementById('boxd-num').value);
+                    updateClippingPlanes();
+                    buildNetLayout();
+                    generateNetImages();
+                });
+            });
+
+            document.getElementById('file-upload').addEventListener('change', e => {
+                const files = Array.from(e.target.files);
+                const objFile = files.find(f => f.name.toLowerCase().endsWith('.obj'));
+                const stlFile = files.find(f => f.name.toLowerCase().endsWith('.stl'));
+                const mtlFile = files.find(f => f.name.toLowerCase().endsWith('.mtl'));
+
+                if (!objFile && !stlFile) return;
+                showLoading("Parsing Model...");
+
+                const manager = new THREE.LoadingManager();
+                const fileMap = {};
+                files.forEach(f => { fileMap[f.name] = URL.createObjectURL(f); });
+                manager.setURLModifier((url) => {
+                    const fileName = url.split('/').pop();
+                    return fileMap[fileName] || url;
+                });
+
+                if (objFile) {
+                    if (mtlFile) {
+                        new THREE.MTLLoader(manager).load(fileMap[mtlFile.name], (materials) => {
+                            materials.preload();
+                            new THREE.OBJLoader(manager).setMaterials(materials).load(fileMap[objFile.name], (obj) => {
+                                processNewModel(obj);
+                                hideLoading();
+                            });
+                        });
+                    } else {
+                        new THREE.OBJLoader(manager).load(fileMap[objFile.name], (obj) => {
+                            processNewModel(obj);
+                            hideLoading();
+                        });
+                    }
+                } else {
+                    new THREE.STLLoader().load(fileMap[stlFile.name], (geo) => {
+                        const mat = new THREE.MeshStandardMaterial({color: 0xcccccc});
+                        processNewModel(new THREE.Mesh(geo, mat));
+                        hideLoading();
+                    });
+                }
+            });
+
+            document.getElementById('print-btn').onclick = () => window.print();
+        }
+
+        function loadDefaultModel() {
+            const g = new THREE.Group();
+            g.add(new THREE.Mesh(new THREE.BoxGeometry(6,4,6), new THREE.MeshStandardMaterial({color: 0x3b82f6})));
+            const roof = new THREE.Mesh(new THREE.ConeGeometry(5, 3, 4, 1, false, Math.PI/4), new THREE.MeshStandardMaterial({color: 0xef4444}));
+            roof.position.y = 3.5; g.add(roof);
+            processNewModel(g);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
