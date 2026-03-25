@@ -137,6 +137,10 @@
             </button>
             <p class="text-xs text-slate-400 text-center mb-6">Removes backgrounds using local AI.</p>
             
+            <div class="bg-indigo-50 rounded p-3 mb-4 border border-indigo-100">
+                <p class="text-xs text-indigo-700 font-medium"><i class="fas fa-lightbulb text-indigo-500 mr-1"></i> <strong>Pro Tip:</strong> Select an item and press <strong>Ctrl+V</strong> to paste your own image, or use the upload button in the toolbar!</p>
+            </div>
+            
             <div id="statusMessage" class="mb-4 text-sm text-center font-medium text-indigo-600 hidden"></div>
 
             <!-- Export / Import Section -->
@@ -178,6 +182,16 @@
             <div class="flex flex-col items-center gap-1">
                 <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Alt Image</span>
                 <button id="btnAltImage" class="p-1.5 hover:bg-indigo-50 rounded text-indigo-600 transition-colors" title="Find different image"><i class="fas fa-sync-alt text-lg"></i></button>
+            </div>
+            
+            <div class="w-px h-8 bg-slate-200"></div>
+
+            <div class="flex flex-col items-center gap-1">
+                <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Upload</span>
+                <label class="p-1.5 hover:bg-indigo-50 rounded text-indigo-600 transition-colors cursor-pointer" title="Upload your own image">
+                    <i class="fas fa-upload text-lg"></i>
+                    <input type="file" class="hidden" id="inpUploadImage" accept="image/*">
+                </label>
             </div>
             
             <div class="w-px h-8 bg-slate-200"></div>
@@ -336,6 +350,59 @@
             }
         });
 
+        // --- Upload & Paste Logic ---
+        function processPastedImage(url) {
+            if (selectedItemEl) {
+                const img = selectedItemEl.querySelector('img');
+                img.src = url;
+                selectedItemEl.dataset.isSticker = "false"; // Reset sticker status since it's a new image
+                updateItemVisuals(selectedItemEl);
+                showStatus("Image replaced successfully!");
+            } else {
+                createBoardElement("Pasted Image", url);
+                showStatus("Pasted new image to board!");
+            }
+        }
+
+        document.getElementById('inpUploadImage').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            processPastedImage(url);
+            e.target.value = ''; // reset input
+        });
+
+        window.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            const isTextInput = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT';
+            let handled = false;
+
+            // 1. Prioritize actual image data (Right Click -> Copy Image, or Screenshots)
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    const url = URL.createObjectURL(blob);
+                    processPastedImage(url);
+                    handled = true;
+                    e.preventDefault();
+                    break;
+                }
+            }
+
+            // 2. Fallback to image URLs if not typing in the text box (Right Click -> Copy Image Address)
+            if (!handled && !isTextInput) {
+                const text = e.clipboardData.getData('text/plain');
+                if (text && (text.match(/\.(jpeg|jpg|gif|png|webp)$/i) || text.startsWith('data:image/'))) {
+                    processPastedImage(text);
+                    e.preventDefault();
+                } else if (text && text.startsWith('http')) {
+                    // Try to load as image anyway if it's a standard web URL
+                    processPastedImage(text);
+                    e.preventDefault();
+                }
+            }
+        });
 
         // --- Wikipedia Image Fetcher ---
         async function fetchImageForTerm(term, offset = 0) {
