@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stepping Through Film - AR Camera</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        #video-element {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        #overlay-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to the image */
+        }
+
+        #overlay-image {
+            position: absolute;
+            cursor: grab;
+            pointer-events: auto;
+            transform-origin: center center;
+            user-select: none;
+            -webkit-user-drag: none;
+            display: none; /* Hidden until uploaded */
+        }
+
+        #overlay-image:active {
+            cursor: grabbing;
+        }
+
+        #controls-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 20;
+            border-top-left-radius: 24px;
+            border-top-right-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            transition: transform 0.3s ease;
+        }
+
+        .panel-hidden {
+            transform: translateY(calc(100% - 60px));
+        }
+
+        /* Custom Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #10b981;
+            cursor: pointer;
+            margin-top: -8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #e5e7eb;
+            border-radius: 2px;
+        }
+        
+        #hidden-canvas {
+            display: none;
+        }
+
+        .shutter-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: white;
+            border: 4px solid #e5e7eb;
+            box-shadow: 0 0 0 2px white, 0 4px 10px rgba(0,0,0,0.2);
+            transition: all 0.1s;
+        }
+        .shutter-btn:active {
+            transform: scale(0.95);
+            background: #f3f4f6;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Camera Feed -->
+    <video id="video-element" autoplay playsinline></video>
+
+    <!-- Overlay Area -->
+    <div id="overlay-container">
+        <img id="overlay-image" src="" alt="Overlay">
+    </div>
+
+    <!-- Hidden canvas for image processing -->
+    <canvas id="hidden-canvas"></canvas>
+
+    <!-- Controls Panel -->
+    <div id="controls-panel" class="flex flex-col gap-4">
+        
+        <!-- Drag Handle / Toggle -->
+        <div id="panel-toggle" class="w-full flex justify-center -mt-2 pb-2 cursor-pointer">
+            <div class="w-12 h-1.5 bg-gray-300 rounded-full"></div>
+        </div>
+
+        <div id="upload-section" class="text-center pb-2">
+            <input type="file" id="image-upload" accept="image/*" class="hidden">
+            <label for="image-upload" class="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-full font-semibold shadow-lg cursor-pointer hover:bg-blue-700 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload Scene Frame
+            </label>
+        </div>
+
+        <div id="edit-controls" class="hidden flex-col gap-4">
+            <!-- Sliders -->
+            <div class="space-y-3">
+                <div class="flex items-center gap-3">
+                    <svg class="text-gray-500 w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                    <input type="range" id="scale-slider" min="0.1" max="3" step="0.05" value="1">
+                </div>
+                <div class="flex items-center gap-3">
+                    <svg class="text-gray-500 w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    <input type="range" id="rotate-slider" min="-180" max="180" step="1" value="0">
+                </div>
+                <div class="flex items-center gap-3">
+                    <svg class="text-gray-500 w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z"/><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" opacity="0.5"/></svg>
+                    <input type="range" id="opacity-slider" min="0.1" max="1" step="0.05" value="0.8">
+                </div>
+            </div>
+
+            <p class="text-xs text-center text-gray-500 mb-1">Drag image to position. Use sliders to adjust.</p>
+
+            <!-- Actions -->
+            <div class="flex justify-between items-center px-2">
+                <button id="btn-merged" class="flex flex-col items-center gap-1 text-xs font-semibold text-gray-700 hover:text-blue-600">
+                    <div class="bg-gray-100 p-3 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+                    Merged
+                </button>
+
+                <button id="btn-capture" class="shutter-btn"></button>
+
+                <button id="btn-layers" class="flex flex-col items-center gap-1 text-xs font-semibold text-gray-700 hover:text-blue-600">
+                    <div class="bg-gray-100 p-3 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
+                    Layers
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading overlay for camera/downloads -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black/80 flex flex-col items-center justify-center text-white z-50 transition-opacity duration-300 opacity-0 pointer-events-none">
+        <svg class="animate-spin -ml-1 mr-3 h-10 w-10 text-white mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p id="loading-text" class="font-semibold text-lg">Initializing Camera...</p>
+    </div>
+
+    <script>
+        // DOM Elements
+        const video = document.getElementById('video-element');
+        const overlayImg = document.getElementById('overlay-image');
+        const imageUpload = document.getElementById('image-upload');
+        const uploadSection = document.getElementById('upload-section');
+        const editControls = document.getElementById('edit-controls');
+        
+        const scaleSlider = document.getElementById('scale-slider');
+        const rotateSlider = document.getElementById('rotate-slider');
+        const opacitySlider = document.getElementById('opacity-slider');
+        
+        const btnCapture = document.getElementById('btn-capture');
+        const btnMerged = document.getElementById('btn-merged');
+        const btnLayers = document.getElementById('btn-layers');
+        
+        const canvas = document.getElementById('hidden-canvas');
+        const ctx = canvas.getContext('2d');
+        const controlsPanel = document.getElementById('controls-panel');
+        const panelToggle = document.getElementById('panel-toggle');
+        
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+
+        // State variables
+        let imgPosX = 0;
+        let imgPosY = 0;
+        let imgScale = 1;
+        let imgRotate = 0;
+        let imgOpacity = 0.8;
+        
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let initialPosX = 0;
+        let initialPosY = 0;
+
+        let panelCollapsed = false;
+
+        // Initialize Camera
+        async function initCamera() {
+            showLoading("Accessing Camera...");
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" },
+                    audio: false
+                });
+                video.srcObject = stream;
+                
+                // Wait for video to be ready to play
+                video.onloadedmetadata = () => {
+                    hideLoading();
+                };
+            } catch (err) {
+                console.error("Camera error:", err);
+                loadingText.innerText = "Camera access denied or unavailable.";
+                setTimeout(hideLoading, 3000);
+            }
+        }
+
+        // Utility: Show/Hide loading screen
+        function showLoading(text) {
+            loadingText.innerText = text;
+            loadingOverlay.classList.remove('opacity-0', 'pointer-events-none');
+        }
+        function hideLoading() {
+            loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        // Handle Image Upload
+        imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    overlayImg.src = event.target.result;
+                    overlayImg.onload = () => {
+                        // Reset properties
+                        overlayImg.style.display = 'block';
+                        uploadSection.classList.add('hidden');
+                        editControls.classList.remove('hidden');
+                        
+                        // Center image initially
+                        const winW = window.innerWidth;
+                        const winH = window.innerHeight;
+                        
+                        // Scale down if image is too large initially
+                        let startWidth = overlayImg.naturalWidth;
+                        let startHeight = overlayImg.naturalHeight;
+                        const maxW = winW * 0.8;
+                        if (startWidth > maxW) {
+                            const ratio = maxW / startWidth;
+                            startWidth = maxW;
+                            startHeight = startHeight * ratio;
+                        }
+                        
+                        overlayImg.style.width = `${startWidth}px`;
+                        overlayImg.style.height = `${startHeight}px`;
+
+                        imgPosX = (winW - startWidth) / 2;
+                        imgPosY = (winH - startHeight) / 2;
+                        
+                        // Reset sliders state
+                        scaleSlider.value = 1;
+                        rotateSlider.value = 0;
+                        opacitySlider.value = 0.8;
+                        imgScale = 1;
+                        imgRotate = 0;
+                        imgOpacity = 0.8;
+
+                        updateImageTransform();
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Apply CSS Transforms
+        function updateImageTransform() {
+            overlayImg.style.left = `${imgPosX}px`;
+            overlayImg.style.top = `${imgPosY}px`;
+            overlayImg.style.transform = `scale(${imgScale}) rotate(${imgRotate}deg)`;
+            overlayImg.style.opacity = imgOpacity;
+        }
+
+        // Dragging Logic (Mouse and Touch)
+        function startDrag(clientX, clientY) {
+            isDragging = true;
+            dragStartX = clientX;
+            dragStartY = clientY;
+            initialPosX = imgPosX;
+            initialPosY = imgPosY;
+            
+            // Collapse panel automatically if interacting with image
+            if (!panelCollapsed) {
+                togglePanel();
+            }
+        }
+
+        function doDrag(clientX, clientY) {
+            if (!isDragging) return;
+            const deltaX = clientX - dragStartX;
+            const deltaY = clientY - dragStartY;
+            imgPosX = initialPosX + deltaX;
+            imgPosY = initialPosY + deltaY;
+            updateImageTransform();
+        }
+
+        function endDrag() {
+            isDragging = false;
+        }
+
+        // Touch Events
+        overlayImg.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent scrolling
+            startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                doDrag(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+        
+        document.addEventListener('touchend', endDrag);
+
+        // Mouse Events (fallback for desktop)
+        overlayImg.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startDrag(e.clientX, e.clientY);
+        });
+        document.addEventListener('mousemove', (e) => doDrag(e.clientX, e.clientY));
+        document.addEventListener('mouseup', endDrag);
+
+        // Slider Event Listeners
+        scaleSlider.addEventListener('input', (e) => { imgScale = e.target.value; updateImageTransform(); });
+        rotateSlider.addEventListener('input', (e) => { imgRotate = e.target.value; updateImageTransform(); });
+        opacitySlider.addEventListener('input', (e) => { imgOpacity = e.target.value; updateImageTransform(); });
+
+        // Panel Toggle Logic
+        function togglePanel() {
+            panelCollapsed = !panelCollapsed;
+            if (panelCollapsed) {
+                controlsPanel.classList.add('panel-hidden');
+            } else {
+                controlsPanel.classList.remove('panel-hidden');
+            }
+        }
+        panelToggle.addEventListener('click', togglePanel);
+
+        // ------------- CAPTURE LOGIC -------------
+
+        // Helper to draw the video cover onto canvas
+        function drawVideoBackground() {
+            // Set canvas to match the screen/window exactly
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Math to simulate object-fit: cover for the video
+            const videoRatio = video.videoWidth / video.videoHeight;
+            const canvasRatio = canvas.width / canvas.height;
+            
+            let drawW, drawH, drawX, drawY;
+
+            if (canvasRatio > videoRatio) {
+                drawW = canvas.width;
+                drawH = canvas.width / videoRatio;
+                drawX = 0;
+                drawY = (canvas.height - drawH) / 2;
+            } else {
+                drawW = canvas.height * videoRatio;
+                drawH = canvas.height;
+                drawX = (canvas.width - drawW) / 2;
+                drawY = 0;
+            }
+
+            // Draw video
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, drawX, drawY, drawW, drawH);
+        }
+
+        // Helper to draw the transformed overlay
+        function drawOverlayImage() {
+            const imgW = parseFloat(overlayImg.style.width);
+            const imgH = parseFloat(overlayImg.style.height);
+
+            ctx.save();
+            ctx.globalAlpha = imgOpacity;
+            
+            // Translate to the center of the image's current position
+            ctx.translate(imgPosX + (imgW / 2), imgPosY + (imgH / 2));
+            
+            // Apply rotation and scale
+            ctx.rotate(imgRotate * Math.PI / 180);
+            ctx.scale(imgScale, imgScale);
+            
+            // Draw image offset by half its size to center it on the translation point
+            ctx.drawImage(overlayImg, -imgW / 2, -imgH / 2, imgW, imgH);
+            
+            ctx.restore();
+        }
+
+        // Trigger Download
+        function downloadDataURI(dataURI, filename) {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = dataURI;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Capture Single Merged Image
+        async function captureMerged() {
+            showLoading("Processing Image...");
+            // Small delay to allow UI to render loading screen
+            setTimeout(() => {
+                drawVideoBackground();
+                drawOverlayImage();
+                const dataURI = canvas.toDataURL('image/png');
+                downloadDataURI(dataURI, `film-step-merged-${Date.now()}.png`);
+                hideLoading();
+            }, 100);
+        }
+
+        // Capture Separate Layers
+        async function captureLayers() {
+            showLoading("Generating Layers...");
+            setTimeout(() => {
+                // 1. Capture and download Background (Video)
+                drawVideoBackground();
+                const bgDataURI = canvas.toDataURL('image/png');
+                downloadDataURI(bgDataURI, `film-step-bg-${Date.now()}.png`);
+
+                // 2. Capture and download Overlay (Transparent bg)
+                // Clear the canvas to make it transparent
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawOverlayImage();
+                const overlayDataURI = canvas.toDataURL('image/png');
+                
+                // Slight delay to prevent browser blocking multiple downloads
+                setTimeout(() => {
+                    downloadDataURI(overlayDataURI, `film-step-overlay-${Date.now()}.png`);
+                    hideLoading();
+                }, 500);
+
+            }, 100);
+        }
+
+        // Button Listeners
+        btnCapture.addEventListener('click', captureMerged); // Default big button action
+        btnMerged.addEventListener('click', captureMerged);
+        btnLayers.addEventListener('click', captureLayers);
+
+        // Start app
+        initCamera();
+
+    </script>
+</body>
+</html>
