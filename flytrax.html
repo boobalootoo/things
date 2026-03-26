@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Tracker - Live Flight Data</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        #map { height: 100vh; width: 100%; background: #0f172a; cursor: crosshair; }
+        .custom-plane-icon { transition: transform 0.5s ease-in-out; }
+        .leaflet-container { background: #0f172a !important; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .pulse-red { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+        /* Drawing Mode Cursor */
+        .drawing-active #map { cursor: crosshair !important; }
+        .selection-hint { pointer-events: none; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 overflow-hidden">
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 z-[10000] bg-slate-950 flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="relative w-24 h-24 mb-6">
+            <div class="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center">
+                <svg class="w-10 h-10 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                </svg>
+            </div>
+        </div>
+        <h2 class="text-2xl font-bold tracking-tight">Sky Tracker Pro</h2>
+        <p class="text-slate-400 mt-2">Initializing live radar feed...</p>
+    </div>
+
+    <!-- UI Alerts -->
+    <div id="ui-alerts" class="fixed top-6 left-1/2 -translate-x-1/2 z-[11000] flex flex-col gap-3 items-center">
+        <!-- Error Toast -->
+        <div id="error-toast" class="hidden bg-red-500/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3">
+            <span class="w-2 h-2 rounded-full bg-white pulse-red"></span>
+            <span id="error-message">Rate Limit. Retrying soon...</span>
+        </div>
+        <!-- Selection Hint -->
+        <div id="selection-hint" class="hidden bg-blue-600/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-bounce">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+            <span class="font-bold text-sm">Click and Drag on map to select area</span>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="fixed top-0 left-0 h-full w-full md:w-[400px] z-[5000] bg-slate-900/95 backdrop-blur-xl border-r border-slate-800 shadow-2xl transition-transform duration-300 -translate-x-full md:translate-x-0">
+        <div class="flex flex-col h-full">
+            <!-- Header -->
+            <div class="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+                <div>
+                    <h1 class="text-2xl font-black bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">SKY TRACKER</h1>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span id="status-text" class="text-[10px] uppercase font-bold tracking-widest text-slate-500">Live Data Active</span>
+                    </div>
+                </div>
+                <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <!-- Controls Area -->
+            <div class="p-4 bg-slate-950/30 space-y-3">
+                <div class="flex gap-2">
+                    <button id="draw-btn" onclick="toggleSelectionMode()" class="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-2 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+                        Draw Area
+                    </button>
+                    <button onclick="resetToWorld()" class="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-all">
+                        Reset
+                    </button>
+                </div>
+                <div id="selection-status" class="hidden px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-mono">
+                    ACTIVE BOUNDS: <span id="bounds-text" class="text-blue-400">Custom Region</span>
+                </div>
+            </div>
+
+            <!-- Flight List Area -->
+            <div id="sidebar-content" class="flex-1 overflow-y-auto">
+                <div id="default-view" class="p-6">
+                    <div class="relative mb-6">
+                        <input type="text" id="search-input" placeholder="Search Callsign..." class="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-blue-500 transition-all">
+                    </div>
+                    
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Flights in Area</h3>
+                    <div id="flight-list" class="space-y-3">
+                        <!-- Flights will be injected here -->
+                    </div>
+                </div>
+
+                <!-- Detail View -->
+                <div id="detail-view" class="hidden p-6 animate-in slide-in-from-right duration-300">
+                    <button onclick="closeDetails()" class="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 mb-6 font-medium">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        Back to List
+                    </button>
+                    <div id="detail-container"></div>
+                </div>
+            </div>
+
+            <!-- Footer Meta -->
+            <div class="p-4 border-t border-slate-800 bg-slate-950/50 text-[10px] text-slate-500 flex justify-between items-center">
+                <span>REFRESH: 60S</span>
+                <span id="last-updated">Updating...</span>
+            </div>
+        </div>
+    </aside>
+
+    <div id="map"></div>
+
+    <script>
+        // --- Config ---
+        let map;
+        let markers = {};
+        let flightsData = [];
+        let selectedFlightIcao = null;
+        let currentBBox = null;
+        let refreshInterval;
+        const REFRESH_RATE = 60000; // 1 minute
+        const FLIGHT_THRESHOLD = 800; // Warning threshold for browser performance
+
+        // Drawing State
+        let isDrawing = false;
+        let selectionMode = false;
+        let startPoint = null;
+        let selectionRect = null;
+
+        // --- Initialization ---
+        window.onload = () => {
+            initMap();
+            fetchFlights();
+            refreshInterval = setInterval(fetchFlights, REFRESH_RATE);
+
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                renderFlightList(e.target.value);
+            });
+        };
+
+        function initMap() {
+            map = L.map('map', {
+                zoomControl: false,
+                attributionControl: false,
+                worldCopyJump: true,
+                doubleClickZoom: false
+            }).setView([40, -40], 3);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+            // Setup Drawing Logic
+            map.on('mousedown', (e) => {
+                if (!selectionMode) return;
+                isDrawing = true;
+                startPoint = e.latlng;
+                
+                if (selectionRect) map.removeLayer(selectionRect);
+                selectionRect = L.rectangle([startPoint, startPoint], {
+                    color: '#3b82f6',
+                    weight: 2,
+                    fillOpacity: 0.1,
+                    dashArray: '5, 5'
+                }).addTo(map);
+
+                map.dragging.disable();
+            });
+
+            map.on('mousemove', (e) => {
+                if (!isDrawing) return;
+                selectionRect.setBounds([startPoint, e.latlng]);
+            });
+
+            map.on('mouseup', (e) => {
+                if (!isDrawing) return;
+                isDrawing = false;
+                
+                const bounds = selectionRect.getBounds();
+                currentBBox = {
+                    minLat: Math.min(bounds.getSouth(), bounds.getNorth()),
+                    maxLat: Math.max(bounds.getSouth(), bounds.getNorth()),
+                    minLon: Math.min(bounds.getWest(), bounds.getEast()),
+                    maxLon: Math.max(bounds.getWest(), bounds.getEast())
+                };
+
+                map.dragging.enable();
+                toggleSelectionMode(false);
+                updateSelectionUI(true);
+                fetchFlights();
+            });
+        }
+
+        // --- Logic Functions ---
+        function toggleSelectionMode(active = null) {
+            selectionMode = active !== null ? active : !selectionMode;
+            const btn = document.getElementById('draw-btn');
+            const hint = document.getElementById('selection-hint');
+
+            if (selectionMode) {
+                btn.classList.add('bg-amber-600', 'hover:bg-amber-500');
+                btn.innerHTML = 'Cancel Selection';
+                hint.classList.remove('hidden');
+                document.body.classList.add('drawing-active');
+            } else {
+                btn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+                btn.innerHTML = 'Draw Area';
+                hint.classList.add('hidden');
+                document.body.classList.remove('drawing-active');
+            }
+        }
+
+        function updateSelectionUI(show) {
+            const status = document.getElementById('selection-status');
+            const text = document.getElementById('bounds-text');
+            if (show && currentBBox) {
+                status.classList.remove('hidden');
+                text.innerText = `${currentBBox.minLat.toFixed(1)}°, ${currentBBox.minLon.toFixed(1)}° to ${currentBBox.maxLat.toFixed(1)}°, ${currentBBox.maxLon.toFixed(1)}°`;
+            } else {
+                status.classList.add('hidden');
+            }
+        }
+
+        function resetToWorld() {
+            currentBBox = null;
+            if (selectionRect) map.removeLayer(selectionRect);
+            updateSelectionUI(false);
+            map.setView([20, 0], 3);
+            fetchFlights();
+        }
+
+        // --- Data Fetching ---
+        async function fetchFlights() {
+            updateStatus('loading');
+            hideError();
+            
+            let url = 'https://opensky-network.org/api/states/all';
+            if (currentBBox) {
+                url += `?lamin=${currentBBox.minLat}&lomin=${currentBBox.minLon}&lamax=${currentBBox.maxLat}&lomax=${currentBBox.maxLon}`;
+            }
+
+            try {
+                const response = await fetch(url);
+                if (response.status === 429) throw new Error("API Rate Limit Reached");
+                if (!response.ok) throw new Error("API Connection Error");
+
+                const data = await response.json();
+                
+                flightsData = (data.states || []).map(s => ({
+                    icao: s[0],
+                    callsign: (s[1] || '---').trim(),
+                    country: s[2],
+                    lng: s[5],
+                    lat: s[6],
+                    alt: Math.round(s[7] * 3.28084 || 0),
+                    speed: Math.round(s[9] * 1.94384 || 0),
+                    heading: s[10] || 0
+                })).filter(f => f.lat && f.lng);
+
+                // Validation check for too many flights
+                if (flightsData.length > FLIGHT_THRESHOLD) {
+                    showError(`Warning: ${flightsData.length} flights in area. Map may lag. Consider drawing a smaller area.`);
+                }
+
+                updateMarkers();
+                renderFlightList();
+                updateStatus('active');
+                hideLoading();
+                document.getElementById('last-updated').innerText = `UPDATED: ${new Date().toLocaleTimeString()}`;
+            } catch (err) {
+                console.error(err);
+                updateStatus('error');
+                showError(err.message);
+            }
+        }
+
+        function updateMarkers() {
+            const currentIcaos = new Set(flightsData.map(f => f.icao));
+            Object.keys(markers).forEach(icao => {
+                if (!currentIcaos.has(icao)) {
+                    map.removeLayer(markers[icao]);
+                    delete markers[icao];
+                }
+            });
+
+            // Limit rendering for global view safety, but show all in custom bounds
+            const displayData = currentBBox ? flightsData : flightsData.slice(0, 300);
+
+            displayData.forEach(f => {
+                const isSelected = selectedFlightIcao === f.icao;
+                const iconHtml = `
+                    <div class="custom-plane-icon" style="transform: rotate(${f.heading}deg); width: 24px; height: 24px;">
+                        <svg viewBox="0 0 24 24" fill="${isSelected ? '#fbbf24' : '#3b82f6'}" stroke="white" stroke-width="0.5">
+                            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                        </svg>
+                    </div>
+                `;
+
+                if (markers[f.icao]) {
+                    markers[f.icao].setLatLng([f.lat, f.lng]);
+                    markers[f.icao].setIcon(L.divIcon({ html: iconHtml, className: '', iconSize: [24, 24] }));
+                } else {
+                    const marker = L.marker([f.lat, f.lng], {
+                        icon: L.divIcon({ html: iconHtml, className: '', iconSize: [24, 24] })
+                    }).addTo(map);
+                    marker.on('click', () => showDetails(f.icao));
+                    markers[f.icao] = marker;
+                }
+            });
+        }
+
+        function renderFlightList(query = '') {
+            const list = document.getElementById('flight-list');
+            const filtered = flightsData
+                .filter(f => f.callsign.toLowerCase().includes(query.toLowerCase()))
+                .slice(0, 50);
+
+            if (filtered.length === 0) {
+                list.innerHTML = `<div class="p-8 text-center text-slate-600 text-xs">No flights detected in this sector.</div>`;
+                return;
+            }
+
+            list.innerHTML = filtered.map(f => `
+                <div onclick="showDetails('${f.icao}')" class="group bg-slate-950/50 border border-slate-800 p-3 rounded-xl hover:border-blue-500/50 cursor-pointer transition-all flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-blue-400">
+                            <svg class="w-4 h-4" style="transform: rotate(${f.heading - 45}deg)" viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                        </div>
+                        <div>
+                            <div class="font-bold text-slate-200 group-hover:text-blue-400 transition-colors">${f.callsign}</div>
+                            <div class="text-[10px] text-slate-500 font-medium uppercase truncate max-w-[120px]">${f.country}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs font-mono text-slate-400">${f.alt.toLocaleString()} ft</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showDetails(icao) {
+            selectedFlightIcao = icao;
+            const flight = flightsData.find(f => f.icao === icao);
+            if (!flight) return;
+
+            document.getElementById('default-view').classList.add('hidden');
+            const dv = document.getElementById('detail-view');
+            dv.classList.remove('hidden');
+
+            document.getElementById('detail-container').innerHTML = `
+                <div class="mb-8">
+                    <h2 class="text-5xl font-black text-white tracking-tighter">${flight.callsign}</h2>
+                    <p class="text-slate-400 font-bold tracking-widest text-xs uppercase mt-2">${flight.country}</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Altitude</p>
+                        <p class="text-xl font-bold text-blue-400">${flight.alt.toLocaleString()} ft</p>
+                    </div>
+                    <div class="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Speed</p>
+                        <p class="text-xl font-bold text-emerald-400">${flight.speed} kts</p>
+                    </div>
+                </div>
+                <div class="mt-8 p-4 bg-slate-800/50 rounded-2xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="p-2 bg-blue-500/20 rounded-lg text-blue-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-500 uppercase">Position</p>
+                        <p class="text-xs font-mono text-slate-300">${flight.lat.toFixed(4)}, ${flight.lng.toFixed(4)}</p>
+                    </div>
+                </div>
+            `;
+
+            map.flyTo([flight.lat, flight.lng], 9, { animate: true, duration: 1.5 });
+            updateMarkers();
+        }
+
+        function closeDetails() {
+            selectedFlightIcao = null;
+            document.getElementById('detail-view').classList.add('hidden');
+            document.getElementById('default-view').classList.remove('hidden');
+            updateMarkers();
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('-translate-x-full');
+        }
+
+        function updateStatus(state) {
+            const dot = document.getElementById('status-dot');
+            const txt = document.getElementById('status-text');
+            if (state === 'loading') {
+                dot.className = 'w-2 h-2 rounded-full bg-amber-500 animate-pulse';
+                txt.innerText = 'Updating...';
+            } else if (state === 'active') {
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+                txt.innerText = 'Live Data Active';
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-red-500';
+                txt.innerText = 'Connection Error';
+            }
+        }
+
+        function hideLoading() {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 500);
+        }
+
+        function showError(msg) {
+            const toast = document.getElementById('error-toast');
+            document.getElementById('error-message').innerText = msg;
+            toast.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('error-toast').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
