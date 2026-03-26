@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SkyBound Pro: Flight POV</title>
+  
+  <!-- CesiumJS -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.104/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.104/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  
+  <!-- LeafletJS (Minimap) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background: #000; color: white; touch-action: none; }
+    #cesiumContainer { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; cursor: crosshair; }
+    
+    .glass {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Throttle Control Style */
+    .throttle-container {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 80px;
+      height: 180px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 40px;
+      border: 2px solid #444;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding-bottom: 20px;
+      touch-action: none;
+    }
+    .throttle-track {
+      position: absolute;
+      top: 25px;
+      bottom: 25px;
+      width: 4px;
+      background: #222;
+      border-radius: 2px;
+    }
+    .stick-handle {
+      position: absolute;
+      width: 54px;
+      height: 54px;
+      background: radial-gradient(circle at center, #ff4444 0%, #aa0000 100%);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(255,0,0,0.6);
+      z-index: 51;
+      touch-action: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      color: white;
+    }
+
+    /* Vintage Compass */
+    .vintage-compass {
+      width: 58px;
+      height: 58px;
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      z-index: 70;
+      background: #d4af37;
+      border-radius: 50%;
+      padding: 3px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+      pointer-events: none;
+    }
+    .compass-face {
+      width: 100%;
+      height: 100%;
+      background: white;
+      border-radius: 50%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .compass-card {
+      width: 100%;
+      height: 100%;
+      transition: transform 0.1s linear;
+    }
+
+    /* Map Module Collapsible */
+    .map-module {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 280px;
+      height: 180px;
+      z-index: 40;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    }
+    .map-module.collapsed {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+    }
+    .map-toggle-area {
+      position: absolute;
+      inset: 0;
+      z-index: 80;
+      cursor: pointer;
+    }
+    .map-close-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 81;
+      width: 24px;
+      height: 24px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    #minimap { width: 100%; height: 100%; background: #000; }
+    .hud-font { font-family: 'Courier New', Courier, monospace; }
+    
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: #020617;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .hud-element { transition: opacity 0.4s ease, visibility 0.4s; }
+    .hud-hidden { opacity: 0 !important; visibility: hidden; pointer-events: none !important; }
+
+    /* Floating View Label */
+    #view-label {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.5);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      pointer-events: none;
+      z-index: 30;
+    }
+
+    @media (max-width: 768px) {
+      .bottom-panel { transform: scale(0.8) translateX(-62%); bottom: 10px !important; }
+      .map-module { width: 220px; height: 140px; bottom: 10px; right: 10px; }
+      .vintage-compass { bottom: 10px; right: 10px; scale: 0.8; }
+      .throttle-container { left: 10px; bottom: 10px; height: 150px; width: 60px; }
+    }
+
+    .plane-map-icon {
+        transition: transform 0.1s linear;
+        filter: drop-shadow(0 0 3px rgba(0,0,0,1));
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading-overlay">
+    <div class="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+    <p class="text-cyan-400 font-bold tracking-widest uppercase text-xs">Calibrating Avionics...</p>
+  </div>
+
+  <div id="view-label" class="hidden">Steer: Drag to change direction</div>
+
+  <!-- 1. Selection Screen -->
+  <div id="selection-screen" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950 px-4 transition-all duration-700">
+    <div class="max-w-4xl w-full text-center">
+      <h1 class="text-4xl md:text-6xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600">SKYBOUND PRO</h1>
+      <p class="text-slate-500 mb-12 uppercase tracking-[0.2em] text-[10px]">Select Takeoff Location</p>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8">
+        <button onclick="launch('sf')" class="group p-6 rounded-2xl bg-slate-900 border border-slate-800 hover:border-cyan-500 transition-all">
+          <div class="text-3xl mb-2">🌁</div>
+          <h2 class="text-sm font-bold uppercase tracking-widest">San Francisco</h2>
+        </button>
+        <button onclick="launch('alps')" class="group p-6 rounded-2xl bg-slate-900 border border-slate-800 hover:border-emerald-500 transition-all">
+          <div class="text-3xl mb-2">🏔️</div>
+          <h2 class="text-sm font-bold uppercase tracking-widest">Alps Pass</h2>
+        </button>
+        <button onclick="launch('canyon')" class="group p-6 rounded-2xl bg-slate-900 border border-slate-800 hover:border-orange-500 transition-all">
+          <div class="text-3xl mb-2">🏜️</div>
+          <h2 class="text-sm font-bold uppercase tracking-widest">Canyon</h2>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Main Flight HUD -->
+  <div id="hud" class="hidden fixed inset-0 z-20 pointer-events-none">
+    
+    <!-- Bottom Center Control Group -->
+    <div class="hud-element bottom-panel absolute bottom-6 left-1/2 -translate-x-1/2 flex items-end gap-0.5 pointer-events-auto">
+        <button onclick="location.reload()" class="bg-red-600/20 hover:bg-red-600/40 px-4 py-2 rounded-l-lg text-red-500 text-[9px] font-black tracking-widest border border-red-500/20 transition-colors uppercase">ABORT</button>
+        
+        <div class="bg-slate-950/90 px-4 py-2 flex gap-6 border-y border-white/10">
+            <div>
+                <p class="text-[7px] text-slate-500 font-bold uppercase">Alt</p>
+                <p class="text-xs font-bold text-cyan-400 hud-font" id="val-alt">00000</p>
+            </div>
+            <div>
+                <p class="text-[7px] text-slate-500 font-bold uppercase">Speed</p>
+                <p class="text-xs font-bold text-white hud-font" id="val-speed">000</p>
+            </div>
+            <div>
+                <p class="text-[7px] text-slate-500 font-bold uppercase">Dist</p>
+                <p class="text-xs font-bold text-emerald-400 hud-font" id="val-dist">0.00</p>
+            </div>
+            <div>
+                <p class="text-[7px] text-slate-500 font-bold uppercase">Fuel</p>
+                <p class="text-xs font-bold text-orange-500 hud-font" id="val-fuel">00.0</p>
+            </div>
+        </div>
+
+        <div class="bg-slate-950/90 px-4 py-2 rounded-r-lg border border-white/10 border-l-0 min-w-[120px]">
+            <p class="text-[7px] text-slate-500 font-bold uppercase mb-1">GPS</p>
+            <div class="text-[9px] hud-font flex flex-col">
+                <span id="val-lat" class="text-white">0.00000</span>
+                <span id="val-lon" class="text-white">-0.00000</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Throttle Stick (Bottom Left) -->
+    <div class="hud-element throttle-container pointer-events-auto">
+        <div class="text-[8px] text-slate-500 font-bold absolute top-2">THROTTLE</div>
+        <div class="throttle-track"></div>
+        <div id="throttle-stick" class="stick-handle" style="bottom: 25px;">
+          <span id="throttle-val">0%</span>
+        </div>
+    </div>
+
+    <!-- Map Module (Bottom Right) -->
+    <div id="map-module" class="hud-element map-module pointer-events-auto">
+        <div id="map-open-trigger" class="map-toggle-area hidden" onclick="toggleMap()"></div>
+        <div id="map-close-btn" class="map-close-btn" onclick="toggleMap()">×</div>
+        <div id="minimap"></div>
+    </div>
+
+    <!-- Compass (In front of map) -->
+    <div id="compass-ui" class="hud-element vintage-compass pointer-events-none">
+        <div class="compass-face">
+            <div id="compass-card" class="compass-card">
+                <svg width="100%" height="100%" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="48" fill="white" stroke="#333" stroke-width="1"/>
+                    <text x="50" y="22" text-anchor="middle" font-weight="900" fill="black" font-size="14">N</text>
+                    <text x="78" y="50" text-anchor="middle" dominant-baseline="middle" font-weight="900" fill="black" font-size="14">E</text>
+                    <text x="50" y="78" text-anchor="middle" font-weight="900" fill="black" font-size="14">S</text>
+                    <text x="22" y="50" text-anchor="middle" dominant-baseline="middle" font-weight="900" fill="black" font-size="14">W</text>
+                    <polygon points="50,25 46,55 54,55" fill="#ef4444" />
+                    <polygon points="50,75 46,45 54,45" fill="black" />
+                </svg>
+            </div>
+        </div>
+    </div>
+
+  </div>
+
+  <div id="cesiumContainer"></div>
+
+  <script>
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzMGZkNWQ0ZS01M2JjLTQ3ZTAtOWE5OC1mNzJjMTlkNTViZjciLCJpZCI6Mjg3OTEzLCJpYXQiOjE3NDI5OTIyNzd9.FNwe_7JWOqcsO854hg_Kokvw8KR-Af5B8qSAz7v-kSM';
+
+    let viewer, minimap, planeMarker, startMarker, trailPath;
+    let flightActive = false;
+    let isMapCollapsed = false;
+    let throttleValue = 0; 
+    let metrics = { dist: 0, fuel: 0, lastPos: null, currentSpeed: 0 };
+    let pathHistory = [];
+
+    // Flight State
+    let currentPosition; // Cartesian3
+    let heading = 0;
+    let pitch = -5;
+    let isLooking = false;
+    let lastMouseX, lastMouseY;
+
+    const STARTS = {
+      sf: { lon: -122.3748, lat: 37.6188, alt: 300 },
+      alps: { lon: 7.6000, lat: 45.9000, alt: 3500 },
+      canyon: { lon: -112.1130, lat: 36.0544, alt: 2200 }
+    };
+
+    function initMaps() {
+      viewer = new Cesium.Viewer('cesiumContainer', {
+        terrainProvider: Cesium.createWorldTerrain(),
+        animation: false, timeline: false, infoBox: false, selectionIndicator: false, baseLayerPicker: false,
+        shouldAnimate: true
+      });
+
+      // Disable default camera controls
+      viewer.scene.screenSpaceCameraController.enableRotate = false;
+      viewer.scene.screenSpaceCameraController.enableTranslate = false;
+      viewer.scene.screenSpaceCameraController.enableZoom = false;
+      viewer.scene.screenSpaceCameraController.enableTilt = false;
+      viewer.scene.screenSpaceCameraController.enableLook = false;
+      
+      minimap = L.map('minimap', { zoomControl: false, attributionControl: false }).setView([0,0], 12);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(minimap);
+      
+      const planeIcon = L.divIcon({
+          className: 'plane-map-icon',
+          html: `<div style="font-size: 22px; color: #22d3ee; transform-origin: center;">✈</div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+      });
+
+      startMarker = L.circleMarker([0, 0], { color: '#ef4444', radius: 6, fillOpacity: 1, weight: 2 }).addTo(minimap);
+      planeMarker = L.marker([0, 0], { icon: planeIcon }).addTo(minimap);
+      trailPath = L.polyline([], { color: '#22d3ee', weight: 3, dashArray: '5, 8', opacity: 0.8 }).addTo(minimap);
+
+      initControls();
+      window.onload = () => { document.getElementById('loading-overlay').style.display = 'none'; };
+    }
+
+    function initControls() {
+      const stick = document.getElementById('throttle-stick');
+      const container = document.querySelector('.throttle-container');
+      const valText = document.getElementById('throttle-val');
+      let isDraggingThrottle = false;
+
+      const updateThrottle = (clientY) => {
+        const rect = container.getBoundingClientRect();
+        const topLimit = rect.top + 25;
+        const bottomLimit = rect.bottom - 25;
+        let y = Math.max(topLimit, Math.min(clientY, bottomLimit));
+        const relativeY = (y - topLimit) / (bottomLimit - topLimit);
+        throttleValue = 1 - relativeY; 
+        stick.style.top = (y - rect.top - 25) + 'px';
+        valText.textContent = Math.round(throttleValue * 100) + '%';
+      };
+
+      stick.addEventListener('mousedown', () => isDraggingThrottle = true);
+      window.addEventListener('mouseup', () => isDraggingThrottle = false);
+      window.addEventListener('mousemove', (e) => isDraggingThrottle && updateThrottle(e.clientY));
+
+      stick.addEventListener('touchstart', (e) => { isDraggingThrottle = true; e.preventDefault(); });
+      window.addEventListener('touchend', () => isDraggingThrottle = false);
+      window.addEventListener('touchmove', (e) => isDraggingThrottle && updateThrottle(e.touches[0].clientY));
+
+      // Steering (Camera Direction)
+      const cesiumEl = document.getElementById('cesiumContainer');
+      const startLook = (x, y) => { isLooking = true; lastMouseX = x; lastMouseY = y; };
+      const moveLook = (x, y) => {
+        if (!isLooking) return;
+        const dx = x - lastMouseX;
+        const dy = y - lastMouseY;
+        heading += dx * 0.2;
+        pitch -= dy * 0.2;
+        pitch = Math.max(-88, Math.min(88, pitch));
+        lastMouseX = x;
+        lastMouseY = y;
+      };
+      const endLook = () => isLooking = false;
+
+      cesiumEl.addEventListener('mousedown', (e) => startLook(e.clientX, e.clientY));
+      window.addEventListener('mousemove', (e) => moveLook(e.clientX, e.clientY));
+      window.addEventListener('mouseup', endLook);
+
+      cesiumEl.addEventListener('touchstart', (e) => startLook(e.touches[0].clientX, e.touches[0].clientY));
+      window.addEventListener('touchmove', (e) => moveLook(e.touches[0].clientX, e.touches[0].clientY));
+      window.addEventListener('touchend', endLook);
+    }
+
+    async function launch(key) {
+      const startData = STARTS[key];
+      document.getElementById('selection-screen').classList.add('hidden');
+      document.getElementById('view-label').classList.remove('hidden');
+      if (!viewer) initMaps();
+
+      currentPosition = Cesium.Cartesian3.fromDegrees(startData.lon, startData.lat, startData.alt);
+      heading = 0;
+      pitch = -5;
+
+      pathHistory = [];
+      trailPath.setLatLngs([]);
+      startMarker.setLatLng([startData.lat, startData.lon]);
+
+      viewer.camera.setView({
+        destination: currentPosition,
+        orientation: { heading: 0, pitch: Cesium.Math.toRadians(pitch), roll: 0 }
+      });
+
+      document.getElementById('hud').classList.remove('hidden');
+      flightActive = true;
+      
+      minimap.setView([startData.lat, startData.lon], 13);
+      minimap.invalidateSize();
+
+      // Main update loop
+      viewer.clock.onTick.addEventListener(onTick);
+    }
+
+    function onTick(clock) {
+      if (!flightActive || !currentPosition) return;
+
+      // 1. Calculate direction from camera orientation
+      const dir = viewer.camera.direction;
+      
+      // 2. Calculate speed (max ~250m/s or 900kph)
+      const maxSpeed = 250; 
+      const speed = throttleValue * maxSpeed;
+      
+      // 3. Move Position (Position = Position + Dir * Speed * DeltaTime)
+      const dt = 0.016; // Approx 60fps delta
+      const movement = Cesium.Cartesian3.multiplyByScalar(dir, speed * dt, new Cesium.Cartesian3());
+      currentPosition = Cesium.Cartesian3.add(currentPosition, movement, new Cesium.Cartesian3());
+
+      // 4. Update Camera View
+      viewer.camera.setView({
+        destination: currentPosition,
+        orientation: {
+          heading: Cesium.Math.toRadians(heading),
+          pitch: Cesium.Math.toRadians(pitch),
+          roll: 0
+        }
+      });
+
+      // 5. Update Metrics & HUD
+      updateTelemetry(currentPosition, speed);
+    }
+
+    function updateTelemetry(pos, speed) {
+      const carto = Cesium.Cartographic.fromCartesian(pos);
+      const lat = Cesium.Math.toDegrees(carto.latitude);
+      const lon = Cesium.Math.toDegrees(carto.longitude);
+      const alt = carto.height * 3.28084;
+
+      if (metrics.lastPos) {
+        const d = Cesium.Cartesian3.distance(pos, metrics.lastPos);
+        metrics.dist += (d / 1000);
+        metrics.fuel += (d * 0.005);
+      }
+      metrics.lastPos = pos.clone();
+
+      document.getElementById('val-alt').textContent = Math.round(alt).toString().padStart(5, '0');
+      document.getElementById('val-dist').textContent = metrics.dist.toFixed(2);
+      document.getElementById('val-fuel').textContent = metrics.fuel.toFixed(1);
+      document.getElementById('val-lat').textContent = lat.toFixed(5);
+      document.getElementById('val-lon').textContent = lon.toFixed(5);
+      document.getElementById('val-speed').textContent = Math.round(speed * 3.6).toString().padStart(3, '0');
+      
+      // Compass Heading
+      let visualHeading = (heading % 360);
+      if (visualHeading < 0) visualHeading += 360;
+      document.getElementById('compass-card').style.transform = `rotate(${-visualHeading}deg)`;
+
+      // Minimap
+      if (!isMapCollapsed) {
+          planeMarker.setLatLng([lat, lon]);
+          const planeEl = planeMarker.getElement();
+          if (planeEl) {
+              const inner = planeEl.querySelector('div');
+              if (inner) inner.style.transform = `rotate(${visualHeading}deg)`;
+          }
+          
+          if (speed > 0) {
+              pathHistory.push([lat, lon]);
+              if (pathHistory.length % 5 === 0) trailPath.setLatLngs(pathHistory);
+          }
+          minimap.panTo([lat, lon], { animate: false });
+      }
+    }
+
+    function toggleMap() {
+      isMapCollapsed = !isMapCollapsed;
+      const mod = document.getElementById('map-module');
+      const closeBtn = document.getElementById('map-close-btn');
+      const trigger = document.getElementById('map-open-trigger');
+      const compass = document.getElementById('compass-ui');
+
+      if (isMapCollapsed) {
+        mod.classList.add('collapsed');
+        closeBtn.classList.add('hidden');
+        trigger.classList.remove('hidden');
+        compass.style.opacity = "1";
+      } else {
+        mod.classList.remove('collapsed');
+        closeBtn.classList.remove('hidden');
+        trigger.classList.add('hidden');
+        setTimeout(() => {
+            minimap.invalidateSize();
+            if (metrics.lastPos) {
+                const carto = Cesium.Cartographic.fromCartesian(metrics.lastPos);
+                minimap.panTo([Cesium.Math.toDegrees(carto.latitude), Cesium.Math.toDegrees(carto.longitude)]);
+            }
+        }, 500);
+      }
+    }
+
+    initMaps();
+    window.addEventListener('resize', () => {
+      if(viewer) viewer.forceResize();
+      if(minimap) minimap.invalidateSize();
+    });
+  </script>
+</body>
+</html>
