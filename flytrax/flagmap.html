@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Tracker - Live Flight Data</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        #map { height: 100vh; width: 100%; background: #0f172a; cursor: crosshair; }
+        .leaflet-container { background: #0f172a !important; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .pulse-red { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+        /* Flag Icon Styles */
+        .flag-marker {
+            width: 32px;
+            height: 24px;
+            border: 2px solid white;
+            border-radius: 3px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            background-size: cover;
+            background-position: center;
+            transition: transform 0.2s;
+        }
+        .flag-marker:hover { transform: scale(1.3); z-index: 1000 !important; }
+
+        .drawing-active #map { cursor: crosshair !important; }
+        
+        /* Modal Backdrop */
+        .modal-overlay { background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 overflow-hidden">
+
+    <!-- How To Use Modal -->
+    <div id="info-modal" class="fixed inset-0 z-[11000] flex items-center justify-center p-4 modal-overlay hidden">
+        <div class="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-3xl p-8 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <button onclick="toggleInfo()" class="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <div class="flex items-center gap-4 mb-6">
+                <div class="bg-blue-500/20 p-3 rounded-2xl text-blue-400">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-black text-white">How To Use</h2>
+                    <p class="text-blue-400 text-xs font-bold uppercase tracking-widest">Sky Tracker Pro v2.0</p>
+                </div>
+            </div>
+            <div class="space-y-4 text-slate-300 text-sm leading-relaxed">
+                <div class="flex gap-4">
+                    <div class="font-black text-blue-500 text-lg">01</div>
+                    <p><b>Draw Your Sector:</b> Click the "Draw Area" button and drag your mouse on the map to select a specific region to monitor.</p>
+                </div>
+                <div class="flex gap-4">
+                    <div class="font-black text-blue-500 text-lg">02</div>
+                    <p><b>Live Tracking:</b> Data refreshes every 60 seconds. Click on any flight (plane or flag) to view its altitude, speed, and real-time route path.</p>
+                </div>
+                <div class="flex gap-4">
+                    <div class="font-black text-blue-500 text-lg">03</div>
+                    <p><b>Manage Load:</b> Use the "Max Display" slider to control how many flights are rendered at once to ensure smooth performance.</p>
+                </div>
+            </div>
+            <button onclick="toggleInfo()" class="w-full mt-8 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-blue-900/20">Got it!</button>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 z-[10000] bg-slate-950 flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="relative w-24 h-24 mb-6">
+            <div class="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center">
+                <svg class="w-10 h-10 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                </svg>
+            </div>
+        </div>
+        <h2 class="text-2xl font-bold tracking-tight">Syncing Radar Data</h2>
+    </div>
+
+    <!-- UI Alerts -->
+    <div id="ui-alerts" class="fixed top-6 left-1/2 -translate-x-1/2 z-[11000] flex flex-col gap-3 items-center pointer-events-none">
+        <div id="selection-hint" class="hidden bg-blue-600/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-bounce">
+            <span class="font-bold text-sm">Click and Drag on map to select area</span>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="fixed top-0 left-0 h-full w-full md:w-[400px] z-[5000] bg-slate-900/95 backdrop-blur-xl border-r border-slate-800 shadow-2xl transition-transform duration-300 -translate-x-full md:translate-x-0">
+        <div class="flex flex-col h-full">
+            <!-- Header -->
+            <div class="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+                <div>
+                    <h1 class="text-2xl font-black bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">SKY TRACKER</h1>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span id="status-text" class="text-[10px] uppercase font-bold tracking-widest text-slate-500">Live Data Active</span>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="toggleInfo()" class="p-2.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all border border-slate-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </button>
+                    <button onclick="toggleSidebar()" class="md:hidden p-2.5 text-slate-400 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="p-4 bg-slate-950/30 space-y-5">
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Max Displayed</label>
+                        <span id="limit-val" class="text-xs font-mono text-blue-400">200</span>
+                    </div>
+                    <input type="range" id="limit-slider" min="10" max="1000" value="200" step="10" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-slate-800/30 rounded-xl border border-slate-700/50">
+                    <span class="text-xs font-bold text-slate-300">Marker Style</span>
+                    <div class="flex bg-slate-900 p-1 rounded-lg">
+                        <button id="mode-plane" onclick="setMarkerMode('plane')" class="px-3 py-1.5 rounded-md text-[10px] font-bold transition-all text-slate-500">PLANE</button>
+                        <button id="mode-flag" onclick="setMarkerMode('flag')" class="px-3 py-1.5 rounded-md text-[10px] font-bold transition-all bg-blue-600 text-white">FLAG</button>
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <button id="draw-btn" onclick="toggleSelectionMode()" class="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-2 transition-all">
+                        Draw Area
+                    </button>
+                    <button onclick="resetToWorld()" class="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-all border border-slate-700">
+                        Reset
+                    </button>
+                </div>
+            </div>
+
+            <!-- List -->
+            <div id="sidebar-content" class="flex-1 overflow-y-auto">
+                <div id="default-view" class="p-6">
+                    <div class="relative mb-6">
+                        <input type="text" id="search-input" placeholder="Search by callsign..." class="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-blue-500 transition-all">
+                    </div>
+                    <div id="flight-list" class="space-y-3"></div>
+                </div>
+
+                <div id="detail-view" class="hidden p-6 animate-in slide-in-from-right duration-200">
+                    <button onclick="closeDetails()" class="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 mb-6 font-medium">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        Back to List
+                    </button>
+                    <div id="detail-container"></div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-slate-800 bg-slate-950/50 text-[10px] text-slate-500 flex justify-between items-center">
+                <span>REFRESH: 60S</span>
+                <span id="last-updated">---</span>
+            </div>
+        </div>
+    </aside>
+
+    <div id="map"></div>
+
+    <script>
+        let map;
+        let markers = {};
+        let flightsData = [];
+        let selectedFlightIcao = null;
+        let selectedFlightPath = [];
+        let routePolyline = null;
+        let currentBBox = null;
+        let markerMode = 'flag'; 
+        let displayLimit = 200;
+        let isDrawing = false;
+        let selectionMode = false;
+        let startPoint = null;
+        let selectionRect = null;
+
+        const countryCodes = {
+            "United Kingdom": "gb", "France": "fr", "United States": "us", "Germany": "de", 
+            "Spain": "es", "Italy": "it", "Canada": "ca", "Netherlands": "nl", "Switzerland": "ch",
+            "China": "cn", "Japan": "jp", "Brazil": "br", "Australia": "au", "United Arab Emirates": "ae",
+            "Turkey": "tr", "Russia": "ru", "India": "in", "Singapore": "sg", "Ireland": "ie", "Belgium": "be",
+            "Portugal": "pt", "Austria": "at", "Poland": "pl", "Denmark": "dk", "Norway": "no", "Sweden": "se",
+            "Finland": "fi", "Thailand": "th", "Mexico": "mx", "Israel": "il", "South Africa": "za", 
+            "South Korea": "kr", "New Zealand": "nz", "Greece": "gr", "Czechia": "cz", "Hungary": "hu"
+        };
+
+        window.onload = () => {
+            initMap();
+            fetchFlights();
+            setInterval(fetchFlights, 60000);
+            document.getElementById('search-input').addEventListener('input', (e) => renderFlightList(e.target.value));
+            document.getElementById('limit-slider').addEventListener('input', (e) => {
+                displayLimit = parseInt(e.target.value);
+                document.getElementById('limit-val').innerText = displayLimit;
+                updateMarkers();
+            });
+        };
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false, attributionControl: false, worldCopyJump: true, doubleClickZoom: false }).setView([48, 8], 5);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+            map.on('mousedown', (e) => {
+                if (!selectionMode) return;
+                isDrawing = true; startPoint = e.latlng;
+                if (selectionRect) map.removeLayer(selectionRect);
+                selectionRect = L.rectangle([startPoint, startPoint], { color: '#3b82f6', weight: 2, fillOpacity: 0.1, dashArray: '5, 5' }).addTo(map);
+                map.dragging.disable();
+            });
+            map.on('mousemove', (e) => { if (isDrawing) selectionRect.setBounds([startPoint, e.latlng]); });
+            map.on('mouseup', (e) => {
+                if (!isDrawing) return;
+                isDrawing = false; map.dragging.enable();
+                const bounds = selectionRect.getBounds();
+                currentBBox = {
+                    minLat: Math.min(bounds.getSouth(), bounds.getNorth()),
+                    maxLat: Math.max(bounds.getSouth(), bounds.getNorth()),
+                    minLon: Math.min(bounds.getWest(), bounds.getEast()),
+                    maxLon: Math.max(bounds.getWest(), bounds.getEast())
+                };
+                toggleSelectionMode(false);
+                fetchFlights();
+            });
+        }
+
+        function setMarkerMode(mode) {
+            markerMode = mode;
+            document.getElementById('mode-plane').className = `px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${mode === 'plane' ? 'bg-blue-600 text-white' : 'text-slate-500'}`;
+            document.getElementById('mode-flag').className = `px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${mode === 'flag' ? 'bg-blue-600 text-white' : 'text-slate-500'}`;
+            updateMarkers();
+        }
+
+        async function fetchFlights() {
+            updateStatus('loading');
+            let url = 'https://opensky-network.org/api/states/all';
+            if (currentBBox) url += `?lamin=${currentBBox.minLat}&lomin=${currentBBox.minLon}&lamax=${currentBBox.maxLat}&lomax=${currentBBox.maxLon}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                flightsData = (data.states || []).map(s => ({
+                    icao: s[0], callsign: (s[1] || '---').trim(), country: s[2],
+                    code: countryCodes[s[2]] || "un",
+                    lng: s[5], lat: s[6], alt: Math.round(s[7] * 3.28084 || 0),
+                    speed: Math.round(s[9] * 1.94384 || 0), heading: s[10] || 0
+                })).filter(f => f.lat && f.lng);
+
+                // Update selected flight path history
+                if (selectedFlightIcao) {
+                    const current = flightsData.find(f => f.icao === selectedFlightIcao);
+                    if (current) {
+                        selectedFlightPath.push([current.lat, current.lng]);
+                        if (selectedFlightPath.length > 20) selectedFlightPath.shift(); // Keep last 20 mins
+                        updateRouteLine();
+                    }
+                }
+
+                updateMarkers();
+                renderFlightList();
+                updateStatus('active');
+                document.getElementById('loading-overlay').style.opacity = '0';
+                setTimeout(() => document.getElementById('loading-overlay').style.display = 'none', 500);
+                document.getElementById('last-updated').innerText = `LAST: ${new Date().toLocaleTimeString()}`;
+            } catch (err) { updateStatus('error'); }
+        }
+
+        function updateMarkers() {
+            const currentIcaos = new Set(flightsData.slice(0, displayLimit).map(f => f.icao));
+            Object.keys(markers).forEach(icao => {
+                if (!currentIcaos.has(icao)) { map.removeLayer(markers[icao]); delete markers[icao]; }
+            });
+
+            flightsData.slice(0, displayLimit).forEach(f => {
+                const isSelected = selectedFlightIcao === f.icao;
+                let icon;
+                if (markerMode === 'plane') {
+                    icon = L.divIcon({
+                        html: `<div style="transform: rotate(${f.heading}deg); width: 24px; height: 24px;">
+                            <svg viewBox="0 0 24 24" fill="${isSelected ? '#fbbf24' : '#3b82f6'}" stroke="white" stroke-width="0.5"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                        </div>`,
+                        className: '', iconSize: [24, 24]
+                    });
+                } else {
+                    icon = L.divIcon({
+                        html: `<div class="flag-marker shadow-lg" style="background-image: url('https://flagcdn.com/w80/${f.code}.png'); border-color: ${isSelected ? '#fbbf24' : 'white'}"></div>`,
+                        className: '', iconSize: [32, 24]
+                    });
+                }
+
+                if (markers[f.icao]) {
+                    markers[f.icao].setLatLng([f.lat, f.lng]);
+                    markers[f.icao].setIcon(icon);
+                } else {
+                    const m = L.marker([f.lat, f.lng], { icon }).addTo(map);
+                    m.on('click', () => showDetails(f.icao));
+                    markers[f.icao] = m;
+                }
+            });
+        }
+
+        function updateRouteLine() {
+            if (routePolyline) map.removeLayer(routePolyline);
+            if (selectedFlightPath.length > 1) {
+                routePolyline = L.polyline(selectedFlightPath, { color: '#fbbf24', weight: 4, opacity: 0.8, dashArray: '10, 10' }).addTo(map);
+            }
+        }
+
+        function renderFlightList(query = '') {
+            const list = document.getElementById('flight-list');
+            const filtered = flightsData.filter(f => f.callsign.toLowerCase().includes(query.toLowerCase())).slice(0, 50);
+            list.innerHTML = filtered.map(f => `
+                <div onclick="showDetails('${f.icao}')" class="group bg-slate-950/50 border border-slate-800 p-3 rounded-xl hover:border-blue-500/50 cursor-pointer transition-all flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <img src="https://flagcdn.com/w40/${f.code}.png" class="w-8 h-6 rounded object-cover border border-slate-800">
+                        <div>
+                            <div class="font-bold text-slate-200 group-hover:text-blue-400 transition-colors">${f.callsign}</div>
+                            <div class="text-[9px] text-slate-500 font-bold uppercase">${f.country}</div>
+                        </div>
+                    </div>
+                    <div class="text-xs font-mono text-slate-400">${f.alt.toLocaleString()} ft</div>
+                </div>
+            `).join('');
+        }
+
+        function showDetails(icao) {
+            if (selectedFlightIcao !== icao) {
+                selectedFlightIcao = icao;
+                const flight = flightsData.find(f => f.icao === icao);
+                selectedFlightPath = [[flight.lat, flight.lng]];
+            }
+            
+            const flight = flightsData.find(f => f.icao === icao);
+            if (!flight) return;
+
+            document.getElementById('default-view').classList.add('hidden');
+            const dv = document.getElementById('detail-view');
+            dv.classList.remove('hidden');
+            document.getElementById('detail-container').innerHTML = `
+                <div class="mb-6 flex justify-between items-start">
+                    <div>
+                        <h2 class="text-5xl font-black text-white tracking-tighter">${flight.callsign}</h2>
+                        <p class="text-blue-400 font-bold tracking-widest text-[10px] uppercase mt-1">HEX: ${flight.icao}</p>
+                    </div>
+                    <img src="https://flagcdn.com/w160/${flight.code}.png" class="w-16 h-12 rounded-lg border-2 border-slate-700 shadow-2xl">
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-6">
+                    <div class="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Country</p>
+                        <p class="text-xs font-bold text-slate-200">${flight.country}</p>
+                    </div>
+                    <div class="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase mb-1">Altitude</p>
+                        <p class="text-xl font-bold text-blue-400">${flight.alt.toLocaleString()}</p>
+                    </div>
+                </div>
+                <div class="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3">
+                    <div class="p-2 bg-emerald-500/20 rounded-lg text-emerald-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-500 uppercase">Speed</p>
+                        <p class="text-xl font-bold text-emerald-400 font-mono">${flight.speed} KTS</p>
+                    </div>
+                </div>
+            `;
+            map.flyTo([flight.lat, flight.lng], 9, { animate: true });
+            updateMarkers();
+            updateRouteLine();
+        }
+
+        function closeDetails() {
+            selectedFlightIcao = null;
+            if (routePolyline) map.removeLayer(routePolyline);
+            document.getElementById('detail-view').classList.add('hidden');
+            document.getElementById('default-view').classList.remove('hidden');
+            updateMarkers();
+        }
+
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('-translate-x-full'); }
+        function toggleInfo() { document.getElementById('info-modal').classList.toggle('hidden'); }
+        function toggleSelectionMode() {
+            selectionMode = !selectionMode;
+            document.getElementById('draw-btn').innerHTML = selectionMode ? 'Cancel Selection' : 'Draw Area';
+            document.getElementById('selection-hint').classList.toggle('hidden', !selectionMode);
+            document.body.classList.toggle('drawing-active', selectionMode);
+        }
+        function resetToWorld() {
+            currentBBox = null; if (selectionRect) map.removeLayer(selectionRect);
+            map.setView([20, 0], 3); fetchFlights();
+        }
+        function updateStatus(state) {
+            const dot = document.getElementById('status-dot');
+            dot.className = `w-2 h-2 rounded-full ${state === 'loading' ? 'bg-amber-500 animate-pulse' : (state === 'active' ? 'bg-emerald-500' : 'bg-red-500')}`;
+        }
+    </script>
+</body>
+</html>
