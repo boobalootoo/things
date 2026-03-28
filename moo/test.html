@@ -3,245 +3,207 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quiet Sanctuary | Bird Feed Monitor</title>
+    <title>YT Playlist Export (Static)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f4f8;
-            min-height: 100vh;
-            transition: background-color 0.5s ease;
-        }
-
-        /* Robust 16:9 Aspect Ratio Container from your example */
-        .video-container {
-            position: relative;
-            width: 100%;
-            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
-            height: 0;
-            overflow: hidden;
-            border-radius: 0.75rem;
-            background-color: #000;
-            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), transform 0.8s ease;
-        }
-
-        .video-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-
-        /* Class to hide the birds when it's too loud */
-        .scared-away {
-            opacity: 0;
-            transform: scale(0.95);
-            pointer-events: none;
-        }
-
-        .meter-fill {
-            transition: width 0.1s ease-out, background-color 0.3s ease;
-        }
-
-        .shake-alert {
-            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
-        }
-
-        @keyframes shake {
-            10%, 90% { transform: translate3d(-1px, 0, 0); }
-            20%, 80% { transform: translate3d(2px, 0, 0); }
-            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-            40%, 60% { transform: translate3d(4px, 0, 0); }
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
-<body class="flex items-center justify-center p-4 sm:p-8">
+<body class="bg-gray-50 min-h-screen flex flex-col items-center p-4 md:p-12">
+    <div class="max-w-2xl w-full bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight">Playlist Exporter</h1>
+            <p class="mt-3 text-gray-500 font-medium">No API Key needed. Hostable on GitHub Pages.</p>
+        </header>
 
-    <div id="app-card" class="w-full max-w-4xl bg-white p-6 sm:p-10 rounded-2xl shadow-2xl transition-all duration-300 space-y-8">
-        
-        <!-- Header -->
-        <div class="text-center space-y-2">
-            <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight">Quiet <span class="text-blue-600">Sanctuary</span></h1>
-            <p class="text-gray-500 font-medium">Keep it down to watch the bird feeder.</p>
-        </div>
-
-        <!-- Video & Overlay Area -->
-        <div class="relative group">
-            <!-- Scared Overlay -->
-            <div id="scare-overlay" class="absolute inset-0 z-20 bg-slate-900/90 flex flex-col items-center justify-center text-white rounded-xl transition-opacity duration-500 opacity-0 pointer-events-none">
-                <div class="p-6 text-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 text-orange-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <h2 class="text-3xl font-bold">Too Loud!</h2>
-                    <p class="text-slate-300 text-lg mt-2">The birds have hidden. Please be quiet...</p>
-                </div>
+        <div class="space-y-6">
+            <!-- Input Area -->
+            <div>
+                <label for="url" class="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Playlist URL</label>
+                <input 
+                    type="text" 
+                    id="url" 
+                    placeholder="https://www.youtube.com/playlist?list=..." 
+                    class="w-full px-5 py-4 rounded-2xl border-2 border-gray-100 focus:border-red-500 focus:ring-0 outline-none transition-all text-gray-800"
+                />
             </div>
 
-            <!-- Video Container (copied structure from your example) -->
-            <div id="birds-container" class="video-container shadow-lg">
-                <iframe 
-                    id="bird-stream"
-                    src="https://www.youtube.com/embed/VhinPd5RRJw?si=9qXfR2j1N0L8M4P3" 
-                    title="Live Bird Feeder" 
-                    frameborder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                    allowfullscreen>
-                </iframe>
-            </div>
-        </div>
-
-        <!-- Controls Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start pt-4 border-t border-gray-100">
-            
-            <!-- Noise Visualization -->
-            <div class="space-y-4">
-                <div class="flex justify-between items-end">
-                    <label class="text-xs font-bold text-gray-400 uppercase tracking-widest">Ambient Volume</label>
-                    <div class="flex items-baseline gap-1">
-                        <span id="volume-val" class="text-4xl font-mono font-black text-gray-800">0</span>
-                        <span class="text-gray-400 font-bold text-sm">/ 100</span>
-                    </div>
-                </div>
-                <div class="h-10 w-full bg-gray-100 rounded-xl overflow-hidden p-1 border border-gray-200">
-                    <div id="meter-fill" class="meter-fill h-full w-0 rounded-lg bg-blue-500 shadow-sm"></div>
-                </div>
-            </div>
-
-            <!-- Settings -->
-            <div class="bg-gray-50 p-6 rounded-xl border border-gray-200 space-y-4">
-                <div class="flex justify-between items-center">
-                    <label class="text-xs font-bold text-gray-400 uppercase tracking-widest">Alert Threshold</label>
-                    <span id="threshold-display" class="font-mono font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg text-lg">50</span>
-                </div>
-                <input type="range" id="threshold-slider" min="5" max="95" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+            <!-- Actions -->
+            <div class="flex flex-col sm:flex-row gap-4">
+                <button 
+                    onclick="processPlaylist()" 
+                    id="fetchBtn"
+                    class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-red-100 flex items-center justify-center gap-3"
+                >
+                    <span id="btnText">Extract Videos</span>
+                    <div id="loader" class="hidden w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
+                </button>
                 
-                <button id="start-btn" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd" />
-                    </svg>
-                    Enable Microphone
+                <button 
+                    onclick="downloadCSV()" 
+                    id="downloadBtn"
+                    disabled
+                    class="flex-1 bg-gray-900 hover:bg-black disabled:bg-gray-200 disabled:shadow-none text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-gray-200"
+                >
+                    Download CSV
                 </button>
             </div>
+
+            <!-- Progress/Error -->
+            <div id="status" class="hidden p-4 rounded-xl text-sm font-medium text-center"></div>
+
+            <!-- Preview -->
+            <div id="preview" class="hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-gray-800">Video List (<span id="count">0</span>)</h3>
+                    <button onclick="reset()" class="text-xs font-bold text-red-500 hover:underline uppercase">Clear</button>
+                </div>
+                <div class="max-h-72 overflow-y-auto border border-gray-100 rounded-2xl bg-gray-50">
+                    <table class="w-full text-left text-xs sm:text-sm">
+                        <thead class="bg-white sticky top-0 border-b border-gray-100">
+                            <tr>
+                                <th class="p-4 font-bold text-gray-400 uppercase tracking-widest">Title</th>
+                                <th class="p-4 font-bold text-gray-400 uppercase tracking-widest text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsTable" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
-        <!-- Warning Toast -->
-        <div id="alert-toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-full shadow-2xl transition-all duration-300 opacity-0 translate-y-10 flex items-center gap-3 pointer-events-none z-50">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <span class="font-bold">Noise detected! Birds are scared.</span>
-        </div>
+        <footer class="mt-12 pt-8 border-t border-gray-50 text-center text-xs text-gray-400 leading-relaxed">
+            Note: This tool uses a CORS proxy to read public playlist data.<br>
+            Private playlists or those with restricted access cannot be fetched.
+        </footer>
     </div>
 
     <script>
-        const startBtn = document.getElementById('start-btn');
-        const thresholdSlider = document.getElementById('threshold-slider');
-        const thresholdDisplay = document.getElementById('threshold-display');
-        const volumeVal = document.getElementById('volume-val');
-        const meterFill = document.getElementById('meter-fill');
-        const birdsContainer = document.getElementById('birds-container');
-        const scareOverlay = document.getElementById('scare-overlay');
-        const appCard = document.getElementById('app-card');
-        const alertToast = document.getElementById('alert-toast');
-        const birdStream = document.getElementById('bird-stream');
+        let videoData = [];
 
-        let audioContext;
-        let analyser;
-        let microphone;
-        let scriptNode;
-        let isMonitoring = false;
-
-        thresholdSlider.oninput = () => {
-            thresholdDisplay.innerText = thresholdSlider.value;
-        };
-
-        function triggerAlert(isLoud) {
-            if (isLoud) {
-                birdsContainer.classList.add('scared-away');
-                scareOverlay.classList.remove('opacity-0');
-                appCard.classList.add('shake-alert', 'border-red-200');
-                document.body.style.backgroundColor = '#fee2e2'; // red-100
-                meterFill.classList.replace('bg-blue-500', 'bg-red-500');
-                
-                if (alertToast.classList.contains('opacity-0')) {
-                    alertToast.classList.remove('opacity-0', 'translate-y-10');
-                    setTimeout(() => {
-                        alertToast.classList.add('opacity-0', 'translate-y-10');
-                    }, 3000);
-                }
-            } else {
-                birdsContainer.classList.remove('scared-away');
-                scareOverlay.classList.add('opacity-0');
-                appCard.classList.remove('shake-alert', 'border-red-200');
-                document.body.style.backgroundColor = '#f0f4f8';
-                meterFill.classList.replace('bg-red-500', 'bg-blue-500');
-            }
+        function setStatus(msg, type = 'info') {
+            const el = document.getElementById('status');
+            el.className = `p-4 rounded-xl text-sm font-medium text-center ${
+                type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'
+            }`;
+            el.innerText = msg;
+            el.classList.remove('hidden');
         }
 
-        async function initAudio() {
+        function reset() {
+            videoData = [];
+            document.getElementById('url').value = '';
+            document.getElementById('preview').classList.add('hidden');
+            document.getElementById('status').classList.add('hidden');
+            document.getElementById('downloadBtn').disabled = true;
+        }
+
+        async function processPlaylist() {
+            const urlInput = document.getElementById('url').value.trim();
+            if (!urlInput.includes('list=')) {
+                setStatus('Please enter a valid YouTube Playlist URL.', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('fetchBtn');
+            const loader = document.getElementById('loader');
+            const btnText = document.getElementById('btnText');
+
+            // UI State
+            btn.disabled = true;
+            loader.classList.remove('hidden');
+            btnText.innerText = 'Extracting...';
+            document.getElementById('status').classList.add('hidden');
+            document.getElementById('preview').classList.add('hidden');
+
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Use AllOrigins as a CORS proxy to bypass cross-origin restrictions
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(urlInput)}`;
+                const response = await fetch(proxyUrl);
+                const data = await response.json();
                 
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                analyser = audioContext.createAnalyser();
-                microphone = audioContext.createMediaStreamSource(stream);
+                if (!data.contents) throw new Error('Could not fetch page content.');
+
+                // Extract the JSON data from the page source
+                // YouTube embeds data in a global variable called ytInitialData
+                const jsonMatch = data.contents.match(/var ytInitialData = ({.*?});/);
+                if (!jsonMatch) throw new Error('Failed to find playlist data. Is the playlist public?');
+
+                const rawJson = JSON.parse(jsonMatch[1]);
                 
-                // createScriptProcessor works well for simple level monitoring
-                scriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+                // Navigate the nested YouTube object structure
+                // This path is for standard playlist views
+                const contents = rawJson.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer?.contents;
 
-                analyser.smoothingTimeConstant = 0.5;
-                analyser.fftSize = 512;
+                if (!contents) {
+                    throw new Error('Playlist format not recognized or empty.');
+                }
 
-                microphone.connect(analyser);
-                analyser.connect(scriptNode);
-                scriptNode.connect(audioContext.destination);
+                videoData = contents
+                    .filter(item => item.playlistVideoRenderer)
+                    .map(item => {
+                        const v = item.playlistVideoRenderer;
+                        return {
+                            title: v.title?.runs?.[0]?.text || 'Unknown Title',
+                            link: `https://www.youtube.com/watch?v=${v.videoId}`
+                        };
+                    });
 
-                scriptNode.onaudioprocess = () => {
-                    const array = new Uint8Array(analyser.frequencyBinCount);
-                    analyser.getByteFrequencyData(array);
-                    let sum = 0;
+                if (videoData.length === 0) throw new Error('No videos found in this playlist.');
 
-                    for (let i = 0; i < array.length; i++) {
-                        sum += array[i];
-                    }
-
-                    const average = sum / array.length;
-                    // Scale and cap the volume for the UI
-                    const volume = Math.min(100, Math.round(average * 1.6));
-                    const threshold = parseInt(thresholdSlider.value);
-
-                    volumeVal.innerText = volume;
-                    meterFill.style.width = volume + "%";
-
-                    triggerAlert(volume > threshold);
-                };
-
-                isMonitoring = true;
-                startBtn.innerHTML = `
-                    <span class="flex items-center gap-2">
-                        <span class="h-2 w-2 rounded-full bg-green-400 animate-pulse"></span>
-                        Monitoring Active
-                    </span>
-                `;
-                startBtn.classList.replace('bg-blue-600', 'bg-gray-800');
-                startBtn.disabled = true;
-
-                // Attempt to autoplay video after interaction
-                birdStream.src += "&autoplay=1&mute=1";
+                renderTable();
+                document.getElementById('downloadBtn').disabled = false;
+                setStatus(`Successfully found ${videoData.length} videos.`, 'success');
 
             } catch (err) {
-                console.error("Mic access denied:", err);
-                alert("Microphone access is required for the noise monitor to work.");
+                console.error(err);
+                setStatus(err.message || 'An unexpected error occurred.', 'error');
+            } finally {
+                btn.disabled = false;
+                loader.classList.add('hidden');
+                btnText.innerText = 'Extract Videos';
             }
         }
 
-        startBtn.onclick = () => {
-            if (!isMonitoring) initAudio();
-        };
+        function renderTable() {
+            const table = document.getElementById('resultsTable');
+            const count = document.getElementById('count');
+            table.innerHTML = '';
+            
+            videoData.forEach(v => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="p-4 text-gray-700 font-medium truncate max-w-[200px] sm:max-w-md">${v.title}</td>
+                    <td class="p-4 text-right">
+                        <a href="${v.link}" target="_blank" class="text-red-500 hover:text-red-700 font-bold">Watch</a>
+                    </td>
+                `;
+                table.appendChild(row);
+            });
+
+            count.innerText = videoData.length;
+            document.getElementById('preview').classList.remove('hidden');
+        }
+
+        function downloadCSV() {
+            const headers = "Video Title,URL\n";
+            const rows = videoData.map(v => {
+                const escapedTitle = `"${v.title.replace(/"/g, '""')}"`;
+                return `${escapedTitle},${v.link}`;
+            }).join("\n");
+
+            const csvContent = headers + rows;
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `playlist_export_${new Date().getTime()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
     </script>
 </body>
 </html>
