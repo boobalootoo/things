@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiet Sanctuary | Bird Feed Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            min-height: 100vh;
+            transition: background-color 0.5s ease;
+        }
+
+        /* Robust 16:9 Aspect Ratio Container from your example */
+        .video-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+            height: 0;
+            overflow: hidden;
+            border-radius: 0.75rem;
+            background-color: #000;
+            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), transform 0.8s ease;
+        }
+
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Class to hide the birds when it's too loud */
+        .scared-away {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+
+        .meter-fill {
+            transition: width 0.1s ease-out, background-color 0.3s ease;
+        }
+
+        .shake-alert {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4 sm:p-8">
+
+    <div id="app-card" class="w-full max-w-4xl bg-white p-6 sm:p-10 rounded-2xl shadow-2xl transition-all duration-300 space-y-8">
+        
+        <!-- Header -->
+        <div class="text-center space-y-2">
+            <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight">Quiet <span class="text-blue-600">Sanctuary</span></h1>
+            <p class="text-gray-500 font-medium">Keep it down to watch the bird feeder.</p>
+        </div>
+
+        <!-- Video & Overlay Area -->
+        <div class="relative group">
+            <!-- Scared Overlay -->
+            <div id="scare-overlay" class="absolute inset-0 z-20 bg-slate-900/90 flex flex-col items-center justify-center text-white rounded-xl transition-opacity duration-500 opacity-0 pointer-events-none">
+                <div class="p-6 text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 text-orange-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <h2 class="text-3xl font-bold">Too Loud!</h2>
+                    <p class="text-slate-300 text-lg mt-2">The birds have hidden. Please be quiet...</p>
+                </div>
+            </div>
+
+            <!-- Video Container (copied structure from your example) -->
+            <div id="birds-container" class="video-container shadow-lg">
+                <iframe 
+                    id="bird-stream"
+                    src="https://www.youtube.com/embed/VhinPd5RRJw?si=9qXfR2j1N0L8M4P3" 
+                    title="Live Bird Feeder" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen>
+                </iframe>
+            </div>
+        </div>
+
+        <!-- Controls Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start pt-4 border-t border-gray-100">
+            
+            <!-- Noise Visualization -->
+            <div class="space-y-4">
+                <div class="flex justify-between items-end">
+                    <label class="text-xs font-bold text-gray-400 uppercase tracking-widest">Ambient Volume</label>
+                    <div class="flex items-baseline gap-1">
+                        <span id="volume-val" class="text-4xl font-mono font-black text-gray-800">0</span>
+                        <span class="text-gray-400 font-bold text-sm">/ 100</span>
+                    </div>
+                </div>
+                <div class="h-10 w-full bg-gray-100 rounded-xl overflow-hidden p-1 border border-gray-200">
+                    <div id="meter-fill" class="meter-fill h-full w-0 rounded-lg bg-blue-500 shadow-sm"></div>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <div class="bg-gray-50 p-6 rounded-xl border border-gray-200 space-y-4">
+                <div class="flex justify-between items-center">
+                    <label class="text-xs font-bold text-gray-400 uppercase tracking-widest">Alert Threshold</label>
+                    <span id="threshold-display" class="font-mono font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg text-lg">50</span>
+                </div>
+                <input type="range" id="threshold-slider" min="5" max="95" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                
+                <button id="start-btn" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd" />
+                    </svg>
+                    Enable Microphone
+                </button>
+            </div>
+        </div>
+
+        <!-- Warning Toast -->
+        <div id="alert-toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-full shadow-2xl transition-all duration-300 opacity-0 translate-y-10 flex items-center gap-3 pointer-events-none z-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span class="font-bold">Noise detected! Birds are scared.</span>
+        </div>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('start-btn');
+        const thresholdSlider = document.getElementById('threshold-slider');
+        const thresholdDisplay = document.getElementById('threshold-display');
+        const volumeVal = document.getElementById('volume-val');
+        const meterFill = document.getElementById('meter-fill');
+        const birdsContainer = document.getElementById('birds-container');
+        const scareOverlay = document.getElementById('scare-overlay');
+        const appCard = document.getElementById('app-card');
+        const alertToast = document.getElementById('alert-toast');
+        const birdStream = document.getElementById('bird-stream');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let scriptNode;
+        let isMonitoring = false;
+
+        thresholdSlider.oninput = () => {
+            thresholdDisplay.innerText = thresholdSlider.value;
+        };
+
+        function triggerAlert(isLoud) {
+            if (isLoud) {
+                birdsContainer.classList.add('scared-away');
+                scareOverlay.classList.remove('opacity-0');
+                appCard.classList.add('shake-alert', 'border-red-200');
+                document.body.style.backgroundColor = '#fee2e2'; // red-100
+                meterFill.classList.replace('bg-blue-500', 'bg-red-500');
+                
+                if (alertToast.classList.contains('opacity-0')) {
+                    alertToast.classList.remove('opacity-0', 'translate-y-10');
+                    setTimeout(() => {
+                        alertToast.classList.add('opacity-0', 'translate-y-10');
+                    }, 3000);
+                }
+            } else {
+                birdsContainer.classList.remove('scared-away');
+                scareOverlay.classList.add('opacity-0');
+                appCard.classList.remove('shake-alert', 'border-red-200');
+                document.body.style.backgroundColor = '#f0f4f8';
+                meterFill.classList.replace('bg-red-500', 'bg-blue-500');
+            }
+        }
+
+        async function initAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+                
+                // createScriptProcessor works well for simple level monitoring
+                scriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+                analyser.smoothingTimeConstant = 0.5;
+                analyser.fftSize = 512;
+
+                microphone.connect(analyser);
+                analyser.connect(scriptNode);
+                scriptNode.connect(audioContext.destination);
+
+                scriptNode.onaudioprocess = () => {
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    let sum = 0;
+
+                    for (let i = 0; i < array.length; i++) {
+                        sum += array[i];
+                    }
+
+                    const average = sum / array.length;
+                    // Scale and cap the volume for the UI
+                    const volume = Math.min(100, Math.round(average * 1.6));
+                    const threshold = parseInt(thresholdSlider.value);
+
+                    volumeVal.innerText = volume;
+                    meterFill.style.width = volume + "%";
+
+                    triggerAlert(volume > threshold);
+                };
+
+                isMonitoring = true;
+                startBtn.innerHTML = `
+                    <span class="flex items-center gap-2">
+                        <span class="h-2 w-2 rounded-full bg-green-400 animate-pulse"></span>
+                        Monitoring Active
+                    </span>
+                `;
+                startBtn.classList.replace('bg-blue-600', 'bg-gray-800');
+                startBtn.disabled = true;
+
+                // Attempt to autoplay video after interaction
+                birdStream.src += "&autoplay=1&mute=1";
+
+            } catch (err) {
+                console.error("Mic access denied:", err);
+                alert("Microphone access is required for the noise monitor to work.");
+            }
+        }
+
+        startBtn.onclick = () => {
+            if (!isMonitoring) initAudio();
+        };
+    </script>
+</body>
+</html>
