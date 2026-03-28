@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Groove Weaver - Playlist Generator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Custom Scrollbar for a sleek look */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+
+        /* Drag and Drop Visuals */
+        .dragging { opacity: 0.5; border: 2px dashed #8b5cf6; }
+        .drag-over { border-top: 2px solid #8b5cf6; }
+
+        /* Star Rating Hover Effects */
+        .star-group:hover .fa-star { color: #facc15; } /* Make all yellow on hover */
+        .star-group .fa-star:hover ~ .fa-star { color: #6b7280; } /* Make subsequent ones gray */
+        
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen selection:bg-purple-500/30">
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="fixed inset-0 bg-gray-950 z-50 flex flex-col items-center justify-center">
+        <i class="fa-solid fa-circle-notch fa-spin text-5xl text-purple-500 mb-4"></i>
+        <p class="text-gray-400 font-medium tracking-widest uppercase">Loading Library...</p>
+    </div>
+
+    <div class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- SIDEBAR: Filters & Controls -->
+        <div class="lg:col-span-4 lg:sticky lg:top-6 h-fit bg-gray-900 rounded-3xl p-6 border border-gray-800 shadow-xl flex flex-col gap-6">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-purple-600 flex items-center justify-center shadow-lg shadow-purple-600/20">
+                    <i class="fa-solid fa-compact-disc text-xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight">Groove Weaver</h1>
+                    <p class="text-xs text-gray-500">CSV Playlist Generator</p>
+                </div>
+            </div>
+
+            <!-- Albums Filter -->
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wider"><i class="fa-solid fa-layer-group mr-2"></i>Albums</label>
+                    <button onclick="toggleAllAlbums()" class="text-xs text-purple-400 hover:text-purple-300 transition">Select/Deselect All</button>
+                </div>
+                <div id="albums-container" class="max-h-48 overflow-y-auto space-y-1 pr-2 bg-gray-950/50 p-2 rounded-xl border border-gray-800">
+                    <!-- Album checkboxes injected here -->
+                </div>
+            </div>
+
+            <!-- BPM Filter -->
+            <div class="space-y-3">
+                <label class="text-xs font-bold text-gray-500 uppercase tracking-wider"><i class="fa-solid fa-heart-pulse mr-2"></i>BPM Range</label>
+                <div class="flex gap-3">
+                    <div class="relative w-full">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Min</span>
+                        <input type="number" id="bpm-min" value="0" class="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 pl-10 pr-3 text-sm focus:outline-none focus:border-purple-500 transition">
+                    </div>
+                    <div class="relative w-full">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Max</span>
+                        <input type="number" id="bpm-max" value="200" class="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 pl-10 pr-3 text-sm focus:outline-none focus:border-purple-500 transition">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Duration & Rounding -->
+            <div class="space-y-3">
+                <div class="flex justify-between items-end">
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wider"><i class="fa-solid fa-hourglass-half mr-2"></i>Duration</label>
+                    <span id="duration-display" class="text-purple-400 font-bold text-sm">60 mins</span>
+                </div>
+                <input type="range" id="duration-slider" min="5" max="240" value="60" class="w-full accent-purple-600 cursor-pointer">
+                
+                <div class="flex bg-gray-950 rounded-xl p-1 border border-gray-800">
+                    <button id="btn-round-down" onclick="setRounding('down')" class="flex-1 py-1.5 text-xs font-medium rounded-lg bg-gray-800 text-white shadow transition">Round Down</button>
+                    <button id="btn-round-up" onclick="setRounding('up')" class="flex-1 py-1.5 text-xs font-medium rounded-lg text-gray-500 hover:text-white transition">Round Up</button>
+                </div>
+            </div>
+
+            <!-- Generate Button -->
+            <button onclick="generatePlaylist()" class="w-full py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-purple-600/20 active:scale-[0.98] flex justify-center items-center gap-2">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Playlist
+            </button>
+        </div>
+
+        <!-- MAIN AREA: Player & Playlist -->
+        <div class="lg:col-span-8 flex flex-col gap-6">
+            
+            <!-- YouTube Player (Hidden by default) -->
+            <div id="player-section" class="hidden bg-gray-900 rounded-3xl p-4 border border-gray-800 shadow-2xl relative">
+                <button onclick="closePlayer()" class="absolute top-2 right-2 w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full flex items-center justify-center text-gray-400 hover:text-white transition z-10">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+                <div class="aspect-video w-full bg-black rounded-2xl overflow-hidden relative">
+                    <iframe id="yt-iframe" class="w-full h-full absolute inset-0" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                </div>
+                <div class="mt-4 px-2">
+                    <h2 id="now-playing-title" class="text-xl font-bold text-white">Title</h2>
+                    <p id="now-playing-artist" class="text-sm text-purple-400">Artist</p>
+                </div>
+            </div>
+
+            <!-- Playlist Container -->
+            <div class="bg-gray-900 rounded-3xl border border-gray-800 shadow-xl overflow-hidden flex-1 flex flex-col">
+                <div class="p-5 border-b border-gray-800 flex flex-wrap gap-4 items-center justify-between bg-gray-900/50">
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-xl font-bold text-white">Your Playlist</h2>
+                        <span id="playlist-count" class="px-2.5 py-1 bg-gray-800 text-gray-400 text-xs rounded-full font-medium">0 songs</span>
+                        <span id="playlist-time" class="px-2.5 py-1 bg-purple-900/30 text-purple-400 text-xs rounded-full font-medium border border-purple-500/20">00:00</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="shufflePlaylist()" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-xs font-medium rounded-lg transition-colors flex items-center gap-2">
+                            <i class="fa-solid fa-shuffle"></i> Shuffle
+                        </button>
+                        <button onclick="exportCSV()" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-xs font-medium rounded-lg transition-colors flex items-center gap-2 text-green-400 hover:text-green-300">
+                            <i class="fa-solid fa-download"></i> Export Ratings
+                        </button>
+                    </div>
+                </div>
+
+                <div id="playlist-content" class="p-2 space-y-1 overflow-y-auto max-h-[600px]">
+                    <!-- Empty State -->
+                    <div id="empty-state" class="py-20 flex flex-col items-center justify-center text-gray-600">
+                        <i class="fa-solid fa-music text-5xl mb-4 opacity-50"></i>
+                        <p>Set your filters and click Generate to create a playlist.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Custom Toast Notification -->
+    <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-xl shadow-2xl border border-gray-700 flex items-center gap-3 transition-all duration-300 transform translate-y-20 opacity-0 z-50">
+        <i class="fa-solid fa-circle-check text-green-500"></i>
+        <span id="toast-msg" class="text-sm font-medium">Action successful</span>
+    </div>
+
+    <script>
+        // --- State ---
+        let allSongs = [];
+        let uniqueAlbums = new Set();
+        let selectedAlbums = new Set();
+        let playlist = [];
+        let roundingMode = 'down'; // 'down' or 'up'
+        let ratings = JSON.parse(localStorage.getItem('groove_weaver_ratings')) || {};
+
+        // DOM Elements
+        const DOM = {
+            loading: document.getElementById('loading'),
+            albumsContainer: document.getElementById('albums-container'),
+            bpmMin: document.getElementById('bpm-min'),
+            bpmMax: document.getElementById('bpm-max'),
+            durationSlider: document.getElementById('duration-slider'),
+            durationDisplay: document.getElementById('duration-display'),
+            btnRoundDown: document.getElementById('btn-round-down'),
+            btnRoundUp: document.getElementById('btn-round-up'),
+            playlistContent: document.getElementById('playlist-content'),
+            playlistCount: document.getElementById('playlist-count'),
+            playlistTime: document.getElementById('playlist-time'),
+            playerSection: document.getElementById('player-section'),
+            ytIframe: document.getElementById('yt-iframe'),
+            nowPlayingTitle: document.getElementById('now-playing-title'),
+            nowPlayingArtist: document.getElementById('now-playing-artist'),
+            emptyState: document.getElementById('empty-state')
+        };
+
+        // --- Initialization ---
+        async function init() {
+            try {
+                const response = await fetch('https://raw.githubusercontent.com/boobalootoo/things/main/moo/info.csv');
+                if (!response.ok) throw new Error("Failed to fetch CSV");
+                const csvText = await response.text();
+                parseCSV(csvText);
+                populateAlbums();
+                DOM.loading.style.display = 'none';
+            } catch (err) {
+                console.error(err);
+                DOM.loading.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-500 text-5xl mb-4"></i><p class="text-red-400">Error loading data</p>`;
+            }
+
+            // Event Listeners
+            DOM.durationSlider.addEventListener('input', (e) => {
+                DOM.durationDisplay.textContent = `${e.target.value} mins`;
+            });
+        }
+
+        // --- Parsers & Data Prep ---
+        function parseCSV(text) {
+            const lines = text.split('\n').filter(l => l.trim().length > 0);
+            if (lines.length < 2) return;
+
+            // Detect if the CSV uses commas, tabs, or semicolons
+            const firstLine = lines[0];
+            let delimiter = ',';
+            const commaCount = (firstLine.match(/,/g) || []).length;
+            const tabCount = (firstLine.match(/\t/g) || []).length;
+            const semiCount = (firstLine.match(/;/g) || []).length;
+            if (tabCount > commaCount && tabCount > semiCount) delimiter = '\t';
+            else if (semiCount > commaCount && semiCount > tabCount) delimiter = ';';
+
+            // Basic CSV parser ignoring delimiters inside quotes
+            const parseLine = (line) => {
+                const result = [];
+                let cur = '';
+                let inQuotes = false;
+                for (let i = 0; i < line.length; i++) {
+                    if (line[i] === '"') inQuotes = !inQuotes;
+                    else if (line[i] === delimiter && !inQuotes) {
+                        result.push(cur.trim());
+                        cur = '';
+                    } else {
+                        cur += line[i];
+                    }
+                }
+                result.push(cur.trim());
+                return result.map(s => s.replace(/^"|"$/g, '').trim());
+            };
+
+            // Clean headers completely to avoid invisible characters (like BOM) breaking the search
+            const headers = parseLine(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+            
+            // Find column indices using broader keywords
+            let iTrack = headers.findIndex(h => h.includes('track') || h.includes('title') || h.includes('name') || h.includes('song'));
+            let iArtist = headers.findIndex(h => h.includes('artist') || h.includes('band') || h.includes('creator') || h.includes('author'));
+            let iAlbum = headers.findIndex(h => h.includes('album') || h.includes('release'));
+            let iBpm = headers.findIndex(h => h.includes('bpm') || h.includes('tempo'));
+            let iDuration = headers.findIndex(h => h.includes('duration') || h.includes('sec') || h.includes('time') || h.includes('length'));
+
+            // Fallbacks: If we still can't find track/artist headers, guess based on standard 1st/2nd column positions
+            if (iTrack === -1 && headers.length >= 1) iTrack = 0;
+            if (iArtist === -1 && headers.length >= 2) iArtist = 1;
+            if (iAlbum === -1 && headers.length >= 3) iAlbum = 2;
+
+            allSongs = lines.slice(1).map(line => {
+                const cols = parseLine(line);
+                const title = (iTrack >= 0 && cols[iTrack]) ? cols[iTrack] : 'Unknown Track';
+                const artist = (iArtist >= 0 && cols[iArtist]) ? cols[iArtist] : 'Unknown Artist';
+                const album = (iAlbum >= 0 && cols[iAlbum]) ? cols[iAlbum] : 'Unknown Album';
+                
+                // Ensure duration is in seconds
+                let durationSec = 180; // default 3 mins
+                if (iDuration >= 0 && cols[iDuration]) {
+                    const d = cols[iDuration];
+                    if (d.includes(':')) {
+                        const pts = d.split(':');
+                        durationSec = parseInt(pts[0]) * 60 + parseInt(pts[1]);
+                    } else {
+                        durationSec = parseInt(d) || 180;
+                    }
+                }
+
+                const song = {
+                    id: `${artist}-${album}-${title}`.replace(/[^a-z0-9]/gi, '_'),
+                    title: title,
+                    artist: artist,
+                    album: album,
+                    bpm: parseFloat(cols[iBpm]) || 0,
+                    duration: durationSec
+                };
+                uniqueAlbums.add(song.album);
+                return song;
+            });
+            
+            // Initially select all albums
+            uniqueAlbums.forEach(a => selectedAlbums.add(a));
+        }
+
+        function populateAlbums() {
+            const sorted = Array.from(uniqueAlbums).sort();
+            DOM.albumsContainer.innerHTML = sorted.map(album => `
+                <label class="flex items-center gap-3 p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition">
+                    <input type="checkbox" value="${escapeHtml(album)}" checked onchange="handleAlbumChange(this)" class="w-4 h-4 text-purple-600 rounded border-gray-700 bg-gray-900 focus:ring-purple-500 focus:ring-offset-gray-900">
+                    <span class="text-sm text-gray-300 truncate" title="${escapeHtml(album)}">${escapeHtml(album)}</span>
+                </label>
+            `).join('');
+        }
+
+        function handleAlbumChange(checkbox) {
+            if (checkbox.checked) selectedAlbums.add(checkbox.value);
+            else selectedAlbums.delete(checkbox.value);
+        }
+
+        function toggleAllAlbums() {
+            const checkboxes = DOM.albumsContainer.querySelectorAll('input[type="checkbox"]');
+            const allChecked = Array.from(checkboxes).every(c => c.checked);
+            
+            checkboxes.forEach(c => {
+                c.checked = !allChecked;
+                if (!allChecked) selectedAlbums.add(c.value);
+                else selectedAlbums.delete(c.value);
+            });
+        }
+
+        function setRounding(mode) {
+            roundingMode = mode;
+            if (mode === 'down') {
+                DOM.btnRoundDown.className = "flex-1 py-1.5 text-xs font-medium rounded-lg bg-gray-800 text-white shadow transition";
+                DOM.btnRoundUp.className = "flex-1 py-1.5 text-xs font-medium rounded-lg text-gray-500 hover:text-white transition";
+            } else {
+                DOM.btnRoundUp.className = "flex-1 py-1.5 text-xs font-medium rounded-lg bg-gray-800 text-white shadow transition";
+                DOM.btnRoundDown.className = "flex-1 py-1.5 text-xs font-medium rounded-lg text-gray-500 hover:text-white transition";
+            }
+        }
+
+        // --- Core Logic ---
+        function generatePlaylist() {
+            const minBPM = parseFloat(DOM.bpmMin.value) || 0;
+            const maxBPM = parseFloat(DOM.bpmMax.value) || 300;
+            const targetSecs = parseInt(DOM.durationSlider.value) * 60;
+
+            // 1. Filter
+            let pool = allSongs.filter(song => 
+                selectedAlbums.has(song.album) &&
+                song.bpm >= minBPM &&
+                song.bpm <= maxBPM
+            );
+
+            if (pool.length === 0) {
+                showToast("No songs match filters!", "error");
+                return;
+            }
+
+            // 2. Shuffle Pool
+            pool.sort(() => Math.random() - 0.5);
+
+            // 3. Select Songs based on Duration and Rounding
+            playlist = [];
+            let currentSecs = 0;
+
+            for (const song of pool) {
+                // Assign a unique instance ID for drag-and-drop
+                const songInstance = { ...song, instanceId: Math.random().toString(36).substr(2, 9) };
+
+                if (roundingMode === 'down') {
+                    if (currentSecs + song.duration <= targetSecs) {
+                        playlist.push(songInstance);
+                        currentSecs += song.duration;
+                    }
+                } else {
+                    // Round Up
+                    playlist.push(songInstance);
+                    currentSecs += song.duration;
+                    if (currentSecs >= targetSecs) break;
+                }
+            }
+
+            renderPlaylist();
+            showToast("Playlist generated!");
+        }
+
+        // --- UI Rendering ---
+        function renderPlaylist() {
+            if (playlist.length === 0) {
+                DOM.playlistContent.innerHTML = DOM.emptyState.outerHTML;
+                DOM.playlistCount.textContent = "0 songs";
+                DOM.playlistTime.textContent = "00:00";
+                return;
+            }
+
+            let totalSecs = 0;
+            let html = '';
+
+            playlist.forEach((song, index) => {
+                totalSecs += song.duration;
+                const dRating = ratings[song.id]?.dance || 0;
+                const lRating = ratings[song.id]?.like || 0;
+
+                html += `
+                <div class="group flex flex-col md:flex-row md:items-center gap-4 p-3 bg-gray-800/40 hover:bg-gray-800 rounded-2xl border border-transparent hover:border-gray-700 transition-all cursor-move"
+                     draggable="true" 
+                     ondragstart="handleDragStart(event, ${index})"
+                     ondragover="handleDragOver(event)"
+                     ondragleave="handleDragLeave(event)"
+                     ondrop="handleDrop(event, ${index})">
+                    
+                    <!-- Left: Info -->
+                    <div class="flex items-center gap-4 flex-1 overflow-hidden">
+                        <div class="flex flex-col gap-1 items-center text-gray-500 opacity-50 group-hover:opacity-100 px-1">
+                            <button onclick="moveSong(${index}, -1)" class="hover:text-white" title="Move Up"><i class="fa-solid fa-chevron-up text-[10px]"></i></button>
+                            <i class="fa-solid fa-grip-vertical text-xs"></i>
+                            <button onclick="moveSong(${index}, 1)" class="hover:text-white" title="Move Down"><i class="fa-solid fa-chevron-down text-[10px]"></i></button>
+                        </div>
+                        
+                        <button onclick="playSong(${index})" class="w-10 h-10 shrink-0 bg-purple-500/20 hover:bg-purple-500 text-purple-400 hover:text-white rounded-full flex items-center justify-center transition group-hover:scale-110">
+                            <i class="fa-solid fa-play ml-0.5"></i>
+                        </button>
+                        
+                        <div class="min-w-0 flex-1">
+                            <h3 class="font-bold text-gray-100 truncate">${escapeHtml(song.title)}</h3>
+                            <div class="text-xs text-gray-400 truncate flex gap-2 items-center">
+                                <span>${escapeHtml(song.artist)}</span>
+                                <span class="w-1 h-1 rounded-full bg-gray-600"></span>
+                                <span class="text-gray-500">${song.bpm} BPM</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Ratings & Actions -->
+                    <div class="flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6 pl-14 md:pl-0">
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[9px] uppercase tracking-widest text-gray-500">Danceability</span>
+                            <div class="flex gap-0.5 star-group" onmouseleave="resetStars(this)">
+                                ${generateStars(song.id, 'dance', dRating)}
+                            </div>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[9px] uppercase tracking-widest text-gray-500">Likeability</span>
+                            <div class="flex gap-0.5 star-group" onmouseleave="resetStars(this)">
+                                ${generateStars(song.id, 'like', lRating)}
+                            </div>
+                        </div>
+                        
+                        <button onclick="removeSong('${song.instanceId}')" class="p-2 text-gray-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition mt-2 md:mt-0" title="Remove">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+                `;
+            });
+
+            DOM.playlistContent.innerHTML = html;
+            DOM.playlistCount.textContent = `${playlist.length} songs`;
+            
+            const mins = Math.floor(totalSecs / 60);
+            const secs = totalSecs % 60;
+            DOM.playlistTime.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // --- Star Rating Helpers ---
+        function generateStars(songId, type, currentVal) {
+            let stars = '';
+            for(let i=1; i<=10; i++) {
+                const active = i <= currentVal;
+                stars += `<i class="${active ? 'fa-solid text-yellow-400' : 'fa-regular text-gray-600'} fa-star text-xs cursor-pointer transition-colors" 
+                             data-val="${i}"
+                             onmouseover="hoverStars(this, ${i})"
+                             onclick="setRating('${songId}', '${type}', ${i}, this)"></i>`;
+            }
+            return stars;
+        }
+
+        function hoverStars(starEl, val) {
+            const container = starEl.parentElement;
+            const stars = container.querySelectorAll('i');
+            stars.forEach((s, idx) => {
+                if (idx < val) {
+                    s.classList.remove('fa-regular', 'text-gray-600');
+                    s.classList.add('fa-solid', 'text-yellow-400');
+                } else {
+                    s.classList.remove('fa-solid', 'text-yellow-400');
+                    s.classList.add('fa-regular', 'text-gray-600');
+                }
+            });
+        }
+
+        function resetStars(container) {
+            // Because we don't store exact DOM state, the easiest way to reset is re-rendering or reading from global state.
+            // Since hover modifies classes, we just force a full render of the playlist.
+            // A more optimized way would be modifying just the container, but re-rendering is fast enough here.
+            renderPlaylist();
+        }
+
+        function setRating(songId, type, val, element) {
+            if (!ratings[songId]) ratings[songId] = { dance: 0, like: 0 };
+            
+            // Toggle off if clicking the exact same rating
+            if (ratings[songId][type] === val) {
+                ratings[songId][type] = 0; 
+            } else {
+                ratings[songId][type] = val;
+            }
+            
+            localStorage.setItem('groove_weaver_ratings', JSON.stringify(ratings));
+            renderPlaylist(); // re-render to lock in colors
+            showToast(`Rated ${val}/10`);
+            
+            // Prevent event from bubbling to drag-and-drop
+            if(event) event.stopPropagation(); 
+        }
+
+        // --- Playlist Actions ---
+        function removeSong(instanceId) {
+            playlist = playlist.filter(s => s.instanceId !== instanceId);
+            renderPlaylist();
+        }
+
+        function shufflePlaylist() {
+            if(playlist.length === 0) return;
+            playlist.sort(() => Math.random() - 0.5);
+            renderPlaylist();
+            showToast("Playlist shuffled!");
+        }
+
+        function moveSong(index, direction) {
+            if(event) event.stopPropagation();
+            const target = index + direction;
+            if (target < 0 || target >= playlist.length) return;
+            
+            const temp = playlist[index];
+            playlist[index] = playlist[target];
+            playlist[target] = temp;
+            renderPlaylist();
+        }
+
+        // --- Drag and Drop ---
+        let dragStartIndex = -1;
+
+        function handleDragStart(e, index) {
+            dragStartIndex = index;
+            e.dataTransfer.effectAllowed = 'move';
+            e.target.classList.add('dragging');
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault(); // Necessary to allow dropping
+            e.dataTransfer.dropEffect = 'move';
+            
+            const item = e.target.closest('.group');
+            if (item && !item.classList.contains('dragging')) {
+                item.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(e) {
+            const item = e.target.closest('.group');
+            if (item) item.classList.remove('drag-over');
+        }
+
+        function handleDrop(e, targetIndex) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const item = e.target.closest('.group');
+            if (item) item.classList.remove('drag-over');
+            
+            document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+
+            if (dragStartIndex !== -1 && dragStartIndex !== targetIndex) {
+                const draggedItem = playlist.splice(dragStartIndex, 1)[0];
+                playlist.splice(targetIndex, 0, draggedItem);
+                renderPlaylist();
+            }
+            dragStartIndex = -1;
+        }
+
+        // --- Player ---
+        function playSong(index) {
+            const song = playlist[index];
+            if (!song) return;
+
+            DOM.playerSection.classList.remove('hidden');
+            DOM.nowPlayingTitle.textContent = song.title;
+            DOM.nowPlayingArtist.textContent = song.artist;
+            
+            const query = encodeURIComponent(`${song.artist} ${song.title} official audio`);
+            DOM.ytIframe.src = `https://www.youtube.com/embed?listType=search&list=${query}&autoplay=1`;
+            
+            // Scroll to top to see player on mobile
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function closePlayer() {
+            DOM.playerSection.classList.add('hidden');
+            DOM.ytIframe.src = "";
+        }
+
+        // --- Data Export ---
+        function exportCSV() {
+            if (Object.keys(ratings).length === 0) {
+                showToast("No ratings to export!", "error");
+                return;
+            }
+
+            let csvContent = "Artist,Album,Track,Danceability,Likeability\n";
+            
+            allSongs.forEach(song => {
+                const r = ratings[song.id];
+                if (r && (r.dance > 0 || r.like > 0)) {
+                    // Escape quotes in data
+                    const artist = song.artist.replace(/"/g, '""');
+                    const album = song.album.replace(/"/g, '""');
+                    const track = song.title.replace(/"/g, '""');
+                    csvContent += `"${artist}","${album}","${track}",${r.dance},${r.like}\n`;
+                }
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "groove_weaver_ratings.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            showToast("Ratings exported to CSV");
+        }
+
+        // --- Utilities ---
+        function escapeHtml(unsafe) {
+            if(!unsafe) return '';
+            return unsafe.toString()
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        let toastTimeout;
+        function showToast(message, type = "success") {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-msg');
+            const icon = toast.querySelector('i');
+            
+            msgEl.textContent = message;
+            
+            if(type === "error") {
+                icon.className = "fa-solid fa-circle-exclamation text-red-500";
+                toast.classList.replace('border-gray-700', 'border-red-900');
+            } else {
+                icon.className = "fa-solid fa-circle-check text-green-500";
+                toast.classList.replace('border-red-900', 'border-gray-700');
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Boot the app
+        window.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
