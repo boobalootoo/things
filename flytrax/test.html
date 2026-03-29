@@ -7,188 +7,213 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Leaflet for 2D -->
+    <!-- Use Cesium 1.104 as specified to ensure stable terrain loading -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.104/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.104/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+    <!-- LeafletJS (Strictly for the POV Minimap) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <!-- Configure Cesium Base URL to fix Web Worker path resolution in sandboxed environments -->
-    <script>window.CESIUM_BASE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/cesium/1.110.0/';</script>
-    
-    <!-- Cesium for 3D POV -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.110.0/Cesium.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.110.0/Widgets/widgets.min.css" rel="stylesheet">
-    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background: #020617; touch-action: none; }
+        body { font-family: 'Inter', sans-serif; background: #000; touch-action: none; margin: 0; overflow: hidden; }
         
-        /* Main Layout */
-        #map { height: 100vh; width: 100%; position: absolute; top: 0; left: 0; z-index: 1; background: #020617; }
-        .leaflet-container { background: #020617 !important; }
-
-        /* POV Container & Elements */
-        #cesium-container { 
-            height: 100vh; width: 100%; position: absolute; top: 0; left: 0; 
-            z-index: 6000; display: none; background: #000; cursor: crosshair;
-        }
-        #cesium-container:active { cursor: grabbing; }
+        /* Cesium Main Canvas */
+        #cesiumContainer { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glass { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
         .hud-font { font-family: 'Courier New', Courier, monospace; }
 
-        /* HUD: Bottom Panel */
-        .bottom-panel { z-index: 7010; transition: transform 0.3s ease; }
-
-        /* HUD: Throttle */
+        /* --- POV HUD STYLES (From your reference) --- */
+        #pov-ui { z-index: 50; position: absolute; inset: 0; pointer-events: none; display: none; }
+        
         .throttle-container {
-            position: absolute; bottom: 20px; left: 20px; width: 80px; height: 220px;
-            background: rgba(0,0,0,0.7); border-radius: 40px; border: 2px solid #444;
-            z-index: 7050; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-            padding-bottom: 25px; touch-action: none;
+            position: absolute; bottom: 20px; left: 20px; width: 70px; height: 200px;
+            background: rgba(0,0,0,0.7); border-radius: 35px; border: 2px solid #444;
+            display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+            padding-bottom: 25px; touch-action: none; pointer-events: auto;
         }
         .throttle-track { position: absolute; top: 30px; bottom: 30px; width: 6px; background: #111; border-radius: 3px; }
         .stick-handle {
-            position: absolute; width: 60px; height: 60px;
+            position: absolute; width: 50px; height: 50px;
             background: radial-gradient(circle at center, #3b82f6 0%, #1e3a8a 100%);
             border-radius: 50%; cursor: pointer; box-shadow: 0 0 20px rgba(59,130,246,0.6);
-            z-index: 7051; touch-action: none; display: flex; align-items: center; justify-content: center;
-            font-size: 11px; font-weight: bold; color: white; border: 2px solid #60a5fa;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: bold; color: white; border: 2px solid #60a5fa;
+            touch-action: none;
         }
 
-        /* HUD: Compass */
-        .vintage-compass {
-            width: 72px; height: 72px; position: absolute; bottom: 20px; right: 20px;
-            z-index: 7100; background: #334155; border-radius: 50%; padding: 4px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.8); pointer-events: none; border: 2px solid #64748b;
-        }
-        .compass-face { width: 100%; height: 100%; background: #0f172a; border-radius: 50%; position: relative; display: flex; align-items: center; justify-content: center; }
-        .compass-card { width: 100%; height: 100%; transition: transform 0.1s linear; }
-
-        /* HUD: Minimap */
-        .map-module {
-            position: absolute; bottom: 110px; right: 20px; width: 280px; height: 200px;
-            min-width: 120px; min-height: 100px; z-index: 7040; border-radius: 16px; overflow: hidden;
-            border: 2px solid rgba(255,255,255,0.1); box-shadow: 0 10px 50px rgba(0,0,0,0.9);
-            transition: opacity 0.3s ease, transform 0.3s ease; background: #222;
-        }
-        .map-module.collapsed { width: 40px !important; height: 40px !important; border-radius: 50%; border: none; pointer-events: none; opacity: 0; }
-        .map-resize-handle { position: absolute; top: 0; left: 0; width: 40px; height: 40px; cursor: nw-resize; z-index: 7400; background: linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 50%); }
-        .map-close-btn {
-            position: absolute; top: 10px; right: 10px; z-index: 7400; width: 28px; height: 28px;
-            background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255,255,255,0.3); color: white;
-            border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            font-size: 18px; cursor: pointer; pointer-events: auto;
-        }
-        .map-expand-btn { position: absolute; bottom: 110px; right: 20px; width: 40px; height: 40px; z-index: 7110; cursor: pointer; border-radius: 50%; background: rgba(59,130,246,0.8); border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
-        #minimap { width: 100%; height: 100%; }
-
-        /* HUD: Crosshair */
         .crosshair {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             width: 40px; height: 40px; border: 1px solid rgba(34, 211, 238, 0.4); border-radius: 50%;
-            pointer-events: none; z-index: 7010;
+            pointer-events: none;
         }
         .crosshair::after, .crosshair::before { content: ''; position: absolute; background: rgba(34, 211, 238, 0.6); }
         .crosshair::before { top: 50%; left: -10px; width: 60px; height: 1px; transform: translateY(-50%); }
         .crosshair::after { left: 50%; top: -10px; height: 60px; width: 1px; transform: translateX(-50%); }
 
-        /* Map Markers */
-        .flag-marker { width: 32px; height: 22px; border: 2px solid white; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.6); background-size: cover; background-position: center; transition: transform 0.2s; }
+        .vintage-compass {
+            width: 60px; height: 60px; position: absolute; bottom: 20px; right: 20px;
+            background: #334155; border-radius: 50%; padding: 4px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.8); border: 2px solid #64748b;
+        }
+        .compass-face { width: 100%; height: 100%; background: #0f172a; border-radius: 50%; position: relative; display: flex; align-items: center; justify-content: center; }
+        .compass-card { width: 100%; height: 100%; transition: transform 0.1s linear; }
+
+        .map-module {
+            position: absolute; bottom: 100px; right: 20px; width: 220px; height: 160px;
+            z-index: 40; border-radius: 16px; overflow: hidden; pointer-events: auto;
+            border: 2px solid rgba(255,255,255,0.2); box-shadow: 0 10px 50px rgba(0,0,0,0.9);
+            background: #222;
+        }
+        #minimap { width: 100%; height: 100%; }
         .plane-map-icon { transition: transform 0.1s linear; filter: drop-shadow(0 0 3px #000); }
 
-        /* Mobile Adjustments */
-        @media (max-width: 768px) {
-            #sidebar {
-                height: auto; max-height: 85vh; top: auto; bottom: 0;
-                border-top: 1px solid #1e293b; border-radius: 24px 24px 0 0;
-                transform: translateY(100%); width: 100%; border-right: none;
-            }
-            #sidebar.translate-y-0 { transform: translateY(0) !important; }
-            #sidebar:not(.translate-y-0) { transform: translateY(100%) !important; }
-            .mobile-handle { width: 40px; height: 4px; background: #334155; border-radius: 2px; margin: 8px auto; }
-            
-            /* POV Mobile Scaling */
-            .bottom-panel { transform: scale(0.75) translateX(-66%); bottom: 10px !important; }
-            .throttle-container { left: 10px; bottom: 10px; height: 160px; width: 50px; }
-            .vintage-compass { right: 10px; bottom: 10px; width: 56px; height: 56px; }
-            .map-module { right: 10px; bottom: 80px; width: 160px; height: 120px; }
-            .map-expand-btn { right: 10px; bottom: 80px; }
-        }
-
-        /* Sidebar Collapsible */
-        #controls-content { transition: max-height 0.3s ease-out, opacity 0.2s ease-out; max-height: 600px; overflow: hidden; }
-        #controls-content.collapsed { max-height: 0; opacity: 0; pointer-events: none; }
+        /* --- SIDEBAR & UTILS --- */
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .modal-overlay { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .pulse-emerald { animation: pulseEm 2s infinite; }
+        @keyframes pulseEm { 0% { box-shadow: 0 0 0 0 rgba(8, 145, 178, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(8, 145, 178, 0); } 100% { box-shadow: 0 0 0 0 rgba(8, 145, 178, 0); } }
+
+        @media (max-width: 768px) {
+            .bottom-hud-bar { transform: scale(0.85); transform-origin: bottom center; bottom: 10px !important; }
+            .map-module { width: 140px; height: 100px; bottom: 90px; right: 10px; border-radius: 10px; }
+            .vintage-compass { width: 50px; height: 50px; bottom: 10px; right: 10px; }
+            .throttle-container { left: 10px; bottom: 10px; height: 160px; width: 60px; }
+        }
     </style>
 </head>
-<body class="text-slate-100 overflow-hidden">
+<body>
 
-    <!-- 3D POV Overlay Engine -->
-    <div id="cesium-container">
-        <!-- Top Exit Button -->
-        <div class="absolute top-6 left-6 z-[7100]">
-            <button onclick="exitPOV()" class="glass px-6 py-3 rounded-2xl font-bold text-sm shadow-2xl flex items-center gap-2 text-white hover:bg-red-500/20 transition-colors border border-red-500/50">
-                <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                EXIT POV
+    <!-- 1. CESIUM 3D GLOBE -->
+    <div id="cesiumContainer"></div>
+
+    <!-- 2. GLOBAL UI (Visible in Map Mode) -->
+    <div id="global-ui" class="absolute inset-0 z-10 pointer-events-none">
+        
+        <!-- Header -->
+        <div class="absolute top-4 left-4 glass px-5 py-3 rounded-2xl pointer-events-auto flex items-center gap-4 shadow-lg">
+            <div>
+                <h1 class="text-lg md:text-xl font-black bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent tracking-tight">SKY TRACKER 3D</h1>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <span id="status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+                    <span id="status-text" class="text-[10px] uppercase font-bold tracking-widest text-slate-400">Ready to Scan</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scan Area Button (Center Bottom) -->
+        <div class="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-auto">
+            <button onclick="scanVisibleArea()" id="scan-btn" class="bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-4 rounded-full font-black text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(8,145,178,0.5)] transition-all active:scale-95 flex items-center gap-3 pulse-emerald">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/></svg>
+                Scan Current View
+            </button>
+        </div>
+
+        <!-- Mobile Menu Toggle -->
+        <button onclick="toggleSidebar(true)" class="absolute top-4 right-4 md:hidden pointer-events-auto glass p-3.5 rounded-2xl shadow-xl text-cyan-400 active:scale-95">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+    </div>
+
+    <!-- 3. SIDEBAR (Flight List & Details) -->
+    <aside id="sidebar" class="fixed top-0 right-0 h-full w-full md:w-96 z-30 bg-slate-900/95 backdrop-blur-xl border-l border-white/10 transition-transform duration-300 translate-x-full flex flex-col shadow-2xl">
+        
+        <!-- Sidebar Header -->
+        <div class="p-5 border-b border-white/10 flex justify-between items-center bg-slate-950/50">
+            <h2 class="text-sm font-black text-white tracking-widest uppercase">Radar Settings</h2>
+            <button onclick="toggleSidebar(false)" class="text-slate-400 hover:text-white p-2 rounded-lg bg-slate-800/50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+        </div>
+
+        <!-- Settings (Slider) -->
+        <div class="p-5 border-b border-white/10 bg-slate-900">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Max Density Limit</span>
+                <span id="limit-val" class="text-xs font-mono font-bold text-cyan-400">100</span>
+            </div>
+            <input type="range" id="limit-slider" min="10" max="500" value="100" step="10" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+            <div class="flex justify-between items-center mt-4">
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">API Usage Today</span>
+                <span class="text-[10px] font-mono font-bold text-slate-300"><span id="usage-count" class="text-cyan-400">0</span> / 100</span>
+            </div>
+        </div>
+
+        <!-- List View -->
+        <div id="sidebar-list-view" class="flex-1 overflow-y-auto no-scrollbar p-3 space-y-2">
+            <div class="p-6 text-center text-slate-500 text-xs font-medium border border-slate-800 border-dashed rounded-xl mt-4 mx-2">
+                Pan the globe to a region and click "Scan Current View" to load flights.
+            </div>
+        </div>
+
+        <!-- Detail View (Hidden by default) -->
+        <div id="sidebar-detail-view" class="hidden absolute inset-0 bg-slate-900 z-10 flex flex-col">
+            <div class="p-4 border-b border-white/10 bg-slate-950/50">
+                <button onclick="closeDetails()" class="flex items-center gap-2 text-xs text-cyan-400 font-bold hover:text-cyan-300 transition-colors uppercase tracking-widest">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> Back
+                </button>
+            </div>
+            <div id="detail-content" class="p-6 flex-1 overflow-y-auto no-scrollbar">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </aside>
+
+    <!-- 4. POV HUD (Active only during simulation) -->
+    <div id="pov-ui">
+        <div class="absolute top-6 left-6 pointer-events-auto">
+            <button onclick="exitPOV()" class="glass px-6 py-3 rounded-xl font-black text-xs tracking-widest shadow-2xl flex items-center gap-2 text-white hover:bg-red-600/30 transition-colors border border-red-500/50 uppercase">
+                <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                Abort POV
             </button>
         </div>
 
         <div class="crosshair"></div>
 
-        <!-- HUD: Bottom Telemetry Panel -->
-        <div class="bottom-panel absolute bottom-6 left-1/2 -translate-x-1/2 flex items-end gap-0.5 pointer-events-auto">
-            <div class="bg-slate-950/90 px-6 py-3 flex gap-6 border border-white/10 rounded-l-xl">
-                <div>
-                    <p class="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Alt</p>
-                    <p class="text-lg font-bold text-cyan-400 hud-font"><span id="val-alt">00000</span><span class="text-[10px] ml-1 text-slate-500">FT</span></p>
-                </div>
-                <div>
-                    <p class="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Speed</p>
-                    <p class="text-lg font-bold text-white hud-font"><span id="val-speed">000</span><span class="text-[10px] ml-1 text-slate-500">KTS</span></p>
-                </div>
-                <div>
-                    <p class="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Dist</p>
-                    <p class="text-lg font-bold text-emerald-400 hud-font" id="val-dist">0.00</p>
-                </div>
-                <div>
-                    <p class="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Fuel</p>
-                    <p class="text-lg font-bold text-orange-500 hud-font" id="val-fuel">00.0</p>
-                </div>
-            </div>
-            <div class="bg-slate-950/90 px-4 py-3 rounded-r-xl border border-white/10 border-l-0 min-w-[140px]">
-                <p class="text-[8px] text-slate-500 font-bold uppercase tracking-widest mb-1">GPS Coords</p>
-                <div class="text-[10px] hud-font flex flex-col">
-                    <span id="val-lat" class="text-slate-300">0.00000</span>
-                    <span id="val-lon" class="text-slate-300">-0.00000</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- HUD: Throttle Stick -->
-        <div class="throttle-container pointer-events-auto" id="throttle-area">
-            <div class="text-[9px] text-slate-400 font-bold absolute top-3 text-center tracking-widest">THRUST</div>
+        <div class="throttle-container">
+            <div class="text-[8px] text-slate-400 font-bold absolute top-3 text-center tracking-widest">THRUST</div>
             <div class="throttle-track"></div>
             <div id="throttle-stick" class="stick-handle" style="bottom: 30px;">
                 <span id="throttle-val">0%</span>
             </div>
         </div>
 
-        <!-- HUD: Minimap Module -->
+        <!-- Telemetry Bottom Bar -->
+        <div class="bottom-hud-bar absolute bottom-6 left-1/2 -translate-x-1/2 flex items-stretch pointer-events-auto glass rounded-2xl shadow-2xl overflow-hidden border border-white/10">
+            <div class="px-5 py-3 border-r border-white/10 flex flex-col justify-center bg-slate-950/50">
+                <p class="text-[7px] text-slate-500 font-bold uppercase tracking-widest mb-1">Target</p>
+                <div class="flex items-center gap-2">
+                    <img id="pov-flag" class="w-5 h-3.5 rounded-sm object-cover shadow-sm">
+                    <h3 id="pov-callsign" class="text-sm font-black text-white">---</h3>
+                </div>
+            </div>
+            <div class="px-5 py-3 border-r border-white/10">
+                <p class="text-[7px] text-slate-500 font-bold uppercase tracking-widest mb-1">Altitude</p>
+                <p class="text-base font-bold text-cyan-400 hud-font"><span id="val-alt">00000</span><span class="text-[9px] ml-1 text-slate-500">FT</span></p>
+            </div>
+            <div class="px-5 py-3 border-r border-white/10">
+                <p class="text-[7px] text-slate-500 font-bold uppercase tracking-widest mb-1">Airspeed</p>
+                <p class="text-base font-bold text-emerald-400 hud-font"><span id="val-speed">000</span><span class="text-[9px] ml-1 text-slate-500">KTS</span></p>
+            </div>
+            <div class="px-5 py-3 hidden sm:block">
+                <p class="text-[7px] text-slate-500 font-bold uppercase tracking-widest mb-1">Distance / Fuel</p>
+                <div class="text-[10px] hud-font flex flex-col text-slate-300">
+                    <span>DST: <span id="val-dist" class="text-white">0.00</span></span>
+                    <span>FUL: <span id="val-fuel" class="text-white">0.0</span></span>
+                </div>
+            </div>
+        </div>
+
         <div id="map-module" class="map-module pointer-events-auto">
-            <div class="map-resize-handle" id="map-resizer"></div>
-            <div class="map-close-btn" onclick="toggleMapPOV()">×</div>
             <div id="minimap"></div>
         </div>
-        <div id="map-expand-btn" class="map-expand-btn hidden pointer-events-auto" onclick="toggleMapPOV()">MAP</div>
 
-        <!-- HUD: Compass -->
-        <div id="compass-ui" class="vintage-compass pointer-events-none">
+        <div class="vintage-compass">
             <div class="compass-face">
                 <div id="compass-card" class="compass-card">
                     <svg width="100%" height="100%" viewBox="0 0 100 100">
                         <circle cx="50" cy="50" r="48" fill="#0f172a" stroke="#475569" stroke-width="1"/>
-                        <text x="50" y="24" text-anchor="middle" font-weight="900" fill="#38bdf8" font-size="16">N</text>
+                        <text x="50" y="24" text-anchor="middle" font-weight="900" fill="#22d3ee" font-size="16">N</text>
                         <text x="78" y="50" text-anchor="middle" dominant-baseline="middle" font-weight="900" fill="white" font-size="14">E</text>
                         <text x="50" y="80" text-anchor="middle" font-weight="900" fill="white" font-size="14">S</text>
                         <text x="22" y="50" text-anchor="middle" dominant-baseline="middle" font-weight="900" fill="white" font-size="14">W</text>
@@ -200,118 +225,27 @@
         </div>
     </div>
 
-    <!-- UI Overlays & Sidebar (2D Tracker) -->
-    <div id="loading-overlay" class="fixed inset-0 z-[10000] bg-slate-950 flex flex-col items-center justify-center transition-opacity duration-500">
-        <div class="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-        <p class="text-slate-400 font-medium tracking-widest uppercase text-xs mt-2">Initializing Radar...</p>
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 z-[10000] bg-slate-950 flex flex-col items-center justify-center transition-opacity duration-500 hidden opacity-0">
+        <div class="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p id="loading-text" class="text-cyan-400 font-bold tracking-widest uppercase text-xs">Processing...</p>
     </div>
-
-    <div class="fixed top-4 right-4 z-[5000] flex flex-col gap-2 pointer-events-auto">
-        <button onclick="document.getElementById('info-modal').classList.remove('hidden')" class="bg-slate-900/90 p-3 rounded-2xl border border-slate-700 text-blue-400 shadow-xl">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        </button>
-    </div>
-
-    <div id="info-modal" class="fixed inset-0 z-[11000] flex items-center justify-center p-4 modal-overlay hidden">
-        <div class="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-3xl p-8 shadow-2xl relative">
-            <button onclick="document.getElementById('info-modal').classList.add('hidden')" class="absolute top-6 right-6 text-slate-500 hover:text-white">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-            <h2 class="text-2xl font-black mb-4 text-blue-400">Sky Tracker Pro Guide</h2>
-            <ul class="space-y-4 text-slate-300 text-sm">
-                <li class="flex gap-3"><span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</span> <b>Manual Updates:</b> Click "Refresh Radar" to fetch the latest transponder data in your current view.</li>
-                <li class="flex gap-3"><span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">2</span> <b>Immersive POV:</b> Select a flight and enter "3D POV" to take the stick. You can manually adjust the throttle and look around!</li>
-                <li class="flex gap-3"><span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</span> <b>Dynamic Scanning:</b> Just pan or zoom the map to any region you want to scan, then hit refresh.</li>
-            </ul>
-            <button onclick="document.getElementById('info-modal').classList.add('hidden')" class="w-full mt-8 bg-blue-600 py-4 rounded-2xl font-bold">Start Tracking</button>
-        </div>
-    </div>
-
-    <!-- Sidebar -->
-    <aside id="sidebar" class="fixed top-0 left-0 h-full w-full md:w-[400px] z-[5000] bg-slate-900/95 backdrop-blur-xl md:border-r border-slate-800 shadow-2xl transition-transform duration-500 -translate-x-full md:translate-x-0 flex flex-col pointer-events-auto">
-        <div class="mobile-handle md:hidden"></div>
-        <div class="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
-            <div>
-                <h1 class="text-2xl font-black bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">SKY TRACKER</h1>
-                <div class="flex items-center gap-1.5 mt-1">
-                    <span id="status-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
-                    <span id="status-text" class="text-[10px] uppercase font-bold tracking-widest text-slate-500">Manual Mode</span>
-                </div>
-            </div>
-            <button onclick="toggleSidebar(false)" class="md:hidden text-slate-500 p-2"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
-        </div>
-
-        <!-- Collapsible Controls -->
-        <div class="bg-slate-950/40 border-b border-slate-800/50 shrink-0">
-            <button onclick="toggleControls()" class="w-full flex items-center justify-between p-4 text-xs font-bold text-slate-400 hover:text-white transition-colors">
-                <div class="flex items-center gap-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg> RADAR CONTROLS</div>
-                <svg id="controls-chevron" class="w-4 h-4 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-            </button>
-
-            <div id="controls-content" class="px-4 pb-4 space-y-4">
-                <!-- Refresh Button scans visible map area directly -->
-                <button onclick="fetchFlights()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-emerald-900/20 flex items-center justify-center gap-3 active:scale-95 transition-all group">
-                    <svg id="refresh-icon" class="w-5 h-5 group-active:rotate-180 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    Refresh Radar
-                </button>
-                
-                <div class="flex justify-between items-center px-1">
-                    <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">API Usage</span>
-                    <span class="text-[10px] font-mono font-bold text-slate-400"><span id="usage-count" class="text-blue-400">0</span> / 100</span>
-                </div>
-
-                <!-- Slider -->
-                <div class="space-y-1 bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                    <div class="flex justify-between items-center">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Render Limit</span>
-                        <span id="limit-val" class="text-[10px] font-mono font-bold text-blue-400">200</span>
-                    </div>
-                    <input type="range" id="limit-slider" min="10" max="1000" value="200" step="10" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
-                </div>
-                
-                <div class="flex items-center justify-between p-1.5 bg-slate-900 rounded-xl border border-slate-800">
-                    <button onclick="setMarkerMode('flag')" id="mode-flag" class="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-blue-600 text-white transition-colors">FLAG</button>
-                    <button onclick="setMarkerMode('plane')" id="mode-plane" class="flex-1 py-1.5 rounded-lg text-[10px] font-bold text-slate-500 transition-colors">PLANE</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Scrollable Content -->
-        <div id="sidebar-content" class="flex-1 overflow-y-auto no-scrollbar relative pb-10">
-            <div id="default-view" class="p-4">
-                <input type="text" id="search-input" placeholder="Search callsign..." class="w-full bg-slate-950 border border-slate-800 rounded-2xl py-3 px-4 text-sm mb-4 focus:ring-1 focus:ring-blue-500 outline-none">
-                <div id="flight-list" class="space-y-2"></div>
-            </div>
-
-            <div id="detail-view" class="hidden absolute inset-0 bg-slate-900/95 backdrop-blur-xl p-6 animate-in slide-in-from-bottom duration-300 z-10 overflow-y-auto no-scrollbar pb-24">
-                <button onclick="closeDetails()" class="flex items-center gap-2 text-sm text-blue-400 mb-6 font-bold hover:text-blue-300">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> Back to List
-                </button>
-                <div id="detail-container"></div>
-            </div>
-        </div>
-    </aside>
-
-    <div id="map"></div>
 
     <script>
-        // --- Globals ---
-        let map, minimap, cesiumViewer;
-        let markers = {}, flightsData = [];
-        let selectedFlightIcao = null, selectedFlightPath = [];
-        let routePolyline = null;
-        let markerMode = 'flag', displayLimit = 200;
-        let isControlsCollapsed = false;
-
-        // --- POV Flight Engine Globals ---
+        // --- GLOBALS ---
+        let viewer, minimap;
+        let flightsData = [];
+        let displayLimit = 100;
+        let flightEntities = [];
+        
+        // POV State
         let flightActive = false;
-        let isMapCollapsed = false;
+        let selectedFlight = null;
         let throttleValue = 0; 
         let metrics = { dist: 0, fuel: 0, lastPos: null };
-        let pathHistory = [];
         let cameraHeading = 0; 
         let cameraPitch = -5;
-        let povPlaneMarker, povStartMarker, povTrailPath;
+        let povPlaneMarker, povTrailPath;
 
         const countryCodes = {
             "United Kingdom": "gb", "France": "fr", "United States": "us", "Germany": "de", 
@@ -320,200 +254,233 @@
             "Turkey": "tr", "Russia": "ru", "India": "in", "Singapore": "sg", "Ireland": "ie", "Belgium": "be",
             "Portugal": "pt", "Austria": "at", "Poland": "pl", "Denmark": "dk", "Norway": "no", "Sweden": "se",
             "Finland": "fi", "Thailand": "th", "Mexico": "mx", "Israel": "il", "South Africa": "za", 
-            "South Korea": "kr", "New Zealand": "nz", "Greece": "gr", "Czechia": "cz", "Hungary": "hu",
-            "Switzerland": "ch", "Ireland": "ie", "Norway": "no", "Iceland": "is", "Luxembourg": "lu"
+            "South Korea": "kr", "New Zealand": "nz", "Greece": "gr", "Czechia": "cz", "Hungary": "hu"
         };
 
+        // --- INIT ---
         window.onload = () => {
-            init2DMap();
-            loadPersistentData();
+            initCesium();
             updateUsageUI();
             
-            document.getElementById('search-input').addEventListener('input', (e) => renderFlightList(e.target.value));
-            
-            // Slider Logic
-            const slider = document.getElementById('limit-slider');
-            slider.addEventListener('input', (e) => {
+            document.getElementById('limit-slider').addEventListener('input', (e) => {
                 displayLimit = parseInt(e.target.value);
                 document.getElementById('limit-val').innerText = displayLimit;
-                updateMarkers();
+                renderEntities();
             });
-
-            if (flightsData.length > 0) {
-                updateMarkers();
-                renderFlightList();
-            }
-            document.getElementById('loading-overlay').style.display = 'none';
         };
 
-        // --- Data Persistence ---
-        function loadPersistentData() {
-            const savedFlights = localStorage.getItem('skyradar_flights');
-            if (savedFlights) flightsData = JSON.parse(savedFlights);
+        function initCesium() {
+            // Setup User Token
+            Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzMGZkNWQ0ZS01M2JjLTQ3ZTAtOWE5OC1mNzJjMTlkNTViZjciLCJpZCI6Mjg3OTEzLCJpYXQiOjE3NDI5OTIyNzd9.FNwe_7JWOqcsO854hg_Kokvw8KR-Af5B8qSAz7v-kSM';
+
+            // Create Viewer with 1.104
+            viewer = new Cesium.Viewer('cesiumContainer', {
+                terrainProvider: Cesium.createWorldTerrain(),
+                animation: false, timeline: false, infoBox: false, selectionIndicator: false, 
+                baseLayerPicker: false, navigationHelpButton: false, sceneModePicker: false,
+                homeButton: false, geocoder: false, fullscreenButton: false,
+                shouldAnimate: true
+            });
+
+            // Initial Camera Position (Europe)
+            viewer.camera.setView({
+                destination: Cesium.Cartesian3.fromDegrees(10.0, 48.0, 5000000)
+            });
+
+            // Handle clicking flags on the globe
+            const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+            handler.setInputAction((click) => {
+                if(flightActive) return;
+                const picked = viewer.scene.pick(click.position);
+                if (Cesium.defined(picked) && picked.id && picked.id.flightData) {
+                    showDetails(picked.id.flightData.icao);
+                }
+            }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+            // Init custom steering engine (only active when flightActive === true)
+            initPOVControls();
             
-            // If they had a previous view setup
-            const lastCenter = localStorage.getItem('skyradar_center');
-            const lastZoom = localStorage.getItem('skyradar_zoom');
-            if(lastCenter && lastZoom) {
-                map.setView(JSON.parse(lastCenter), parseInt(lastZoom));
-            }
+            // Init Minimap
+            minimap = L.map('minimap', { zoomControl: false, attributionControl: false }).setView([0,0], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(minimap);
+            povPlaneMarker = L.marker([0,0], {
+                icon: L.divIcon({ html: `<div style="font-size:24px; color:#ff0000; line-height:1;">✈</div>`, className: 'plane-map-icon', iconSize: [24,24], iconAnchor: [12,12] })
+            }).addTo(minimap);
+            povTrailPath = L.polyline([], { color: '#ff0000', weight: 3, dashArray: '5, 8' }).addTo(minimap);
         }
 
+        // --- API & UI ---
         function updateUsageUI() {
             const now = Date.now();
-            let usage = JSON.parse(localStorage.getItem('skyradar_api_usage') || '{"count": 0, "startTime": 0}');
+            let usage = JSON.parse(localStorage.getItem('skyradar_usage') || '{"count": 0, "startTime": 0}');
             if (usage.startTime === 0 || now - usage.startTime > 86400000) {
                 usage = { count: 0, startTime: now };
-                localStorage.setItem('skyradar_api_usage', JSON.stringify(usage));
+                localStorage.setItem('skyradar_usage', JSON.stringify(usage));
             }
             document.getElementById('usage-count').innerText = usage.count;
-            if (usage.count >= 90) document.getElementById('usage-count').classList.add('text-red-500');
-            else document.getElementById('usage-count').classList.remove('text-red-500');
+            document.getElementById('usage-count').className = usage.count >= 90 ? 'text-red-500' : 'text-cyan-400';
         }
 
-        function toggleControls() {
-            isControlsCollapsed = !isControlsCollapsed;
-            document.getElementById('controls-content').classList.toggle('collapsed');
-            document.getElementById('controls-chevron').style.transform = isControlsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+        function setStatus(state, text) {
+            const dot = document.getElementById('status-dot');
+            const txt = document.getElementById('status-text');
+            txt.innerText = text;
+            if(state === 'load') { dot.className = 'w-2 h-2 rounded-full bg-cyan-500 animate-pulse'; }
+            if(state === 'success') { dot.className = 'w-2 h-2 rounded-full bg-emerald-500'; }
+            if(state === 'error') { dot.className = 'w-2 h-2 rounded-full bg-red-500'; }
         }
 
-        // --- 2D Map & Fetching ---
-        function init2DMap() {
-            map = L.map('map', { zoomControl: false, attributionControl: false, worldCopyJump: true }).setView([48, 8], 5);
-            
-            // Replaced Dark Map with Esri World Imagery (Satellite view)
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-            }).addTo(map);
+        async function scanVisibleArea() {
+            const rect = viewer.camera.computeViewRectangle();
+            if (!rect) return;
 
-            // Save map position on move
-            map.on('moveend', () => {
-                localStorage.setItem('skyradar_center', JSON.stringify(map.getCenter()));
-                localStorage.setItem('skyradar_zoom', map.getZoom());
-            });
-        }
+            let minLat = Cesium.Math.toDegrees(rect.south);
+            let maxLat = Cesium.Math.toDegrees(rect.north);
+            let minLon = Cesium.Math.toDegrees(rect.west);
+            let maxLon = Cesium.Math.toDegrees(rect.east);
 
-        async function fetchFlights() {
-            updateStatus('loading');
-            document.getElementById('refresh-icon').classList.add('animate-spin');
-            
-            // Dynamic bounds based on what the user is currently looking at
-            let url = 'https://opensky-network.org/api/states/all';
-            
-            // Only apply bounds if zoomed in enough, to avoid API failure for too large an area.
-            // If zoomed out, it fetches global data naturally.
-            if (map.getZoom() >= 4) {
-                const bounds = map.getBounds();
-                let minLat = bounds.getSouth();
-                let maxLat = bounds.getNorth();
-                let minLon = bounds.getWest();
-                let maxLon = bounds.getEast();
-                
-                // Wrap longitudes correctly
-                if (minLon < -180) minLon = -180;
-                if (maxLon > 180) maxLon = 180;
-                
-                url += `?lamin=${minLat}&lomin=${minLon}&lamax=${maxLat}&lomax=${maxLon}`;
+            // Prevent huge queries
+            if ((maxLat - minLat > 40) || (maxLon - minLon > 40)) {
+                const cLat = (minLat + maxLat) / 2; const cLon = (minLon + maxLon) / 2;
+                minLat = cLat - 20; maxLat = cLat + 20; minLon = cLon - 20; maxLon = cLon + 20;
             }
 
+            const btn = document.getElementById('scan-btn');
+            btn.classList.add('animate-pulse');
+            setStatus('load', 'Scanning Airspace...');
+
             try {
-                const response = await fetch(url);
-                if (response.status === 429) throw new Error("API Rate Limit Reached");
-                if (!response.ok) throw new Error("API Connection Failed");
-                const data = await response.json();
+                const url = `https://opensky-network.org/api/states/all?lamin=${minLat}&lomin=${minLon}&lamax=${maxLat}&lomax=${maxLon}`;
+                const res = await fetch(url);
+                if (res.status === 429) throw new Error("API Rate Limit.");
+                if (!res.ok) throw new Error("Connection failed.");
+
+                const data = await res.json();
+                
                 flightsData = (data.states || []).map(s => ({
-                    icao: s[0], callsign: (s[1] || '---').trim(), country: s[2], code: countryCodes[s[2]] || "un",
+                    icao: s[0], callsign: (s[1] || 'UNKNOWN').trim(), country: s[2], code: countryCodes[s[2]] || "un",
                     lng: s[5], lat: s[6], alt: Math.round(s[7] * 3.28084 || 0), speed: Math.round(s[9] * 1.94384 || 0), heading: s[10] || 0
                 })).filter(f => f.lat && f.lng);
 
-                let usage = JSON.parse(localStorage.getItem('skyradar_api_usage') || '{"count": 0, "startTime": 0}');
-                usage.count++; localStorage.setItem('skyradar_api_usage', JSON.stringify(usage)); updateUsageUI();
+                let usage = JSON.parse(localStorage.getItem('skyradar_usage') || '{"count": 0, "startTime": 0}');
+                usage.count++; localStorage.setItem('skyradar_usage', JSON.stringify(usage));
+                updateUsageUI();
 
-                localStorage.setItem('skyradar_flights', JSON.stringify(flightsData));
+                renderEntities();
+                renderList();
+                setStatus('success', `Found ${flightsData.length} Flights`);
+                
+                // Open sidebar on mobile automatically after scan
+                if(window.innerWidth < 768 && flightsData.length > 0) toggleSidebar(true);
 
-                if (selectedFlightIcao) {
-                    const current = flightsData.find(f => f.icao === selectedFlightIcao);
-                    if (current) {
-                        selectedFlightPath.push([current.lat, current.lng]);
-                        updateRouteLine();
-                    }
-                }
-                updateMarkers(); renderFlightList(); updateStatus('active');
-            } catch (err) { updateStatus('error'); alert(err.message); } 
-            finally { document.getElementById('refresh-icon').classList.remove('animate-spin'); }
+            } catch (e) {
+                setStatus('error', 'Scan Failed');
+                alert(e.message);
+            } finally {
+                btn.classList.remove('animate-pulse');
+            }
         }
 
-        function updateMarkers() {
-            const icaos = new Set(flightsData.slice(0, displayLimit).map(f => f.icao));
-            Object.keys(markers).forEach(id => { if (!icaos.has(id)) { map.removeLayer(markers[id]); delete markers[id]; } });
+        // --- CESIUM RENDER ---
+        function renderEntities() {
+            viewer.entities.removeAll();
+            flightEntities = [];
 
-            flightsData.slice(0, displayLimit).forEach(f => {
-                const sel = selectedFlightIcao === f.icao;
-                const icon = markerMode === 'plane' 
-                    ? L.divIcon({ html: `<div style="transform: rotate(${f.heading}deg);"><svg class="w-6 h-6 ${sel ? 'text-amber-400' : 'text-blue-500'}" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg></div>`, className: '', iconSize: [24,24] })
-                    : L.divIcon({ html: `<div class="flag-marker shadow-xl" style="background-image: url('https://flagcdn.com/w80/${f.code}.png'); border-color: ${sel ? '#fbbf24' : 'white'}"></div>`, className: '', iconSize: [32, 22] });
-
-                if (markers[f.icao]) { markers[f.icao].setLatLng([f.lat, f.lng]); markers[f.icao].setIcon(icon); }
-                else { markers[f.icao] = L.marker([f.lat, f.lng], { icon }).addTo(map).on('click', () => showDetails(f.icao)); }
+            const toShow = flightsData.slice(0, displayLimit);
+            toShow.forEach(f => {
+                const ent = viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(f.lng, f.lat, Math.max(100, f.alt * 0.3048)),
+                    billboard: {
+                        image: `https://flagcdn.com/w40/${f.code}.png`,
+                        width: 32, height: 22,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    },
+                    label: {
+                        text: f.callsign,
+                        font: '10px Inter', fillColor: Cesium.Color.WHITE, outlineColor: Cesium.Color.BLACK, outlineWidth: 2,
+                        pixelOffset: new Cesium.Cartesian2(0, 20),
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                });
+                ent.flightData = f;
+                flightEntities.push(ent);
             });
         }
 
-        function renderFlightList(q = '') {
-            const f = flightsData.filter(x => x.callsign.toLowerCase().includes(q.toLowerCase())).slice(0, 50);
-            if (f.length === 0) { document.getElementById('flight-list').innerHTML = '<div class="p-6 text-center text-slate-500 text-xs font-medium">No flights detected. Pan to an active region and hit Refresh!</div>'; return; }
-            document.getElementById('flight-list').innerHTML = f.map(x => `
-                <div onclick="showDetails('${x.icao}')" class="flex items-center justify-between p-3 bg-slate-950/50 rounded-2xl border border-slate-800 hover:border-blue-500/50 cursor-pointer transition-all active:scale-95">
+        // --- SIDEBAR UI ---
+        function toggleSidebar(forceOpen = null) {
+            const sb = document.getElementById('sidebar');
+            if (forceOpen === true) { sb.classList.remove('translate-x-full'); } 
+            else if (forceOpen === false) { sb.classList.add('translate-x-full'); } 
+            else { sb.classList.toggle('translate-x-full'); }
+        }
+
+        function renderList() {
+            const list = document.getElementById('sidebar-list-view');
+            if (flightsData.length === 0) {
+                list.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs font-medium border border-slate-800 border-dashed rounded-xl mt-4 mx-2">No flights found here. Scan another area.</div>';
+                return;
+            }
+            
+            list.innerHTML = flightsData.slice(0, displayLimit).map(x => `
+                <div onclick="showDetails('${x.icao}')" class="flex items-center justify-between p-3 bg-slate-950/50 rounded-2xl border border-white/5 hover:border-cyan-500/50 cursor-pointer transition-all active:scale-95 group">
                     <div class="flex items-center gap-3">
-                        <img src="https://flagcdn.com/w40/${x.code}.png" class="w-8 h-6 rounded border border-slate-800">
-                        <div><div class="font-bold text-slate-200 text-sm">${x.callsign}</div><div class="text-[9px] text-slate-500 font-bold uppercase">${x.country}</div></div>
+                        <img src="https://flagcdn.com/w40/${x.code}.png" class="w-8 h-6 rounded border border-white/10 shadow-md">
+                        <div><div class="font-bold text-white text-sm group-hover:text-cyan-400 transition-colors">${x.callsign}</div><div class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">${x.country}</div></div>
                     </div>
-                    <div class="text-xs font-mono text-slate-400">${x.alt.toLocaleString()} FT</div>
-                </div>`).join('');
+                    <div class="text-xs font-mono text-slate-400 font-bold">${x.alt.toLocaleString()} FT</div>
+                </div>
+            `).join('');
         }
 
         function showDetails(icao) {
-            const flight = flightsData.find(f => f.icao === icao);
-            if (!flight) return;
-            selectedFlightIcao = icao;
-            selectedFlightPath = [[flight.lat, flight.lng]];
+            selectedFlight = flightsData.find(f => f.icao === icao);
+            if (!selectedFlight) return;
             
-            document.getElementById('default-view').classList.add('hidden');
-            document.getElementById('detail-view').classList.remove('hidden');
+            document.getElementById('sidebar-list-view').classList.add('hidden');
+            document.getElementById('sidebar-detail-view').classList.remove('hidden');
             
-            document.getElementById('detail-container').innerHTML = `
-                <div class="mb-8 flex items-start justify-between">
-                    <div>
-                        <h2 class="text-4xl font-black text-white">${flight.callsign}</h2>
-                        <img src="https://flagcdn.com/w160/${flight.code}.png" class="w-16 h-12 rounded-xl border border-slate-700 shadow-2xl mt-2">
-                    </div>
+            document.getElementById('detail-content').innerHTML = `
+                <div class="mb-8">
+                    <h2 class="text-4xl font-black text-white tracking-tighter">${selectedFlight.callsign}</h2>
+                    <img src="https://flagcdn.com/w160/${selectedFlight.code}.png" class="w-16 h-12 rounded-xl border border-slate-700 shadow-2xl mt-3">
+                    <p class="text-cyan-400 font-bold text-[10px] uppercase mt-3 tracking-widest">ORIGIN: ${selectedFlight.country}</p>
                 </div>
-                <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="grid grid-cols-2 gap-3 mb-8">
                     <div class="bg-slate-800/50 p-4 rounded-3xl border border-slate-700/50">
-                        <p class="text-[10px] text-slate-500 font-bold uppercase mb-1">Altitude</p>
-                        <p class="text-xl font-bold text-blue-400 font-mono">${flight.alt.toLocaleString()} FT</p>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">Altitude</p>
+                        <p class="text-xl font-bold text-blue-400 font-mono">${selectedFlight.alt.toLocaleString()} FT</p>
                     </div>
                     <div class="bg-slate-800/50 p-4 rounded-3xl border border-slate-700/50">
-                        <p class="text-[10px] text-slate-500 font-bold uppercase mb-1">Speed</p>
-                        <p class="text-xl font-bold text-emerald-400 font-mono">${flight.speed} KTS</p>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">Speed</p>
+                        <p class="text-xl font-bold text-emerald-400 font-mono">${selectedFlight.speed} KTS</p>
                     </div>
                 </div>
-                <button onclick="enterPOV()" class="w-full bg-indigo-600 hover:bg-indigo-500 py-5 rounded-3xl font-black text-sm uppercase tracking-widest shadow-xl shadow-indigo-900/20 flex items-center justify-center gap-3 transition-colors">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                    Enter 3D POV
+                <button onclick="startPOV()" class="w-full bg-cyan-600 hover:bg-cyan-500 py-5 rounded-full font-black text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(8,145,178,0.4)] flex items-center justify-center gap-3 transition-all active:scale-95 text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    Take Control (POV)
                 </button>
             `;
-            map.flyTo([flight.lat, flight.lng], 8);
-            updateMarkers(); updateRouteLine();
+
+            // Fly camera to look at the plane from a distance
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(selectedFlight.lng, selectedFlight.lat, Math.max(2000, (selectedFlight.alt * 0.3048) + 2000)),
+                orientation: { heading: Cesium.Math.toRadians(selectedFlight.heading), pitch: Cesium.Math.toRadians(-45), roll: 0 }
+            });
             
-            // Pop open the mobile bottom sheet fully if it's not open
             toggleSidebar(true);
         }
 
-        // --- 3D POV Engine Integration ---
-        function initPOVUI() {
-            // Throttle
+        function closeDetails() {
+            selectedFlight = null;
+            document.getElementById('sidebar-detail-view').classList.add('hidden');
+            document.getElementById('sidebar-list-view').classList.remove('hidden');
+        }
+
+        // --- 3D POV ENGINE ---
+        function initPOVControls() {
             const stick = document.getElementById('throttle-stick');
-            const container = document.getElementById('throttle-area');
+            const container = document.querySelector('.throttle-container');
             const valText = document.getElementById('throttle-val');
             let isDragging = false;
 
@@ -537,35 +504,13 @@
             window.addEventListener('touchend', tEnd);
             window.addEventListener('touchmove', tMove, { passive: false });
 
-            // Minimap Resizer
-            const resizer = document.getElementById('map-resizer');
-            const mapMod = document.getElementById('map-module');
-            let isResizing = false;
-
-            resizer.addEventListener('mousedown', (e) => { isResizing = true; e.preventDefault(); e.stopPropagation(); });
-            resizer.addEventListener('touchstart', (e) => { isResizing = true; e.preventDefault(); e.stopPropagation(); }, { passive: false });
-
-            const handleResize = (clientX, clientY) => {
-                if (!isResizing) return;
-                const newWidth = window.innerWidth - clientX - 20;
-                const newHeight = window.innerHeight - clientY - 20;
-                if (newWidth > 120) mapMod.style.width = newWidth + 'px';
-                if (newHeight > 100) mapMod.style.height = newHeight + 'px';
-                if(minimap) minimap.invalidateSize();
-            };
-            window.addEventListener('mousemove', (e) => handleResize(e.clientX, e.clientY));
-            window.addEventListener('touchmove', (e) => handleResize(e.touches[0].clientX, e.touches[0].clientY), { passive: false });
-            window.addEventListener('mouseup', () => isResizing = false);
-            window.addEventListener('touchend', () => isResizing = false);
-
             // Camera Steering
-            let isLooking = false;
-            let lastX, lastY;
-            const cesEl = document.getElementById('cesium-container');
+            let isLooking = false; let lastX, lastY;
+            const cesEl = document.getElementById('cesiumContainer');
 
-            const startL = (x, y) => { isLooking = true; lastX = x; lastY = y; };
+            const startL = (x, y) => { if(!flightActive) return; isLooking = true; lastX = x; lastY = y; };
             const moveL = (x, y, e) => {
-                if (!isLooking) return;
+                if (!isLooking || !flightActive) return;
                 cameraHeading += (x - lastX) * 0.15;
                 cameraPitch -= (y - lastY) * 0.15;
                 cameraPitch = Math.max(-89, Math.min(89, cameraPitch));
@@ -574,112 +519,112 @@
                 if(e && e.cancelable) e.preventDefault();
             };
 
-            cesEl.addEventListener('mousedown', (e) => { if(e.target === cesEl || e.target.tagName==='CANVAS') startL(e.clientX, e.clientY); });
-            window.addEventListener('mousemove', (e) => { if(isLooking) moveL(e.clientX, e.clientY, e); });
+            cesEl.addEventListener('mousedown', (e) => { startL(e.clientX, e.clientY); });
+            window.addEventListener('mousemove', (e) => { moveL(e.clientX, e.clientY, e); });
             window.addEventListener('mouseup', () => isLooking = false);
-            cesEl.addEventListener('touchstart', (e) => { if(e.target === cesEl || e.target.tagName==='CANVAS') startL(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
-            window.addEventListener('touchmove', (e) => { if(isLooking) moveL(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: false });
+            cesEl.addEventListener('touchstart', (e) => { startL(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+            window.addEventListener('touchmove', (e) => { moveL(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: false });
             window.addEventListener('touchend', () => isLooking = false);
         }
 
-        async function enterPOV() {
-            const flight = flightsData.find(f => f.icao === selectedFlightIcao);
-            if (!flight) return;
+        function startPOV() {
+            if (!selectedFlight) return;
             
-            document.getElementById('cesium-container').style.display = 'block';
+            document.getElementById('global-ui').style.display = 'none';
+            toggleSidebar(false);
             
-            if (!cesiumViewer) {
-                initPOVUI();
-                cesiumViewer = new Cesium.Viewer('cesium-container', {
-                    terrainProvider: await Cesium.createWorldTerrainAsync(),
-                    baseLayerPicker: false, geocoder: false, homeButton: false, infoBox: false,
-                    navigationHelpButton: false, sceneModePicker: false, timeline: false, animation: false,
-                    selectionIndicator: false, fullscreenButton: false, shouldAnimate: true
-                });
-                cesiumViewer.scene.screenSpaceCameraController.enableInputs = false;
+            const loader = document.getElementById('loading-overlay');
+            document.getElementById('loading-text').innerText = "Calibrating Cockpit...";
+            loader.classList.remove('hidden'); setTimeout(()=>loader.classList.remove('opacity-0'), 10);
 
-                minimap = L.map('minimap', { zoomControl: false, attributionControl: false }).setView([flight.lat, flight.lng], 12);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(minimap);
-                
-                povPlaneMarker = L.marker([flight.lat, flight.lng], {
-                    icon: L.divIcon({ html: `<div style="font-size:24px; color:#ff0000; line-height:1;">✈</div>`, className: 'plane-map-icon', iconSize: [24,24], iconAnchor: [12,12] })
-                }).addTo(minimap);
-                povStartMarker = L.circleMarker([flight.lat, flight.lng], { color: '#ef4444', radius: 6, fillOpacity: 1 }).addTo(minimap);
-                povTrailPath = L.polyline([], { color: '#ff0000', weight: 3, dashArray: '5, 8' }).addTo(minimap);
-            }
+            // Hide the selected flight's billboard so we don't see it blocking the camera
+            flightEntities.forEach(ent => {
+                if(ent.flightData && ent.flightData.icao === selectedFlight.icao) ent.show = false;
+            });
 
-            // Init Flight State
-            cameraHeading = flight.heading || 0;
+            // Set Engine State
+            cameraHeading = selectedFlight.heading || 0;
             cameraPitch = -5;
             metrics = { dist: 0, fuel: 0, lastPos: null };
             pathHistory = [];
+            
+            // Sync Minimap
             povTrailPath.setLatLngs([]);
-            povStartMarker.setLatLng([flight.lat, flight.lng]);
+            minimap.setView([selectedFlight.lat, selectedFlight.lng], 13);
+            povPlaneMarker.setLatLng([selectedFlight.lat, selectedFlight.lng]);
             
-            // Set initial throttle to match real speed (approximate mapping)
-            const speedMs = flight.speed * 0.514444;
-            throttleValue = Math.min(1, Math.max(0.1, speedMs / 1000)); // Cap at 1000m/s for manual control
-            
-            const trackHeight = document.getElementById('throttle-area').getBoundingClientRect().height - 60;
+            // Set Throttle
+            const speedMs = selectedFlight.speed * 0.514444;
+            throttleValue = Math.min(1, Math.max(0.1, speedMs / 1000));
+            const trackHeight = document.querySelector('.throttle-container').getBoundingClientRect().height - 60;
             document.getElementById('throttle-stick').style.bottom = (throttleValue * trackHeight + 30) + 'px';
             document.getElementById('throttle-val').textContent = Math.round(throttleValue * 100) + '%';
 
-            cesiumViewer.camera.setView({
-                destination: Cesium.Cartesian3.fromDegrees(flight.lng, flight.lat, Math.max(100, flight.alt * 0.3048)),
-                orientation: { heading: Cesium.Math.toRadians(cameraHeading), pitch: Cesium.Math.toRadians(cameraPitch), roll: 0 }
-            });
+            // Disable standard controls
+            viewer.scene.screenSpaceCameraController.enableInputs = false;
 
-            flightActive = true;
-            cesiumViewer.clock.onTick.addEventListener(onPOVTick);
-            
-            // Fix map rendering and hide sidebar completely
-            toggleSidebar(false);
-            setTimeout(() => minimap.invalidateSize(true), 500);
+            // Safe Altitude Check: Make sure we never spawn underground
+            let targetAlt = selectedFlight.alt * 0.3048;
+            if (targetAlt < 1000) targetAlt = 1000;
+
+            // Fly To Cockpit
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(selectedFlight.lng, selectedFlight.lat, targetAlt),
+                orientation: { heading: Cesium.Math.toRadians(cameraHeading), pitch: Cesium.Math.toRadians(cameraPitch), roll: 0 },
+                duration: 2.0,
+                complete: () => {
+                    loader.classList.add('opacity-0'); setTimeout(()=>loader.classList.add('hidden'), 500);
+                    document.getElementById('pov-ui').style.display = 'block';
+                    flightActive = true;
+                    viewer.clock.onTick.addEventListener(onPOVTick);
+                    setTimeout(() => minimap.invalidateSize(true), 100);
+                }
+            });
         }
 
         function onPOVTick() {
             if (!flightActive) return;
 
-            cesiumViewer.camera.setView({
+            viewer.camera.setView({
                 orientation: { heading: Cesium.Math.toRadians(cameraHeading), pitch: Cesium.Math.toRadians(cameraPitch), roll: 0 }
             });
 
-            const dir = cesiumViewer.camera.direction;
-            const maxSpeed = 1500; // max 1500 m/s for fun simulator
+            const dir = viewer.camera.direction;
+            const maxSpeed = 1500; // Sim Max Speed
             const speed = throttleValue * maxSpeed;
             const dt = 0.016; 
 
             if (speed > 0) {
                 const movement = Cesium.Cartesian3.multiplyByScalar(dir, speed * dt, new Cesium.Cartesian3());
-                let nextPos = Cesium.Cartesian3.add(cesiumViewer.camera.position, movement, new Cesium.Cartesian3());
+                let nextPos = Cesium.Cartesian3.add(viewer.camera.position, movement, new Cesium.Cartesian3());
 
-                // Bounce Logic
+                // Ground Collision
                 const carto = Cesium.Cartographic.fromCartesian(nextPos);
-                const terrainH = cesiumViewer.scene.globe.getHeight(carto) || 0;
-                if (carto.height < terrainH + 20) {
-                    carto.height = terrainH + 20;
+                const terrainH = viewer.scene.globe.getHeight(carto) || 0;
+                if (carto.height < terrainH + 50) {
+                    carto.height = terrainH + 50;
                     nextPos = Cesium.Cartographic.toCartesian(carto);
                     if (cameraPitch < 0) cameraPitch += (0 - cameraPitch) * 0.05; 
                 }
 
-                cesiumViewer.camera.setView({
+                viewer.camera.setView({
                     destination: nextPos,
                     orientation: { heading: Cesium.Math.toRadians(cameraHeading), pitch: Cesium.Math.toRadians(cameraPitch), roll: 0 }
                 });
             }
 
-            updatePOVTelemetry(cesiumViewer.camera.position, speed);
+            updatePOVTelemetry(viewer.camera.position, speed);
         }
 
         function updatePOVTelemetry(pos, speed) {
             const carto = Cesium.Cartographic.fromCartesian(pos);
             const lat = Cesium.Math.toDegrees(carto.latitude);
             const lon = Cesium.Math.toDegrees(carto.longitude);
-            const alt = carto.height * 3.28084;
+            const alt = carto.height * 3.28084; // Meters to Feet
 
             if (metrics.lastPos) {
                 const d = Cesium.Cartesian3.distance(pos, metrics.lastPos);
-                metrics.dist += (d / 1000);
+                metrics.dist += (d / 1000); // km
                 metrics.fuel += (d * 0.0005);
             }
             metrics.lastPos = pos.clone();
@@ -687,77 +632,48 @@
             document.getElementById('val-alt').textContent = Math.round(alt).toString().padStart(5, '0');
             document.getElementById('val-dist').textContent = metrics.dist.toFixed(2);
             document.getElementById('val-fuel').textContent = metrics.fuel.toFixed(1);
-            document.getElementById('val-lat').textContent = lat.toFixed(5);
-            document.getElementById('val-lon').textContent = lon.toFixed(5);
-            document.getElementById('val-speed').textContent = Math.round(speed * 1.94384).toString().padStart(3, '0'); // m/s to KTS
             
-            const flight = flightsData.find(f => f.icao === selectedFlightIcao);
-            if(flight) {
-                document.getElementById('pov-callsign').innerText = flight.callsign;
-                document.getElementById('pov-flag').src = `https://flagcdn.com/w40/${flight.code}.png`;
+            if (selectedFlight) {
+                const povCallsign = document.getElementById('pov-callsign');
+                const povFlag = document.getElementById('pov-flag');
+                if (povCallsign) povCallsign.innerText = selectedFlight.callsign;
+                if (povFlag) povFlag.src = `https://flagcdn.com/w40/${selectedFlight.code}.png`;
             }
 
             const visualHeading = ((cameraHeading % 360) + 360) % 360;
             document.getElementById('compass-card').style.transform = `rotate(${-visualHeading}deg)`;
 
-            if (!isMapCollapsed && minimap) {
-                povPlaneMarker.setLatLng([lat, lon]);
-                const el = povPlaneMarker.getElement();
-                if (el) el.querySelector('div').style.transform = `rotate(${visualHeading}deg)`;
-                
-                if (speed > 5) {
-                    pathHistory.push([lat, lon]);
-                    if (pathHistory.length % 15 === 0) povTrailPath.setLatLngs(pathHistory);
-                }
-                minimap.panTo([lat, lon], { animate: false });
+            // Update Minimap
+            povPlaneMarker.setLatLng([lat, lon]);
+            const el = povPlaneMarker.getElement();
+            if (el) el.querySelector('div').style.transform = `rotate(${visualHeading}deg)`;
+            
+            if (speed > 5) {
+                pathHistory.push([lat, lon]);
+                if (pathHistory.length % 15 === 0) povTrailPath.setLatLngs(pathHistory);
             }
+            minimap.panTo([lat, lon], { animate: false });
         }
 
         function exitPOV() {
             flightActive = false;
-            if (cesiumViewer) cesiumViewer.clock.onTick.removeEventListener(onPOVTick);
-            document.getElementById('cesium-container').style.display = 'none'; 
-            toggleSidebar(true);
-        }
+            viewer.clock.onTick.removeEventListener(onPOVTick);
+            document.getElementById('pov-ui').style.display = 'none'; 
+            
+            // Re-enable global controls
+            viewer.scene.screenSpaceCameraController.enableInputs = true;
+            document.getElementById('global-ui').style.display = 'block';
 
-        function toggleMapPOV() {
-            isMapCollapsed = !isMapCollapsed;
-            const mod = document.getElementById('map-module');
-            const expand = document.getElementById('map-expand-btn');
-            if (isMapCollapsed) {
-                mod.classList.add('collapsed'); mod.style.opacity = "0"; expand.classList.remove('hidden');
-            } else {
-                mod.classList.remove('collapsed'); mod.style.opacity = "1"; expand.classList.add('hidden');
-                setTimeout(() => minimap.invalidateSize(true), 400);
-            }
-        }
+            // Un-hide billboard
+            flightEntities.forEach(ent => ent.show = true);
 
-        // --- Standard UI Helpers ---
-        function updateRouteLine() { if (routePolyline) map.removeLayer(routePolyline); if (selectedFlightPath.length > 1) { routePolyline = L.polyline(selectedFlightPath, { color: '#fbbf24', weight: 4, opacity: 0.7, dashArray: '8, 8' }).addTo(map); } }
-        function closeDetails() { selectedFlightIcao = null; if (routePolyline) map.removeLayer(routePolyline); document.getElementById('detail-view').classList.add('hidden'); updateMarkers(); }
-        
-        function toggleSidebar(forceOpen = null) { 
-            const s = document.getElementById('sidebar'); 
-            const isMobile = window.innerWidth < 768;
-
-            if (isMobile) {
-                if (forceOpen === true) s.classList.add('translate-y-0');
-                else if (forceOpen === false) s.classList.remove('translate-y-0');
-                else s.classList.toggle('translate-y-0');
-            } else {
-                if (forceOpen === true) s.classList.remove('-translate-x-full');
-                else if (forceOpen === false) s.classList.add('-translate-x-full');
-                else s.classList.toggle('-translate-x-full');
-            }
-        }
-        
-        function setMarkerMode(m) { markerMode = m; document.getElementById('mode-flag').className = `flex-1 py-1.5 rounded-lg text-[10px] font-bold ${m === 'flag' ? 'bg-blue-600 text-white' : 'text-slate-500'}`; document.getElementById('mode-plane').className = `flex-1 py-1.5 rounded-lg text-[10px] font-bold ${m === 'plane' ? 'bg-blue-600 text-white' : 'text-slate-500'}`; updateMarkers(); }
-        
-        function updateStatus(state) {
-            const dot = document.getElementById('status-dot'); const txt = document.getElementById('status-text');
-            if (state === 'loading') { dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse'; txt.innerText = 'Syncing...'; txt.className = 'text-[10px] uppercase font-bold tracking-widest text-amber-500 flex items-center gap-1.5 mt-1'; } 
-            else if (state === 'active') { dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500'; txt.innerText = 'Live Radar'; txt.className = 'text-[10px] uppercase font-bold tracking-widest text-emerald-500 flex items-center gap-1.5 mt-1'; } 
-            else { dot.className = 'w-1.5 h-1.5 rounded-full bg-slate-500'; txt.innerText = 'Manual Mode'; txt.className = 'text-[10px] uppercase font-bold tracking-widest text-slate-500 flex items-center gap-1.5 mt-1'; }
+            // Pull camera back to see the plane
+            const pos = viewer.camera.position;
+            const carto = Cesium.Cartographic.fromCartesian(pos);
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(Cesium.Math.toDegrees(carto.longitude), Cesium.Math.toDegrees(carto.latitude), Math.max(carto.height + 2000, 2000)),
+                orientation: { heading: Cesium.Math.toRadians(cameraHeading), pitch: Cesium.Math.toRadians(-45), roll: 0 }
+            });
         }
     </script>
 </body>
