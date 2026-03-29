@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Playlist Link Grabber</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid #e2e8f0;
+        }
+        .tab-active {
+            border-bottom: 2px solid #ef4444;
+            color: #ef4444;
+        }
+        .video-thumb {
+            aspect-ratio: 16/9;
+            background-size: cover;
+            background-position: center;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900 font-sans">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-red-600 rounded-2xl mb-4 shadow-lg shadow-red-200">
+                <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </div>
+            <h1 class="text-3xl font-black tracking-tight text-slate-900">Playlist Link Grabber</h1>
+            <p class="text-slate-500 mt-2">Extract standard and embed links from any YouTube playlist.</p>
+        </header>
+
+        <!-- Input Section -->
+        <div class="glass-card rounded-3xl shadow-xl overflow-hidden mb-8">
+            <div class="flex border-b border-slate-100">
+                <button onclick="setMode('url')" id="tab-url" class="flex-1 py-4 text-sm font-bold uppercase tracking-wider tab-active transition-all">URL Method</button>
+                <button onclick="setMode('source')" id="tab-source" class="flex-1 py-4 text-sm font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-all">Source Code Method</button>
+            </div>
+            
+            <div class="p-6">
+                <!-- URL Input -->
+                <div id="url-container" class="flex flex-col md:flex-row gap-4">
+                    <input type="url" id="urlInput" placeholder="Paste YouTube Playlist URL..." class="flex-1 px-5 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-red-50 focus:border-red-500 outline-none transition-all">
+                    <button onclick="processUrl()" id="extractBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-10 rounded-2xl shadow-lg shadow-red-100 active:scale-95 transition-all">
+                        Extract Videos
+                    </button>
+                </div>
+
+                <!-- Source Input -->
+                <div id="source-container" class="hidden flex-col gap-4">
+                    <p class="text-xs text-slate-400 mb-1">Right-click YouTube page > View Page Source > Copy and Paste here:</p>
+                    <textarea id="sourceInput" rows="6" placeholder="Paste HTML source code here..." class="w-full px-5 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-red-50 focus:border-red-500 outline-none transition-all font-mono text-xs"></textarea>
+                    <button onclick="processSource()" class="bg-slate-900 hover:bg-black text-white font-bold py-4 px-10 rounded-2xl shadow-lg active:scale-95 transition-all">
+                        Parse Source Code
+                    </button>
+                </div>
+                
+                <div id="status" class="mt-4 text-sm font-medium hidden"></div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsWrapper" class="hidden">
+            <div class="flex flex-col lg:flex-row gap-6 mb-6">
+                <!-- Stats & Search -->
+                <div class="flex-1 flex flex-wrap items-center gap-4">
+                    <span class="bg-red-100 text-red-700 px-4 py-2 rounded-xl text-sm font-black">
+                        <span id="videoCount">0</span> VIDEOS
+                    </span>
+                    <div class="flex gap-2">
+                        <button onclick="copySelection('watch')" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all">Copy Selected (Watch)</button>
+                        <button onclick="copySelection('embed')" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all">Copy Selected (Embed)</button>
+                    </div>
+                </div>
+                <input type="text" id="search" oninput="filterVideos()" placeholder="Search titles..." class="px-5 py-2 rounded-xl border border-slate-200 text-sm w-full lg:w-64 focus:ring-2 focus:ring-red-500 outline-none">
+            </div>
+
+            <!-- Grid/List of Videos -->
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="videoGrid">
+                <!-- Cards injected here -->
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-20 border-2 border-dashed border-slate-200 rounded-3xl opacity-50 bg-white/50">
+            <p class="text-slate-400 font-medium italic">Enter a playlist URL or paste source code to begin.</p>
+        </div>
+    </div>
+
+    <script>
+        let mode = 'url';
+        let videos = [];
+
+        function setMode(newMode) {
+            mode = newMode;
+            document.getElementById('url-container').style.display = (mode === 'url') ? 'flex' : 'none';
+            document.getElementById('source-container').style.display = (mode === 'source') ? 'flex' : 'none';
+            document.getElementById('tab-url').className = `flex-1 py-4 text-sm font-bold uppercase tracking-wider transition-all ${mode === 'url' ? 'tab-active' : 'text-slate-400'}`;
+            document.getElementById('tab-source').className = `flex-1 py-4 text-sm font-bold uppercase tracking-wider transition-all ${mode === 'source' ? 'tab-active' : 'text-slate-400'}`;
+        }
+
+        async function processUrl() {
+            const url = document.getElementById('urlInput').value.trim();
+            if (!url) return notify("Please enter a URL.", "red");
+
+            notify("Fetching playlist data via proxy...", "blue");
+            
+            try {
+                // Using AllOrigins proxy
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                const data = await response.json();
+                
+                if (!data.contents) throw new Error("Could not access page content.");
+                parseAndDisplay(data.contents);
+                
+            } catch (e) {
+                notify("Direct fetch failed (YouTube blocks most proxies). Please try the 'Source Code Method'!", "red");
+            }
+        }
+
+        function processSource() {
+            const source = document.getElementById('sourceInput').value.trim();
+            if (!source) return notify("Please paste some HTML source code.", "red");
+            parseAndDisplay(source);
+        }
+
+        function parseAndDisplay(html) {
+            // RegEx for video IDs in YouTube source. 
+            // Looking for "videoId":"XXXXXXXXXXX" which is common in their internal JSON strings
+            const videoIdRegex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
+            const titleRegex = /"title":\{"runs":\[\{"text":"(.*?)"\}\]/g;
+            
+            let match;
+            const uniqueIds = new Set();
+            const extracted = [];
+
+            // Try to find video IDs
+            while ((match = videoIdRegex.exec(html)) !== null) {
+                const id = match[1];
+                if (!uniqueIds.has(id)) {
+                    uniqueIds.add(id);
+                    extracted.push({
+                        id: id,
+                        watchUrl: `https://www.youtube.com/watch?v=${id}`,
+                        embedUrl: `https://www.youtube.com/embed/${id}`,
+                        thumb: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
+                    });
+                }
+            }
+
+            if (extracted.length === 0) {
+                notify("No videos found. Ensure you are on a Playlist page and copying the full source.", "red");
+                return;
+            }
+
+            videos = extracted;
+            notify(`Found ${videos.length} videos!`, "green");
+            document.getElementById('resultsWrapper').classList.remove('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('videoCount').innerText = videos.length;
+            renderGrid(videos);
+        }
+
+        function renderGrid(list) {
+            const grid = document.getElementById('videoGrid');
+            grid.innerHTML = list.map(v => `
+                <div class="glass-card rounded-2xl p-3 flex flex-col gap-3 group relative hover:shadow-lg transition-all border border-slate-200">
+                    <div class="relative rounded-xl overflow-hidden shadow-sm">
+                        <div class="video-thumb" style="background-image: url('${v.thumb}')"></div>
+                        <input type="checkbox" data-id="${v.id}" class="video-select absolute top-3 left-3 w-6 h-6 rounded-lg cursor-pointer accent-red-600 shadow-lg">
+                    </div>
+                    <div class="px-1">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Video ID: ${v.id}</span>
+                            <a href="${v.watchUrl}" target="_blank" class="text-red-600 hover:text-red-800 transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            </a>
+                        </div>
+                        <div class="flex flex-col gap-2">
+                             <div class="flex items-center bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
+                                <span class="bg-slate-200 px-2 py-1 text-[9px] font-black text-slate-500 uppercase">WATCH</span>
+                                <input readonly value="${v.watchUrl}" class="bg-transparent text-[10px] px-2 w-full outline-none py-1 truncate">
+                                <button onclick="copyToClipboard('${v.watchUrl}')" class="px-2 text-slate-400 hover:text-red-600">
+                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                                </button>
+                             </div>
+                             <div class="flex items-center bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
+                                <span class="bg-slate-200 px-2 py-1 text-[9px] font-black text-slate-500 uppercase">EMBED</span>
+                                <input readonly value="${v.embedUrl}" class="bg-transparent text-[10px] px-2 w-full outline-none py-1 truncate">
+                                <button onclick="copyToClipboard('${v.embedUrl}')" class="px-2 text-slate-400 hover:text-red-600">
+                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                                </button>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterVideos() {
+            const query = document.getElementById('search').value.toLowerCase();
+            const filtered = videos.filter(v => v.id.toLowerCase().includes(query));
+            renderGrid(filtered);
+        }
+
+        function copySelection(type) {
+            const selectedIds = Array.from(document.querySelectorAll('.video-select:checked'))
+                .map(cb => cb.getAttribute('data-id'));
+            
+            if (selectedIds.length === 0) {
+                return notify("Select at least one video first.", "amber");
+            }
+
+            const linksToCopy = videos
+                .filter(v => selectedIds.includes(v.id))
+                .map(v => type === 'watch' ? v.watchUrl : v.embedUrl)
+                .join('\n');
+            
+            copyToClipboard(linksToCopy);
+            notify(`Copied ${selectedIds.length} ${type} links!`, "green");
+        }
+
+        function copyToClipboard(text) {
+            const el = document.createElement('textarea');
+            el.value = text;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+        }
+
+        function notify(msg, color) {
+            const status = document.getElementById('status');
+            status.innerText = msg;
+            status.classList.remove('hidden', 'text-red-500', 'text-blue-600', 'text-green-600', 'text-amber-600');
+            
+            const colorMap = {
+                red: 'text-red-500',
+                blue: 'text-blue-600',
+                green: 'text-green-600',
+                amber: 'text-amber-600'
+            };
+            status.classList.add(colorMap[color]);
+        }
+
+        // Handle Enter key for URL
+        document.getElementById('urlInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') processUrl();
+        });
+    </script>
+</body>
+</html>
