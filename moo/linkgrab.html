@@ -3,225 +3,215 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Playlist Link Grabber</title>
+    <title>YouTube Playlist CSV Porter</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        body { background-color: #fdfdfd; }
         .glass-card {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.9);
             backdrop-filter: blur(10px);
-            border: 1px solid #e2e8f0;
-        }
-        .tab-active {
-            border-bottom: 2px solid #ef4444;
-            color: #ef4444;
-        }
-        .video-thumb {
-            aspect-ratio: 16/9;
-            background-size: cover;
-            background-position: center;
+            border: 1px solid #edf2f7;
         }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900 font-sans">
-    <div class="max-w-6xl mx-auto">
+<body class="min-h-screen p-4 md:p-12 text-slate-800 font-sans">
+    <div class="max-w-4xl mx-auto">
         <!-- Header -->
-        <header class="mb-8 text-center">
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-red-600 rounded-2xl mb-4 shadow-lg shadow-red-200">
-                <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-            </div>
-            <h1 class="text-3xl font-black tracking-tight text-slate-900">Playlist Link Grabber</h1>
-            <p class="text-slate-500 mt-2">Extract standard and embed links from any YouTube playlist.</p>
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-black tracking-tight text-red-600 mb-2 uppercase">Playlist CSV Porter</h1>
+            <p class="text-slate-500 font-medium italic">Manual Source Parser</p>
         </header>
 
-        <!-- Input Section -->
-        <div class="glass-card rounded-3xl shadow-xl overflow-hidden mb-8">
-            <div class="flex border-b border-slate-100">
-                <button onclick="setMode('url')" id="tab-url" class="flex-1 py-4 text-sm font-bold uppercase tracking-wider tab-active transition-all">URL Method</button>
-                <button onclick="setMode('source')" id="tab-source" class="flex-1 py-4 text-sm font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-all">Source Code Method</button>
-            </div>
-            
-            <div class="p-6">
-                <!-- URL Input -->
-                <div id="url-container" class="flex flex-col md:flex-row gap-4">
-                    <input type="url" id="urlInput" placeholder="Paste YouTube Playlist URL..." class="flex-1 px-5 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-red-50 focus:border-red-500 outline-none transition-all">
-                    <button onclick="processUrl()" id="extractBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-10 rounded-2xl shadow-lg shadow-red-100 active:scale-95 transition-all">
-                        Extract Videos
-                    </button>
-                </div>
-
-                <!-- Source Input -->
-                <div id="source-container" class="hidden flex-col gap-4">
-                    <p class="text-xs text-slate-400 mb-1">Right-click YouTube page > View Page Source > Copy and Paste here:</p>
-                    <textarea id="sourceInput" rows="6" placeholder="Paste HTML source code here..." class="w-full px-5 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-red-50 focus:border-red-500 outline-none transition-all font-mono text-xs"></textarea>
-                    <button onclick="processSource()" class="bg-slate-900 hover:bg-black text-white font-bold py-4 px-10 rounded-2xl shadow-lg active:scale-95 transition-all">
-                        Parse Source Code
-                    </button>
-                </div>
-                
-                <div id="status" class="mt-4 text-sm font-medium hidden"></div>
-            </div>
-        </div>
-
-        <!-- Results Section -->
-        <div id="resultsWrapper" class="hidden">
-            <div class="flex flex-col lg:flex-row gap-6 mb-6">
-                <!-- Stats & Search -->
-                <div class="flex-1 flex flex-wrap items-center gap-4">
-                    <span class="bg-red-100 text-red-700 px-4 py-2 rounded-xl text-sm font-black">
-                        <span id="videoCount">0</span> VIDEOS
-                    </span>
-                    <div class="flex gap-2">
-                        <button onclick="copySelection('watch')" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all">Copy Selected (Watch)</button>
-                        <button onclick="copySelection('embed')" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all">Copy Selected (Embed)</button>
+        <!-- Step 1: Generate Source Link -->
+        <div class="glass-card rounded-3xl shadow-xl p-8 mb-8 border-2 border-slate-100">
+            <h2 class="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <span class="bg-slate-200 text-slate-600 w-6 h-6 rounded-full flex items-center justify-center text-[10px]">1</span>
+                Get Source Code
+            </h2>
+            <div class="flex flex-col gap-4">
+                <input 
+                    type="url" 
+                    id="urlInput" 
+                    oninput="updateSourceLink()"
+                    placeholder="Paste YouTube Playlist URL here..." 
+                    class="w-full px-6 py-4 rounded-2xl border-2 border-slate-100 outline-none text-lg font-medium focus:border-red-500 transition-all"
+                >
+                <div id="sourceHelper" class="hidden animate-in fade-in slide-in-from-top-2">
+                    <p class="text-sm text-slate-600 mb-2">Click the link below or copy it to your address bar to see the source code:</p>
+                    <div class="flex items-center gap-2">
+                        <a id="viewSourceLink" target="_blank" class="flex-1 bg-slate-100 px-4 py-3 rounded-xl font-mono text-sm text-blue-600 break-all border border-slate-200 hover:bg-slate-200 transition-colors">
+                            view-source:https://...
+                        </a>
+                        <button onclick="copySourceUrl()" class="bg-slate-900 text-white px-4 py-3 rounded-xl text-xs font-bold hover:bg-black transition-all">
+                            COPY
+                        </button>
                     </div>
                 </div>
-                <input type="text" id="search" oninput="filterVideos()" placeholder="Search titles..." class="px-5 py-2 rounded-xl border border-slate-200 text-sm w-full lg:w-64 focus:ring-2 focus:ring-red-500 outline-none">
-            </div>
-
-            <!-- Grid/List of Videos -->
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="videoGrid">
-                <!-- Cards injected here -->
             </div>
         </div>
 
-        <!-- Empty State -->
-        <div id="emptyState" class="text-center py-20 border-2 border-dashed border-slate-200 rounded-3xl opacity-50 bg-white/50">
-            <p class="text-slate-400 font-medium italic">Enter a playlist URL or paste source code to begin.</p>
+        <!-- Step 2: Paste and Parse -->
+        <div class="glass-card rounded-3xl shadow-xl p-8 mb-10 border-2 border-slate-100">
+            <h2 class="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <span class="bg-slate-200 text-slate-600 w-6 h-6 rounded-full flex items-center justify-center text-[10px]">2</span>
+                Paste Content
+            </h2>
+            <textarea 
+                id="manualSource" 
+                rows="6" 
+                class="w-full p-6 rounded-2xl border-2 border-slate-100 outline-none font-mono text-xs bg-slate-50 focus:border-red-500 transition-all mb-4" 
+                placeholder="Ctrl+A and Ctrl+C the source code, then paste it here..."
+            ></textarea>
+            <button 
+                onclick="parseSource()" 
+                class="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-red-100 transition-all active:scale-[0.98] uppercase tracking-widest"
+            >
+                Extract Data
+            </button>
+        </div>
+
+        <!-- Step 3: Results -->
+        <div id="resultsArea" class="hidden">
+            <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-100 pb-6 mb-6">
+                <div>
+                    <h2 id="playlistTitle" class="text-2xl font-bold text-slate-900 leading-tight mb-1 truncate max-w-md">Playlist Name</h2>
+                    <p class="text-sm text-slate-500 font-bold uppercase tracking-widest">
+                        <span id="videoCount">0</span> Videos Found
+                    </p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleAll(true)" class="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase">Select All</button>
+                    <button onclick="toggleAll(false)" class="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase">Deselect</button>
+                    <button 
+                        onclick="downloadCSV()" 
+                        class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-black text-sm shadow-lg shadow-green-100 flex items-center gap-2"
+                    >
+                        DOWNLOAD CSV
+                    </button>
+                </div>
+            </div>
+
+            <div id="resultsList" class="space-y-3 pb-20"></div>
         </div>
     </div>
 
+    <!-- Notification -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl hidden z-50">
+        <span id="toastMsg">Copied!</span>
+    </div>
+
     <script>
-        let mode = 'url';
-        let videos = [];
+        let currentPlaylistName = "";
+        let videoData = [];
 
-        function setMode(newMode) {
-            mode = newMode;
-            document.getElementById('url-container').style.display = (mode === 'url') ? 'flex' : 'none';
-            document.getElementById('source-container').style.display = (mode === 'source') ? 'flex' : 'none';
-            document.getElementById('tab-url').className = `flex-1 py-4 text-sm font-bold uppercase tracking-wider transition-all ${mode === 'url' ? 'tab-active' : 'text-slate-400'}`;
-            document.getElementById('tab-source').className = `flex-1 py-4 text-sm font-bold uppercase tracking-wider transition-all ${mode === 'source' ? 'tab-active' : 'text-slate-400'}`;
-        }
-
-        async function processUrl() {
+        function updateSourceLink() {
             const url = document.getElementById('urlInput').value.trim();
-            if (!url) return notify("Please enter a URL.", "red");
-
-            notify("Fetching playlist data via proxy...", "blue");
+            const helper = document.getElementById('sourceHelper');
+            const link = document.getElementById('viewSourceLink');
             
-            try {
-                // Using AllOrigins proxy
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-                const response = await fetch(proxyUrl);
-                const data = await response.json();
-                
-                if (!data.contents) throw new Error("Could not access page content.");
-                parseAndDisplay(data.contents);
-                
-            } catch (e) {
-                notify("Direct fetch failed (YouTube blocks most proxies). Please try the 'Source Code Method'!", "red");
+            if (url && (url.includes('youtube.com') || url.includes('youtu.be'))) {
+                const sourceUrl = `view-source:${url}`;
+                link.innerText = sourceUrl;
+                link.href = sourceUrl;
+                helper.classList.remove('hidden');
+            } else {
+                helper.classList.add('hidden');
             }
         }
 
-        function processSource() {
-            const source = document.getElementById('sourceInput').value.trim();
-            if (!source) return notify("Please paste some HTML source code.", "red");
-            parseAndDisplay(source);
+        function copySourceUrl() {
+            const link = document.getElementById('viewSourceLink').innerText;
+            copyToClipboard(link);
+            showToast("Source URL copied! Paste it in your browser address bar.");
         }
 
-        function parseAndDisplay(html) {
-            // RegEx for video IDs in YouTube source. 
-            // Looking for "videoId":"XXXXXXXXXXX" which is common in their internal JSON strings
-            const videoIdRegex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
-            const titleRegex = /"title":\{"runs":\[\{"text":"(.*?)"\}\]/g;
-            
-            let match;
-            const uniqueIds = new Set();
-            const extracted = [];
+        function parseSource() {
+            const html = document.getElementById('manualSource').value.trim();
+            if (!html) return alert("Please paste the source code first.");
 
-            // Try to find video IDs
-            while ((match = videoIdRegex.exec(html)) !== null) {
+            // Extract Playlist Title
+            const titleMatch = html.match(/<title>(.*?) - YouTube<\/title>/i) || 
+                               html.match(/"title":"(.*?)"/);
+            currentPlaylistName = (titleMatch ? titleMatch[1] : "Extracted Playlist").replace(/&amp;/g, '&');
+
+            // Extract Video Titles and IDs
+            // Looking for the playlist items specifically
+            const videoRegex = /"playlistVideoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"(.*?)"\}\]/g;
+            
+            const results = [];
+            const seenIds = new Set();
+            let match;
+
+            while ((match = videoRegex.exec(html)) !== null) {
                 const id = match[1];
-                if (!uniqueIds.has(id)) {
-                    uniqueIds.add(id);
-                    extracted.push({
-                        id: id,
-                        watchUrl: `https://www.youtube.com/watch?v=${id}`,
-                        embedUrl: `https://www.youtube.com/embed/${id}`,
-                        thumb: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
+                const title = match[2].replace(/\\u0026/g, '&').replace(/\\"/g, '"');
+                
+                if (!seenIds.has(id)) {
+                    seenIds.add(id);
+                    results.push({
+                        title: title,
+                        url: `https://www.youtube.com/watch?v=${id}`
                     });
                 }
             }
 
-            if (extracted.length === 0) {
-                notify("No videos found. Ensure you are on a Playlist page and copying the full source.", "red");
+            if (results.length === 0) {
+                alert("No videos found. Make sure you are on the Playlist page (with the list of songs) before viewing source.");
                 return;
             }
 
-            videos = extracted;
-            notify(`Found ${videos.length} videos!`, "green");
-            document.getElementById('resultsWrapper').classList.remove('hidden');
-            document.getElementById('emptyState').classList.add('hidden');
-            document.getElementById('videoCount').innerText = videos.length;
-            renderGrid(videos);
+            videoData = results;
+            renderResults();
         }
 
-        function renderGrid(list) {
-            const grid = document.getElementById('videoGrid');
-            grid.innerHTML = list.map(v => `
-                <div class="glass-card rounded-2xl p-3 flex flex-col gap-3 group relative hover:shadow-lg transition-all border border-slate-200">
-                    <div class="relative rounded-xl overflow-hidden shadow-sm">
-                        <div class="video-thumb" style="background-image: url('${v.thumb}')"></div>
-                        <input type="checkbox" data-id="${v.id}" class="video-select absolute top-3 left-3 w-6 h-6 rounded-lg cursor-pointer accent-red-600 shadow-lg">
-                    </div>
-                    <div class="px-1">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Video ID: ${v.id}</span>
-                            <a href="${v.watchUrl}" target="_blank" class="text-red-600 hover:text-red-800 transition-colors">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                            </a>
-                        </div>
-                        <div class="flex flex-col gap-2">
-                             <div class="flex items-center bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
-                                <span class="bg-slate-200 px-2 py-1 text-[9px] font-black text-slate-500 uppercase">WATCH</span>
-                                <input readonly value="${v.watchUrl}" class="bg-transparent text-[10px] px-2 w-full outline-none py-1 truncate">
-                                <button onclick="copyToClipboard('${v.watchUrl}')" class="px-2 text-slate-400 hover:text-red-600">
-                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-                                </button>
-                             </div>
-                             <div class="flex items-center bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
-                                <span class="bg-slate-200 px-2 py-1 text-[9px] font-black text-slate-500 uppercase">EMBED</span>
-                                <input readonly value="${v.embedUrl}" class="bg-transparent text-[10px] px-2 w-full outline-none py-1 truncate">
-                                <button onclick="copyToClipboard('${v.embedUrl}')" class="px-2 text-slate-400 hover:text-red-600">
-                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-                                </button>
-                             </div>
-                        </div>
+        function renderResults() {
+            const list = document.getElementById('resultsList');
+            const area = document.getElementById('resultsArea');
+            document.getElementById('playlistTitle').innerText = currentPlaylistName;
+            document.getElementById('videoCount').innerText = videoData.length;
+
+            list.innerHTML = videoData.map((v, i) => `
+                <div class="glass-card rounded-2xl p-4 flex items-center gap-4 hover:border-red-200 transition-all group">
+                    <input type="checkbox" checked data-index="${i}" class="video-check w-6 h-6 rounded-lg accent-red-600 cursor-pointer">
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-bold text-slate-800 truncate">${escapeHtml(v.title)}</h3>
+                        <p class="text-[10px] text-slate-400 font-mono truncate">${v.url}</p>
                     </div>
                 </div>
             `).join('');
+
+            area.classList.remove('hidden');
+            area.scrollIntoView({ behavior: 'smooth' });
         }
 
-        function filterVideos() {
-            const query = document.getElementById('search').value.toLowerCase();
-            const filtered = videos.filter(v => v.id.toLowerCase().includes(query));
-            renderGrid(filtered);
+        function toggleAll(checked) {
+            document.querySelectorAll('.video-check').forEach(cb => cb.checked = checked);
         }
 
-        function copySelection(type) {
-            const selectedIds = Array.from(document.querySelectorAll('.video-select:checked'))
-                .map(cb => cb.getAttribute('data-id'));
-            
-            if (selectedIds.length === 0) {
-                return notify("Select at least one video first.", "amber");
-            }
+        function downloadCSV() {
+            const selectedIndices = Array.from(document.querySelectorAll('.video-check:checked'))
+                .map(cb => parseInt(cb.getAttribute('data-index')));
 
-            const linksToCopy = videos
-                .filter(v => selectedIds.includes(v.id))
-                .map(v => type === 'watch' ? v.watchUrl : v.embedUrl)
-                .join('\n');
+            if (selectedIndices.length === 0) return alert("Select at least one video.");
+
+            const selectedVideos = selectedIndices.map(i => videoData[i]);
             
-            copyToClipboard(linksToCopy);
-            notify(`Copied ${selectedIds.length} ${type} links!`, "green");
+            // CSV Construction (UTF-8 BOM for Excel)
+            let csvContent = "\ufeff"; 
+            csvContent += "Playlist Name,Video Title,URL\n";
+            
+            selectedVideos.forEach(v => {
+                const pName = currentPlaylistName.replace(/"/g, '""');
+                const vTitle = v.title.replace(/"/g, '""');
+                csvContent += `"${pName}","${vTitle}","${v.url}"\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `${currentPlaylistName.replace(/[^a-z0-9]/gi, '_')}.csv`);
+            link.click();
         }
 
         function copyToClipboard(text) {
@@ -233,24 +223,18 @@
             document.body.removeChild(el);
         }
 
-        function notify(msg, color) {
-            const status = document.getElementById('status');
-            status.innerText = msg;
-            status.classList.remove('hidden', 'text-red-500', 'text-blue-600', 'text-green-600', 'text-amber-600');
-            
-            const colorMap = {
-                red: 'text-red-500',
-                blue: 'text-blue-600',
-                green: 'text-green-600',
-                amber: 'text-amber-600'
-            };
-            status.classList.add(colorMap[color]);
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
         }
 
-        // Handle Enter key for URL
-        document.getElementById('urlInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') processUrl();
-        });
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
     </script>
 </body>
 </html>
