@@ -11,18 +11,20 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
+    <!-- Configure Cesium Base URL to fix Web Worker path resolution in sandboxed environments -->
+    <script>window.CESIUM_BASE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/cesium/1.110.0/';</script>
+    
     <!-- Cesium for 3D POV -->
-    <script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js"></script>
-    <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.110.0/Cesium.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.110.0/Widgets/widgets.min.css" rel="stylesheet">
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; background: #020617; touch-action: none; }
         
         /* Main Layout */
-        #map { height: 100vh; width: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+        #map { height: 100vh; width: 100%; position: absolute; top: 0; left: 0; z-index: 1; background: #020617; }
         .leaflet-container { background: #020617 !important; }
-        .drawing-active #map { cursor: crosshair !important; }
 
         /* POV Container & Elements */
         #cesium-container { 
@@ -201,7 +203,7 @@
     <!-- UI Overlays & Sidebar (2D Tracker) -->
     <div id="loading-overlay" class="fixed inset-0 z-[10000] bg-slate-950 flex flex-col items-center justify-center transition-opacity duration-500">
         <div class="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-        <p class="text-slate-400 font-medium tracking-widest uppercase text-xs">Initializing Radar...</p>
+        <p class="text-slate-400 font-medium tracking-widest uppercase text-xs mt-2">Initializing Radar...</p>
     </div>
 
     <div class="fixed top-4 right-4 z-[5000] flex flex-col gap-2 pointer-events-auto">
@@ -217,9 +219,9 @@
             </button>
             <h2 class="text-2xl font-black mb-4 text-blue-400">Sky Tracker Pro Guide</h2>
             <ul class="space-y-4 text-slate-300 text-sm">
-                <li class="flex gap-3"><span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</span> <b>Manual Updates:</b> Click "Refresh Radar" to fetch the latest transponder data.</li>
+                <li class="flex gap-3"><span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</span> <b>Manual Updates:</b> Click "Refresh Radar" to fetch the latest transponder data in your current view.</li>
                 <li class="flex gap-3"><span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">2</span> <b>Immersive POV:</b> Select a flight and enter "3D POV" to take the stick. You can manually adjust the throttle and look around!</li>
-                <li class="flex gap-3"><span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</span> <b>Tactical Bounds:</b> Draw a region on the map to specifically target flights in that sector.</li>
+                <li class="flex gap-3"><span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</span> <b>Dynamic Scanning:</b> Just pan or zoom the map to any region you want to scan, then hit refresh.</li>
             </ul>
             <button onclick="document.getElementById('info-modal').classList.add('hidden')" class="w-full mt-8 bg-blue-600 py-4 rounded-2xl font-bold">Start Tracking</button>
         </div>
@@ -236,7 +238,7 @@
                     <span id="status-text" class="text-[10px] uppercase font-bold tracking-widest text-slate-500">Manual Mode</span>
                 </div>
             </div>
-            <button onclick="toggleSidebar()" class="md:hidden text-slate-500"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+            <button onclick="toggleSidebar(false)" class="md:hidden text-slate-500 p-2"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
         </div>
 
         <!-- Collapsible Controls -->
@@ -247,6 +249,7 @@
             </button>
 
             <div id="controls-content" class="px-4 pb-4 space-y-4">
+                <!-- Refresh Button scans visible map area directly -->
                 <button onclick="fetchFlights()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-emerald-900/20 flex items-center justify-center gap-3 active:scale-95 transition-all group">
                     <svg id="refresh-icon" class="w-5 h-5 group-active:rotate-180 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     Refresh Radar
@@ -257,18 +260,13 @@
                     <span class="text-[10px] font-mono font-bold text-slate-400"><span id="usage-count" class="text-blue-400">0</span> / 100</span>
                 </div>
 
-                <!-- Reinstated Slider -->
+                <!-- Slider -->
                 <div class="space-y-1 bg-slate-900/50 p-3 rounded-xl border border-slate-800">
                     <div class="flex justify-between items-center">
                         <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Render Limit</span>
                         <span id="limit-val" class="text-[10px] font-mono font-bold text-blue-400">200</span>
                     </div>
                     <input type="range" id="limit-slider" min="10" max="1000" value="200" step="10" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
-                </div>
-
-                <div class="flex gap-2">
-                    <button id="draw-btn" onclick="toggleSelectionMode()" class="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold bg-blue-600 text-white transition-all">Draw Area</button>
-                    <button onclick="resetToWorld()" class="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300">Reset Area</button>
                 </div>
                 
                 <div class="flex items-center justify-between p-1.5 bg-slate-900 rounded-xl border border-slate-800">
@@ -279,13 +277,13 @@
         </div>
 
         <!-- Scrollable Content -->
-        <div id="sidebar-content" class="flex-1 overflow-y-auto no-scrollbar relative">
+        <div id="sidebar-content" class="flex-1 overflow-y-auto no-scrollbar relative pb-10">
             <div id="default-view" class="p-4">
                 <input type="text" id="search-input" placeholder="Search callsign..." class="w-full bg-slate-950 border border-slate-800 rounded-2xl py-3 px-4 text-sm mb-4 focus:ring-1 focus:ring-blue-500 outline-none">
                 <div id="flight-list" class="space-y-2"></div>
             </div>
 
-            <div id="detail-view" class="hidden absolute inset-0 bg-slate-900/95 backdrop-blur-xl p-6 animate-in slide-in-from-bottom duration-300 z-10 overflow-y-auto no-scrollbar">
+            <div id="detail-view" class="hidden absolute inset-0 bg-slate-900/95 backdrop-blur-xl p-6 animate-in slide-in-from-bottom duration-300 z-10 overflow-y-auto no-scrollbar pb-24">
                 <button onclick="closeDetails()" class="flex items-center gap-2 text-sm text-blue-400 mb-6 font-bold hover:text-blue-300">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> Back to List
                 </button>
@@ -301,9 +299,8 @@
         let map, minimap, cesiumViewer;
         let markers = {}, flightsData = [];
         let selectedFlightIcao = null, selectedFlightPath = [];
-        let routePolyline = null, currentBBox = null;
+        let routePolyline = null;
         let markerMode = 'flag', displayLimit = 200;
-        let isDrawing = false, selectionMode = false, startPoint = null, selectionRect = null;
         let isControlsCollapsed = false;
 
         // --- POV Flight Engine Globals ---
@@ -352,13 +349,13 @@
         // --- Data Persistence ---
         function loadPersistentData() {
             const savedFlights = localStorage.getItem('skyradar_flights');
-            const savedBBox = localStorage.getItem('skyradar_bbox');
             if (savedFlights) flightsData = JSON.parse(savedFlights);
-            if (savedBBox) {
-                currentBBox = JSON.parse(savedBBox);
-                selectionRect = L.rectangle([[currentBBox.minLat, currentBBox.minLon], [currentBBox.maxLat, currentBBox.maxLon]], { 
-                    color: '#3b82f6', weight: 2, fillOpacity: 0.1, dashArray: '5, 5' 
-                }).addTo(map);
+            
+            // If they had a previous view setup
+            const lastCenter = localStorage.getItem('skyradar_center');
+            const lastZoom = localStorage.getItem('skyradar_zoom');
+            if(lastCenter && lastZoom) {
+                map.setView(JSON.parse(lastCenter), parseInt(lastZoom));
             }
         }
 
@@ -383,31 +380,41 @@
         // --- 2D Map & Fetching ---
         function init2DMap() {
             map = L.map('map', { zoomControl: false, attributionControl: false, worldCopyJump: true }).setView([48, 8], 5);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+            
+            // Replaced Dark Map with Esri World Imagery (Satellite view)
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            }).addTo(map);
 
-            map.on('mousedown', (e) => {
-                if (!selectionMode) return;
-                isDrawing = true; startPoint = e.latlng;
-                if (selectionRect) map.removeLayer(selectionRect);
-                selectionRect = L.rectangle([startPoint, startPoint], { color: '#3b82f6', weight: 2, fillOpacity: 0.1, dashArray: '5, 5' }).addTo(map);
-                map.dragging.disable();
-            });
-            map.on('mousemove', (e) => { if (isDrawing) selectionRect.setBounds([startPoint, e.latlng]); });
-            map.on('mouseup', () => {
-                if (!isDrawing) return;
-                isDrawing = false; map.dragging.enable();
-                const b = selectionRect.getBounds();
-                currentBBox = { minLat: Math.min(b.getSouth(), b.getNorth()), maxLat: Math.max(b.getSouth(), b.getNorth()), minLon: Math.min(b.getWest(), b.getEast()), maxLon: Math.max(b.getWest(), b.getEast()) };
-                localStorage.setItem('skyradar_bbox', JSON.stringify(currentBBox));
-                toggleSelectionMode(false);
+            // Save map position on move
+            map.on('moveend', () => {
+                localStorage.setItem('skyradar_center', JSON.stringify(map.getCenter()));
+                localStorage.setItem('skyradar_zoom', map.getZoom());
             });
         }
 
         async function fetchFlights() {
             updateStatus('loading');
             document.getElementById('refresh-icon').classList.add('animate-spin');
+            
+            // Dynamic bounds based on what the user is currently looking at
             let url = 'https://opensky-network.org/api/states/all';
-            if (currentBBox) url += `?lamin=${currentBBox.minLat}&lomin=${currentBBox.minLon}&lamax=${currentBBox.maxLat}&lomax=${currentBBox.maxLon}`;
+            
+            // Only apply bounds if zoomed in enough, to avoid API failure for too large an area.
+            // If zoomed out, it fetches global data naturally.
+            if (map.getZoom() >= 4) {
+                const bounds = map.getBounds();
+                let minLat = bounds.getSouth();
+                let maxLat = bounds.getNorth();
+                let minLon = bounds.getWest();
+                let maxLon = bounds.getEast();
+                
+                // Wrap longitudes correctly
+                if (minLon < -180) minLon = -180;
+                if (maxLon > 180) maxLon = 180;
+                
+                url += `?lamin=${minLat}&lomin=${minLon}&lamax=${maxLat}&lomax=${maxLon}`;
+            }
 
             try {
                 const response = await fetch(url);
@@ -453,7 +460,7 @@
 
         function renderFlightList(q = '') {
             const f = flightsData.filter(x => x.callsign.toLowerCase().includes(q.toLowerCase())).slice(0, 50);
-            if (f.length === 0) { document.getElementById('flight-list').innerHTML = '<div class="p-6 text-center text-slate-500 text-xs font-medium">No flights detected. Hit Refresh!</div>'; return; }
+            if (f.length === 0) { document.getElementById('flight-list').innerHTML = '<div class="p-6 text-center text-slate-500 text-xs font-medium">No flights detected. Pan to an active region and hit Refresh!</div>'; return; }
             document.getElementById('flight-list').innerHTML = f.map(x => `
                 <div onclick="showDetails('${x.icao}')" class="flex items-center justify-between p-3 bg-slate-950/50 rounded-2xl border border-slate-800 hover:border-blue-500/50 cursor-pointer transition-all active:scale-95">
                     <div class="flex items-center gap-3">
@@ -497,7 +504,9 @@
             `;
             map.flyTo([flight.lat, flight.lng], 8);
             updateMarkers(); updateRouteLine();
-            if (window.innerWidth < 768) toggleSidebar(true);
+            
+            // Pop open the mobile bottom sheet fully if it's not open
+            toggleSidebar(true);
         }
 
         // --- 3D POV Engine Integration ---
@@ -573,7 +582,7 @@
             window.addEventListener('touchend', () => isLooking = false);
         }
 
-        function enterPOV() {
+        async function enterPOV() {
             const flight = flightsData.find(f => f.icao === selectedFlightIcao);
             if (!flight) return;
             
@@ -582,7 +591,7 @@
             if (!cesiumViewer) {
                 initPOVUI();
                 cesiumViewer = new Cesium.Viewer('cesium-container', {
-                    terrainProvider: Cesium.createWorldTerrain(),
+                    terrainProvider: await Cesium.createWorldTerrainAsync(),
                     baseLayerPicker: false, geocoder: false, homeButton: false, infoBox: false,
                     navigationHelpButton: false, sceneModePicker: false, timeline: false, animation: false,
                     selectionIndicator: false, fullscreenButton: false, shouldAnimate: true
@@ -616,14 +625,15 @@
             document.getElementById('throttle-val').textContent = Math.round(throttleValue * 100) + '%';
 
             cesiumViewer.camera.setView({
-                destination: Cesium.Cartesian3.fromDegrees(flight.lng, flight.lat, flight.alt * 0.3048),
+                destination: Cesium.Cartesian3.fromDegrees(flight.lng, flight.lat, Math.max(100, flight.alt * 0.3048)),
                 orientation: { heading: Cesium.Math.toRadians(cameraHeading), pitch: Cesium.Math.toRadians(cameraPitch), roll: 0 }
             });
 
             flightActive = true;
             cesiumViewer.clock.onTick.addEventListener(onPOVTick);
             
-            // Fix map rendering
+            // Fix map rendering and hide sidebar completely
+            toggleSidebar(false);
             setTimeout(() => minimap.invalidateSize(true), 500);
         }
 
@@ -681,6 +691,12 @@
             document.getElementById('val-lon').textContent = lon.toFixed(5);
             document.getElementById('val-speed').textContent = Math.round(speed * 1.94384).toString().padStart(3, '0'); // m/s to KTS
             
+            const flight = flightsData.find(f => f.icao === selectedFlightIcao);
+            if(flight) {
+                document.getElementById('pov-callsign').innerText = flight.callsign;
+                document.getElementById('pov-flag').src = `https://flagcdn.com/w40/${flight.code}.png`;
+            }
+
             const visualHeading = ((cameraHeading % 360) + 360) % 360;
             document.getElementById('compass-card').style.transform = `rotate(${-visualHeading}deg)`;
 
@@ -701,6 +717,7 @@
             flightActive = false;
             if (cesiumViewer) cesiumViewer.clock.onTick.removeEventListener(onPOVTick);
             document.getElementById('cesium-container').style.display = 'none'; 
+            toggleSidebar(true);
         }
 
         function toggleMapPOV() {
@@ -718,10 +735,24 @@
         // --- Standard UI Helpers ---
         function updateRouteLine() { if (routePolyline) map.removeLayer(routePolyline); if (selectedFlightPath.length > 1) { routePolyline = L.polyline(selectedFlightPath, { color: '#fbbf24', weight: 4, opacity: 0.7, dashArray: '8, 8' }).addTo(map); } }
         function closeDetails() { selectedFlightIcao = null; if (routePolyline) map.removeLayer(routePolyline); document.getElementById('detail-view').classList.add('hidden'); updateMarkers(); }
-        function toggleSidebar() { const s = document.getElementById('sidebar'); if (window.innerWidth < 768) s.classList.toggle('translate-y-0'); else s.classList.toggle('-translate-x-full'); }
-        function toggleSelectionMode(act = null) { selectionMode = act !== null ? act : !selectionMode; document.getElementById('draw-btn').innerHTML = selectionMode ? 'Cancel Selection' : 'Draw Area'; document.body.classList.toggle('drawing-active', selectionMode); }
+        
+        function toggleSidebar(forceOpen = null) { 
+            const s = document.getElementById('sidebar'); 
+            const isMobile = window.innerWidth < 768;
+
+            if (isMobile) {
+                if (forceOpen === true) s.classList.add('translate-y-0');
+                else if (forceOpen === false) s.classList.remove('translate-y-0');
+                else s.classList.toggle('translate-y-0');
+            } else {
+                if (forceOpen === true) s.classList.remove('-translate-x-full');
+                else if (forceOpen === false) s.classList.add('-translate-x-full');
+                else s.classList.toggle('-translate-x-full');
+            }
+        }
+        
         function setMarkerMode(m) { markerMode = m; document.getElementById('mode-flag').className = `flex-1 py-1.5 rounded-lg text-[10px] font-bold ${m === 'flag' ? 'bg-blue-600 text-white' : 'text-slate-500'}`; document.getElementById('mode-plane').className = `flex-1 py-1.5 rounded-lg text-[10px] font-bold ${m === 'plane' ? 'bg-blue-600 text-white' : 'text-slate-500'}`; updateMarkers(); }
-        function resetToWorld() { currentBBox = null; localStorage.removeItem('skyradar_bbox'); if (selectionRect) map.removeLayer(selectionRect); map.setView([20, 0], 3); }
+        
         function updateStatus(state) {
             const dot = document.getElementById('status-dot'); const txt = document.getElementById('status-text');
             if (state === 'loading') { dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse'; txt.innerText = 'Syncing...'; txt.className = 'text-[10px] uppercase font-bold tracking-widest text-amber-500 flex items-center gap-1.5 mt-1'; } 
