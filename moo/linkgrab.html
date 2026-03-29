@@ -37,13 +37,13 @@
                     class="w-full px-6 py-4 rounded-2xl border-2 border-slate-100 outline-none text-lg font-medium focus:border-red-500 transition-all"
                 >
                 <div id="sourceHelper" class="hidden animate-in fade-in slide-in-from-top-2">
-                    <p class="text-sm text-slate-600 mb-2">Click the link below or copy it to your address bar to see the source code:</p>
+                    <p class="text-sm text-slate-600 mb-2">Most browsers block "view-source" links for security. Please <b>Copy</b> and paste it into your address bar:</p>
                     <div class="flex items-center gap-2">
-                        <a id="viewSourceLink" target="_blank" class="flex-1 bg-slate-100 px-4 py-3 rounded-xl font-mono text-sm text-blue-600 break-all border border-slate-200 hover:bg-slate-200 transition-colors">
+                        <div id="viewSourceDisplay" class="flex-1 bg-slate-100 px-4 py-3 rounded-xl font-mono text-sm text-blue-600 break-all border border-slate-200 select-all">
                             view-source:https://...
-                        </a>
-                        <button onclick="copySourceUrl()" class="bg-slate-900 text-white px-4 py-3 rounded-xl text-xs font-bold hover:bg-black transition-all">
-                            COPY
+                        </div>
+                        <button onclick="copySourceUrl()" class="bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-bold hover:bg-black transition-all">
+                            COPY LINK
                         </button>
                     </div>
                 </div>
@@ -60,7 +60,7 @@
                 id="manualSource" 
                 rows="6" 
                 class="w-full p-6 rounded-2xl border-2 border-slate-100 outline-none font-mono text-xs bg-slate-50 focus:border-red-500 transition-all mb-4" 
-                placeholder="Ctrl+A and Ctrl+C the source code, then paste it here..."
+                placeholder="Ctrl+A and Ctrl+C the source code from the other tab, then paste it here..."
             ></textarea>
             <button 
                 onclick="parseSource()" 
@@ -83,10 +83,10 @@
                     <button onclick="toggleAll(true)" class="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase">Select All</button>
                     <button onclick="toggleAll(false)" class="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase">Deselect</button>
                     <button 
-                        onclick="downloadCSV()" 
-                        class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-black text-sm shadow-lg shadow-green-100 flex items-center gap-2"
+                        onclick="copyAsCSV()" 
+                        class="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-black text-sm shadow-lg shadow-indigo-100 flex items-center gap-2 uppercase tracking-tight"
                     >
-                        DOWNLOAD CSV
+                        Copy as CSV
                     </button>
                 </div>
             </div>
@@ -107,12 +107,11 @@
         function updateSourceLink() {
             const url = document.getElementById('urlInput').value.trim();
             const helper = document.getElementById('sourceHelper');
-            const link = document.getElementById('viewSourceLink');
+            const display = document.getElementById('viewSourceDisplay');
             
             if (url && (url.includes('youtube.com') || url.includes('youtu.be'))) {
                 const sourceUrl = `view-source:${url}`;
-                link.innerText = sourceUrl;
-                link.href = sourceUrl;
+                display.innerText = sourceUrl;
                 helper.classList.remove('hidden');
             } else {
                 helper.classList.add('hidden');
@@ -120,9 +119,9 @@
         }
 
         function copySourceUrl() {
-            const link = document.getElementById('viewSourceLink').innerText;
+            const link = document.getElementById('viewSourceDisplay').innerText;
             copyToClipboard(link);
-            showToast("Source URL copied! Paste it in your browser address bar.");
+            showToast("Source URL copied! Paste it into a new tab's address bar.");
         }
 
         function parseSource() {
@@ -135,7 +134,6 @@
             currentPlaylistName = (titleMatch ? titleMatch[1] : "Extracted Playlist").replace(/&amp;/g, '&');
 
             // Extract Video Titles and IDs
-            // Looking for the playlist items specifically
             const videoRegex = /"playlistVideoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"(.*?)"\}\]/g;
             
             const results = [];
@@ -156,7 +154,7 @@
             }
 
             if (results.length === 0) {
-                alert("No videos found. Make sure you are on the Playlist page (with the list of songs) before viewing source.");
+                alert("No videos found. Ensure you are copying the source from a YouTube Playlist page.");
                 return;
             }
 
@@ -188,7 +186,7 @@
             document.querySelectorAll('.video-check').forEach(cb => cb.checked = checked);
         }
 
-        function downloadCSV() {
+        function copyAsCSV() {
             const selectedIndices = Array.from(document.querySelectorAll('.video-check:checked'))
                 .map(cb => parseInt(cb.getAttribute('data-index')));
 
@@ -196,9 +194,8 @@
 
             const selectedVideos = selectedIndices.map(i => videoData[i]);
             
-            // CSV Construction (UTF-8 BOM for Excel)
-            let csvContent = "\ufeff"; 
-            csvContent += "Playlist Name,Video Title,URL\n";
+            // CSV Construction
+            let csvContent = "Playlist Name,Video Title,URL\n";
             
             selectedVideos.forEach(v => {
                 const pName = currentPlaylistName.replace(/"/g, '""');
@@ -206,17 +203,16 @@
                 csvContent += `"${pName}","${vTitle}","${v.url}"\n`;
             });
 
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `${currentPlaylistName.replace(/[^a-z0-9]/gi, '_')}.csv`);
-            link.click();
+            copyToClipboard(csvContent);
+            showToast("CSV data copied to clipboard!");
         }
 
         function copyToClipboard(text) {
             const el = document.createElement('textarea');
             el.value = text;
+            el.setAttribute('readonly', '');
+            el.style.position = 'absolute';
+            el.style.left = '-9999px';
             document.body.appendChild(el);
             el.select();
             document.execCommand('copy');
