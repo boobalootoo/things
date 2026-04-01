@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Photo Arranger Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body, html { overscroll-behavior-y: none; touch-action: none; }
+        
+        #workspace {
+            touch-action: none;
+            background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-color: #ffffff;
+        }
+        .workspace-transparent {
+            background-image: none !important;
+            background-color: transparent !important;
+        }
+
+        .draggable-wrapper {
+            position: absolute;
+            left: 50%; top: 50%;
+            transform-origin: center center;
+            will-change: transform;
+            /* Container doesn't have styling, the inner content does */
+        }
+
+        .item-content {
+            display: block;
+            max-width: 60vw; max-height: 60vh;
+            border-radius: 8px;
+            pointer-events: none; /* Let the wrapper handle events */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            background-color: rgba(200,200,200,0.2); /* For empty shapes */
+            object-fit: cover;
+        }
+
+        .wrapper-selected .item-content {
+            outline: 3px solid #3b82f6;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+
+        /* Controls shown only when selected */
+        .item-controls { display: none; position: absolute; inset: -15px; pointer-events: none; }
+        .wrapper-selected .item-controls { display: block; }
+        
+        .control-btn {
+            position: absolute;
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: bold; font-size: 16px;
+            pointer-events: auto; cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .btn-delete { top: 0; right: 0; background: #ef4444; }
+        .btn-copy { top: 0; left: 0; background: #10b981; }
+        .btn-crop { bottom: 0; right: 0; background: #8b5cf6; }
+        .btn-camera { bottom: 0; left: 0; background: #f59e0b; }
+
+        /* Shape Clip Paths */
+        .shape-circle { clip-path: circle(50% at 50% 50%); border-radius: 50%; }
+        .shape-heart { clip-path: path('M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'); transform: scale(3); transform-origin: top left; } /* Simplified heart for CSS */
+        .shape-star { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+        .shape-hexagon { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+
+        /* Custom Scrollbar for tools */
+        .toolbar-scroll::-webkit-scrollbar { display: none; }
+        
+        /* Export Area Box */
+        #exportAreaBox {
+            position: absolute; border: 2px dashed #3b82f6; background: rgba(59, 130, 246, 0.1);
+            display: none; pointer-events: none; z-index: 40;
+        }
+
+        canvas.drawing-layer { touch-action: none; }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen w-screen overflow-hidden flex flex-col font-sans text-gray-800">
+
+    <!-- Top Bar -->
+    <div class="bg-white px-4 py-3 shadow-sm z-20 flex justify-between items-center shrink-0">
+        <h1 class="text-lg font-bold text-gray-800">Photo Arranger Pro</h1>
+        <div class="flex gap-2">
+            <button id="btnLoadProject" class="text-sm bg-gray-100 text-gray-700 font-medium px-3 py-1.5 rounded-lg hover:bg-gray-200">Load</button>
+            <button id="btnClear" class="text-sm bg-red-50 text-red-600 font-medium px-3 py-1.5 rounded-lg hover:bg-red-100">Clear</button>
+        </div>
+    </div>
+
+    <!-- Workspace -->
+    <div id="workspace" class="flex-grow relative overflow-hidden">
+        <div id="exportAreaBox"></div>
+        <!-- Images injected here -->
+    </div>
+
+    <!-- Toolbar -->
+    <div class="bg-white border-t border-gray-200 z-20 pb-safe shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <div class="flex overflow-x-auto toolbar-scroll px-4 py-3 gap-3 items-center">
+            
+            <input type="file" id="fileInput" accept="image/*" class="hidden" multiple>
+            <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden">
+            <input type="file" id="projectInput" accept=".json" class="hidden">
+            
+            <button id="btnAddGallery" class="flex flex-col items-center min-w-[70px] text-blue-600 active:scale-95 transition-transform">
+                <div class="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-1">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </div>
+                <span class="text-xs font-medium">Gallery</span>
+            </button>
+
+            <button id="btnAddCamera" class="flex flex-col items-center min-w-[70px] text-blue-600 active:scale-95 transition-transform">
+                <div class="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-1">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path></svg>
+                </div>
+                <span class="text-xs font-medium">Camera</span>
+            </button>
+
+            <div class="w-px h-10 bg-gray-200 mx-1 shrink-0"></div>
+
+            <button class="add-shape-btn flex flex-col items-center min-w-[60px] text-gray-600 active:scale-95 transition-transform" data-shape="circle">
+                <div class="w-10 h-10 border-2 border-gray-400 rounded-full mb-1"></div>
+                <span class="text-xs font-medium">Circle</span>
+            </button>
+            <button class="add-shape-btn flex flex-col items-center min-w-[60px] text-gray-600 active:scale-95 transition-transform" data-shape="star">
+                <div class="w-10 h-10 bg-gray-400 mb-1" style="clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);"></div>
+                <span class="text-xs font-medium">Star</span>
+            </button>
+            <button class="add-shape-btn flex flex-col items-center min-w-[60px] text-gray-600 active:scale-95 transition-transform" data-shape="hexagon">
+                <div class="w-10 h-10 bg-gray-400 mb-1" style="clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);"></div>
+                <span class="text-xs font-medium">Hex</span>
+            </button>
+
+            <div class="w-px h-10 bg-gray-200 mx-1 shrink-0"></div>
+
+            <button id="btnOpenExport" class="flex flex-col items-center min-w-[70px] text-indigo-600 active:scale-95 transition-transform ml-auto">
+                <div class="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-1 shadow-inner">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                </div>
+                <span class="text-xs font-bold">Save</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Modals (Hidden by default) -->
+    
+    <!-- Camera Fill Modal -->
+    <div id="modalCamera" class="fixed inset-0 bg-black z-50 flex flex-col hidden">
+        <div class="p-4 flex justify-between items-center text-white z-10">
+            <button id="btnCloseCamera" class="p-2">Cancel</button>
+            <h2 class="font-bold">Fill Shape</h2>
+            <div class="w-10"></div>
+        </div>
+        <div class="relative flex-grow flex items-center justify-center overflow-hidden">
+            <video id="liveVideo" autoplay playsinline class="absolute inset-0 w-full h-full object-cover origin-center"></video>
+            <!-- Overlay to visualize the shape cutout -->
+            <div id="cameraMask" class="absolute inset-0 bg-black/60 pointer-events-none" style="mask-image: radial-gradient(circle, transparent 40%, black 41%); -webkit-mask-image: radial-gradient(circle, transparent 40%, black 41%);"></div>
+            <!-- Outline -->
+            <div id="cameraOutline" class="absolute w-64 h-64 border-2 border-yellow-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] pointer-events-none"></div>
+        </div>
+        <div class="p-6 bg-black pb-safe">
+            <div class="mb-4 flex items-center gap-4 text-white">
+                <span class="text-sm">Zoom</span>
+                <input type="range" id="cameraZoom" min="1" max="3" step="0.1" value="1" class="flex-grow">
+            </div>
+            <button id="btnSnapPhoto" class="w-full bg-yellow-500 text-black font-bold py-4 rounded-xl text-lg">Snap & Fill</button>
+        </div>
+    </div>
+
+    <!-- Freehand Crop Modal -->
+    <div id="modalCrop" class="fixed inset-0 bg-gray-900 z-50 flex flex-col hidden">
+        <div class="p-4 flex justify-between items-center text-white bg-black">
+            <button id="btnCloseCrop" class="p-2">Cancel</button>
+            <h2 class="font-bold">Draw to Crop</h2>
+            <button id="btnApplyCrop" class="p-2 text-blue-400 font-bold">Apply</button>
+        </div>
+        <div class="flex-grow relative flex items-center justify-center overflow-hidden bg-gray-800" id="cropContainer">
+            <img id="cropTargetImg" class="max-w-full max-h-full object-contain pointer-events-none opacity-50">
+            <canvas id="cropCanvas" class="absolute drawing-layer z-10 top-0 left-0 w-full h-full"></canvas>
+        </div>
+        <div class="p-4 text-center text-gray-400 text-sm bg-black">
+            Draw a closed shape with your finger.
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="modalExport" class="fixed inset-0 bg-black/60 z-50 flex items-end justify-center hidden backdrop-blur-sm">
+        <div class="bg-white w-full max-w-md rounded-t-3xl p-6 pb-safe transform transition-transform translate-y-full" id="exportSheet">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">Export Options</h2>
+                <button id="btnCloseExport" class="p-2 bg-gray-100 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Format</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button class="export-fmt-btn border-2 border-blue-500 bg-blue-50 text-blue-700 py-2 rounded-lg font-medium" data-fmt="png">PNG</button>
+                        <button class="export-fmt-btn border-2 border-gray-200 text-gray-600 py-2 rounded-lg font-medium" data-fmt="jpeg">JPEG</button>
+                        <button class="export-fmt-btn border-2 border-gray-200 text-gray-600 py-2 rounded-lg font-medium" data-fmt="json">Project</button>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <p class="font-medium">Transparent Background</p>
+                        <p class="text-xs text-gray-500">Only works with PNG</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="checkTransparent" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <p class="font-medium">Specific Area Only</p>
+                        <p class="text-xs text-gray-500">Draw a box to crop export</p>
+                    </div>
+                    <button id="btnSelectArea" class="bg-indigo-100 text-indigo-700 px-3 py-1 rounded text-sm font-semibold">Select Area</button>
+                </div>
+            </div>
+
+            <button id="btnDoExport" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-lg shadow-lg active:bg-blue-700">Save to Device</button>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black/70 z-[60] hidden flex-col items-center justify-center backdrop-blur-md">
+        <svg class="animate-spin h-12 w-12 text-white mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        <p class="text-white font-medium text-lg" id="loadingText">Processing...</p>
+    </div>
+
+    <script>
+        const workspace = document.getElementById('workspace');
+        let selectedWrapper = null;
+        let zIndexCounter = 10;
+
+        // --- Core Application Logic ---
+
+        // Create a new draggable item
+        function createItem(src, isShape = false, shapeClass = '') {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'draggable-wrapper';
+            
+            // Initial transform data
+            wrapper.dataset.tx = 0; wrapper.dataset.ty = 0;
+            wrapper.dataset.scale = isShape ? 1.5 : 1; 
+            wrapper.dataset.angle = isShape ? 0 : (Math.random() * 10) - 5;
+            
+            const content = document.createElement('img');
+            content.className = `item-content ${shapeClass}`;
+            content.draggable = false;
+            
+            if (src) {
+                content.src = src;
+            } else if (isShape) {
+                // Placeholder styling for empty shape
+                content.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='; // 1x1 transparent
+                content.style.minWidth = '150px';
+                content.style.minHeight = '150px';
+                content.style.backgroundColor = '#cbd5e1';
+            }
+
+            // Controls
+            const controls = document.createElement('div');
+            controls.className = 'item-controls';
+            
+            const btnDel = document.createElement('div'); btnDel.className = 'control-btn btn-delete'; btnDel.innerHTML = '✕';
+            const btnCopy = document.createElement('div'); btnCopy.className = 'control-btn btn-copy'; btnCopy.innerHTML = '⧉';
+            
+            controls.appendChild(btnDel);
+            controls.appendChild(btnCopy);
+
+            // Conditional buttons
+            if (isShape && !src) {
+                const btnCam = document.createElement('div'); btnCam.className = 'control-btn btn-camera'; btnCam.innerHTML = '📷';
+                controls.appendChild(btnCam);
+                
+                btnCam.onclick = (e) => { e.stopPropagation(); openCameraModal(wrapper, shapeClass); };
+            } else if (!isShape || src) {
+                const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
+                controls.appendChild(btnCrop);
+                btnCrop.onclick = (e) => { e.stopPropagation(); openCropModal(wrapper); };
+            }
+
+            btnDel.onclick = (e) => { e.stopPropagation(); wrapper.remove(); };
+            btnCopy.onclick = (e) => { e.stopPropagation(); duplicateItem(wrapper); };
+
+            wrapper.appendChild(content);
+            wrapper.appendChild(controls);
+            
+            applyTransform(wrapper);
+            workspace.appendChild(wrapper);
+            selectItem(wrapper);
+            return wrapper;
+        }
+
+        function duplicateItem(wrapper) {
+            const clone = wrapper.cloneNode(true);
+            const content = clone.querySelector('.item-content');
+            
+            // Re-bind events (cloneNode doesn't copy event listeners)
+            const controls = clone.querySelector('.item-controls');
+            controls.innerHTML = ''; // Rebuild buttons to easily bind
+            
+            const btnDel = document.createElement('div'); btnDel.className = 'control-btn btn-delete'; btnDel.innerHTML = '✕';
+            const btnCopy = document.createElement('div'); btnCopy.className = 'control-btn btn-copy'; btnCopy.innerHTML = '⧉';
+            controls.appendChild(btnDel);
+            controls.appendChild(btnCopy);
+            
+            btnDel.onclick = (e) => { e.stopPropagation(); clone.remove(); };
+            btnCopy.onclick = (e) => { e.stopPropagation(); duplicateItem(clone); };
+            
+            // Copy data
+            clone.dataset.tx = parseFloat(wrapper.dataset.tx) + 20;
+            clone.dataset.ty = parseFloat(wrapper.dataset.ty) + 20;
+            clone.dataset.scale = wrapper.dataset.scale;
+            clone.dataset.angle = wrapper.dataset.angle;
+            
+            applyTransform(clone);
+            workspace.appendChild(clone);
+            selectItem(clone);
+        }
+
+        function selectItem(wrapper) {
+            if (selectedWrapper) selectedWrapper.classList.remove('wrapper-selected');
+            if (wrapper) {
+                zIndexCounter++;
+                wrapper.style.zIndex = zIndexCounter;
+                wrapper.classList.add('wrapper-selected');
+                selectedWrapper = wrapper;
+            } else {
+                selectedWrapper = null;
+            }
+        }
+
+        // --- Gesture Engine ---
+        let initX=0, initY=0, initScale=1, initAngle=0;
+        let startT1=null, startT2=null;
+        
+        function getDist(t1, t2) { return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY); }
+        function getAngle(t1, t2) { return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * 180 / Math.PI; }
+        
+        function applyTransform(el) {
+            el.style.transform = `translate(calc(-50% + ${el.dataset.tx}px), calc(-50% + ${el.dataset.ty}px)) scale(${el.dataset.scale}) rotate(${el.dataset.angle}deg)`;
+        }
+
+        workspace.addEventListener('touchstart', e => {
+            if (drawingExportArea) return; // Prevent selection when drawing crop box
+            
+            const wrapper = e.target.closest('.draggable-wrapper');
+            if (wrapper && !e.target.classList.contains('control-btn')) {
+                selectItem(wrapper);
+                initX = parseFloat(wrapper.dataset.tx); initY = parseFloat(wrapper.dataset.ty);
+                initScale = parseFloat(wrapper.dataset.scale); initAngle = parseFloat(wrapper.dataset.angle);
+                
+                if (e.touches.length === 1) {
+                    startT1 = {x: e.touches[0].clientX, y: e.touches[0].clientY}; startT2 = null;
+                } else if (e.touches.length === 2) {
+                    startT1 = e.touches[0]; startT2 = e.touches[1];
+                }
+            } else if (e.target === workspace && !e.target.classList.contains('control-btn')) {
+                selectItem(null);
+            }
+        }, { passive: false });
+
+        workspace.addEventListener('touchmove', e => {
+            if (drawingExportArea) return handleExportAreaDraw(e);
+            
+            if (!selectedWrapper || e.target.classList.contains('control-btn')) return;
+            e.preventDefault();
+
+            if (e.touches.length === 1 && startT1 && !startT2) {
+                selectedWrapper.dataset.tx = initX + (e.touches[0].clientX - startT1.x);
+                selectedWrapper.dataset.ty = initY + (e.touches[0].clientY - startT1.y);
+            } else if (e.touches.length === 2 && startT1 && startT2) {
+                const cDist = getDist(e.touches[0], e.touches[1]);
+                const cAngle = getAngle(e.touches[0], e.touches[1]);
+                const iDist = getDist(startT1, startT2);
+                const iAngle = getAngle(startT1, startT2);
+                
+                selectedWrapper.dataset.scale = Math.max(0.1, initScale * (cDist / iDist));
+                selectedWrapper.dataset.angle = initAngle + (cAngle - iAngle);
+            }
+            applyTransform(selectedWrapper);
+        }, { passive: false });
+
+        workspace.addEventListener('touchend', e => {
+            if (drawingExportArea) { drawingExportArea = false; return; }
+            if (!selectedWrapper) return;
+            if (e.touches.length === 0) { startT1 = null; startT2 = null; }
+            else if (e.touches.length === 1) {
+                startT1 = {x: e.touches[0].clientX, y: e.touches[0].clientY}; startT2 = null;
+                initX = parseFloat(selectedWrapper.dataset.tx); initY = parseFloat(selectedWrapper.dataset.ty);
+            }
+        });
+
+        // Desktop Mouse support
+        let isMouseDown = false, mouseStartX = 0, mouseStartY = 0;
+        workspace.addEventListener('mousedown', e => {
+            if (drawingExportArea) { startExportAreaDraw(e); return; }
+            const wrapper = e.target.closest('.draggable-wrapper');
+            if (wrapper && !e.target.classList.contains('control-btn')) {
+                selectItem(wrapper);
+                isMouseDown = true; mouseStartX = e.clientX; mouseStartY = e.clientY;
+                initX = parseFloat(wrapper.dataset.tx); initY = parseFloat(wrapper.dataset.ty);
+            } else if (e.target === workspace) {
+                selectItem(null);
+            }
+        });
+        window.addEventListener('mousemove', e => {
+            if (drawingExportArea && isMouseDown) { updateExportAreaDraw(e); return; }
+            if (!isMouseDown || !selectedWrapper) return;
+            selectedWrapper.dataset.tx = initX + (e.clientX - mouseStartX);
+            selectedWrapper.dataset.ty = initY + (e.clientY - mouseStartY);
+            applyTransform(selectedWrapper);
+        });
+        window.addEventListener('mouseup', () => { isMouseDown = false; drawingExportArea = false; });
+
+        // --- Input Handlers ---
+        
+        // Handle File Read (Convert to Base64 to store easily)
+        function readFileAsBase64(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        document.getElementById('btnAddGallery').onclick = () => document.getElementById('fileInput').click();
+        document.getElementById('btnAddCamera').onclick = () => document.getElementById('cameraInput').click();
+
+        async function handleImageFiles(e) {
+            const files = e.target.files;
+            for (let file of files) {
+                if (!file.type.startsWith('image/')) continue;
+                const base64 = await readFileAsBase64(file);
+                createItem(base64);
+            }
+            e.target.value = ''; // reset
+        }
+        document.getElementById('fileInput').onchange = handleImageFiles;
+        document.getElementById('cameraInput').onchange = handleImageFiles;
+        document.getElementById('btnClear').onclick = () => { if(confirm('Clear workspace?')) workspace.innerHTML = '<div id="exportAreaBox"></div>'; };
+
+        // Shapes
+        document.querySelectorAll('.add-shape-btn').forEach(btn => {
+            btn.onclick = () => createItem(null, true, `shape-${btn.dataset.shape}`);
+        });
+
+        // --- Live Camera Fill logic ---
+        const modalCamera = document.getElementById('modalCamera');
+        const liveVideo = document.getElementById('liveVideo');
+        const cameraOutline = document.getElementById('cameraOutline');
+        const cameraZoom = document.getElementById('cameraZoom');
+        let currentCameraStream = null;
+        let targetShapeWrapper = null;
+
+        async function openCameraModal(wrapper, shapeClass) {
+            targetShapeWrapper = wrapper;
+            modalCamera.classList.remove('hidden');
+            
+            // Adjust visual outline based on shape
+            cameraOutline.className = `absolute w-64 h-64 border-2 border-yellow-400 pointer-events-none shadow-[0_0_0_9999px_rgba(0,0,0,0.8)] ${shapeClass}`;
+            
+            try {
+                currentCameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment', width: { ideal: 1080 } } 
+                });
+                liveVideo.srcObject = currentCameraStream;
+            } catch (err) {
+                alert("Camera access denied or unavailable.");
+                closeCameraModal();
+            }
+        }
+
+        function closeCameraModal() {
+            modalCamera.classList.add('hidden');
+            if(currentCameraStream) {
+                currentCameraStream.getTracks().forEach(t => t.stop());
+                currentCameraStream = null;
+            }
+        }
+        document.getElementById('btnCloseCamera').onclick = closeCameraModal;
+
+        cameraZoom.oninput = (e) => {
+            liveVideo.style.transform = `scale(${e.target.value})`;
+        };
+
+        document.getElementById('btnSnapPhoto').onclick = () => {
+            if(!currentCameraStream) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = 800; canvas.height = 800; // Square output for shape
+            const ctx = canvas.getContext('2d');
+            
+            // Calculate crop based on video dimensions and zoom
+            const scale = parseFloat(cameraZoom.value);
+            const vw = liveVideo.videoWidth;
+            const vh = liveVideo.videoHeight;
+            const minDim = Math.min(vw, vh) / scale;
+            
+            const sx = (vw - minDim) / 2;
+            const sy = (vh - minDim) / 2;
+            
+            ctx.drawImage(liveVideo, sx, sy, minDim, minDim, 0, 0, canvas.width, canvas.height);
+            
+            const content = targetShapeWrapper.querySelector('.item-content');
+            content.src = canvas.toDataURL('image/png');
+            content.style.backgroundColor = 'transparent';
+            
+            // Replace controls to remove camera button, add crop button
+            targetShapeWrapper.querySelector('.btn-camera')?.remove();
+            if(!targetShapeWrapper.querySelector('.btn-crop')) {
+                const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
+                btnCrop.onclick = (e) => { e.stopPropagation(); openCropModal(targetShapeWrapper); };
+                targetShapeWrapper.querySelector('.item-controls').appendChild(btnCrop);
+            }
+            
+            closeCameraModal();
+        };
+
+        // --- Freehand Crop Logic ---
+        const modalCrop = document.getElementById('modalCrop');
+        const cropTargetImg = document.getElementById('cropTargetImg');
+        const cropCanvas = document.getElementById('cropCanvas');
+        const ctxCrop = cropCanvas.getContext('2d');
+        let targetCropWrapper = null;
+        let cropPoints = [];
+        let isDrawingCrop = false;
+
+        function openCropModal(wrapper) {
+            targetCropWrapper = wrapper;
+            const img = wrapper.querySelector('.item-content');
+            cropTargetImg.src = img.src;
+            modalCrop.classList.remove('hidden');
+            
+            // Resize canvas to match container
+            const rect = document.getElementById('cropContainer').getBoundingClientRect();
+            cropCanvas.width = rect.width;
+            cropCanvas.height = rect.height;
+            ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+            cropPoints = [];
+        }
+
+        document.getElementById('btnCloseCrop').onclick = () => modalCrop.classList.add('hidden');
+
+        function getMousePos(canvas, evt) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        const startCropDraw = (e) => {
+            isDrawingCrop = true;
+            cropPoints = [getMousePos(cropCanvas, e)];
+            ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+        };
+        const doCropDraw = (e) => {
+            if (!isDrawingCrop) return;
+            e.preventDefault(); // prevent scroll
+            const pos = getMousePos(cropCanvas, e);
+            cropPoints.push(pos);
+            
+            ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+            ctxCrop.beginPath();
+            ctxCrop.moveTo(cropPoints[0].x, cropPoints[0].y);
+            for(let i=1; i<cropPoints.length; i++) ctxCrop.lineTo(cropPoints[i].x, cropPoints[i].y);
+            ctxCrop.strokeStyle = '#3b82f6';
+            ctxCrop.lineWidth = 3;
+            ctxCrop.setLineDash([5, 5]);
+            ctxCrop.stroke();
+            ctxCrop.fillStyle = 'rgba(59, 130, 246, 0.2)';
+            ctxCrop.fill();
+        };
+        const endCropDraw = () => { isDrawingCrop = false; };
+
+        cropCanvas.addEventListener('mousedown', startCropDraw);
+        cropCanvas.addEventListener('mousemove', doCropDraw);
+        cropCanvas.addEventListener('mouseup', endCropDraw);
+        cropCanvas.addEventListener('touchstart', startCropDraw, {passive: false});
+        cropCanvas.addEventListener('touchmove', doCropDraw, {passive: false});
+        cropCanvas.addEventListener('touchend', endCropDraw);
+
+        document.getElementById('btnApplyCrop').onclick = () => {
+            if(cropPoints.length < 3) return alert("Draw a shape first!");
+            
+            // To crop, we draw the original image to a temporary canvas, then use the drawn path to mask it.
+            // Note: The displayed image is scaled to fit. We need to map coordinates back to intrinsic size.
+            const rect = cropTargetImg.getBoundingClientRect();
+            const canvasRect = cropCanvas.getBoundingClientRect();
+            
+            // Calculate scale and offset of the image inside the container (object-fit: contain simulation)
+            const imgRatio = cropTargetImg.naturalWidth / cropTargetImg.naturalHeight;
+            const boxRatio = rect.width / rect.height;
+            let drawWidth, drawHeight, offsetX, offsetY;
+            
+            if (imgRatio > boxRatio) {
+                drawWidth = rect.width; drawHeight = rect.width / imgRatio;
+                offsetX = rect.left - canvasRect.left; offsetY = rect.top - canvasRect.top + (rect.height - drawHeight)/2;
+            } else {
+                drawHeight = rect.height; drawWidth = rect.height * imgRatio;
+                offsetY = rect.top - canvasRect.top; offsetX = rect.left - canvasRect.left + (rect.width - drawWidth)/2;
+            }
+            
+            const scale = cropTargetImg.naturalWidth / drawWidth;
+
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = cropTargetImg.naturalWidth;
+            finalCanvas.height = cropTargetImg.naturalHeight;
+            const fctx = finalCanvas.getContext('2d');
+
+            // Draw path mapped to intrinsic dimensions
+            fctx.beginPath();
+            cropPoints.forEach((p, i) => {
+                const mappedX = (p.x - offsetX) * scale;
+                const mappedY = (p.y - offsetY) * scale;
+                if(i===0) fctx.moveTo(mappedX, mappedY); else fctx.lineTo(mappedX, mappedY);
+            });
+            fctx.closePath();
+            fctx.clip(); // Apply mask
+            fctx.drawImage(cropTargetImg, 0, 0);
+
+            // Replace source and remove CSS shape if any
+            const content = targetCropWrapper.querySelector('.item-content');
+            content.src = finalCanvas.toDataURL('image/png');
+            content.className = 'item-content'; // strips shape classes
+            
+            modalCrop.classList.add('hidden');
+        };
+
+
+        // --- Export Logic ---
+        const modalExport = document.getElementById('modalExport');
+        const exportSheet = document.getElementById('exportSheet');
+        let selectedFormat = 'png';
+        let exportAreaActive = false;
+        
+        // Export Area Selection variables
+        const exportAreaBox = document.getElementById('exportAreaBox');
+        let drawingExportArea = false;
+        let areaStartX=0, areaStartY=0;
+
+        document.getElementById('btnOpenExport').onclick = () => {
+            selectItem(null); // deselect to hide borders
+            modalExport.classList.remove('hidden');
+            setTimeout(() => exportSheet.classList.remove('translate-y-full'), 10);
+        };
+        
+        document.getElementById('btnCloseExport').onclick = closeExportModal;
+        
+        function closeExportModal() {
+            exportSheet.classList.add('translate-y-full');
+            setTimeout(() => modalExport.classList.add('hidden'), 300);
+            if(exportAreaActive) toggleExportArea(false);
+        }
+
+        // Format Selection UI
+        document.querySelectorAll('.export-fmt-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                document.querySelectorAll('.export-fmt-btn').forEach(b => {
+                    b.classList.remove('border-blue-500', 'bg-blue-50', 'text-blue-700');
+                    b.classList.add('border-gray-200', 'text-gray-600');
+                });
+                e.target.classList.add('border-blue-500', 'bg-blue-50', 'text-blue-700');
+                e.target.classList.remove('border-gray-200', 'text-gray-600');
+                selectedFormat = e.target.dataset.fmt;
+            };
+        });
+
+        // Area Selection UI
+        const btnSelectArea = document.getElementById('btnSelectArea');
+        btnSelectArea.onclick = () => {
+            closeExportModal();
+            toggleExportArea(true);
+        };
+
+        function toggleExportArea(active) {
+            exportAreaActive = active;
+            if (active) {
+                workspace.style.cursor = 'crosshair';
+                exportAreaBox.style.display = 'block';
+                exportAreaBox.style.width = '0px'; exportAreaBox.style.height = '0px';
+                alert("Draw a box over the area you want to save.");
+            } else {
+                workspace.style.cursor = '';
+                exportAreaBox.style.display = 'none';
+            }
+        }
+
+        // Handle drawing the export box directly on workspace
+        function startExportAreaDraw(e) {
+            drawingExportArea = true;
+            const rect = workspace.getBoundingClientRect();
+            areaStartX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+            areaStartY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+            exportAreaBox.style.left = areaStartX + 'px';
+            exportAreaBox.style.top = areaStartY + 'px';
+            exportAreaBox.style.width = '0px';
+            exportAreaBox.style.height = '0px';
+        }
+
+        function updateExportAreaDraw(e) {
+            const rect = workspace.getBoundingClientRect();
+            const currX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+            const currY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+            
+            const w = currX - areaStartX;
+            const h = currY - areaStartY;
+            
+            exportAreaBox.style.width = Math.abs(w) + 'px';
+            exportAreaBox.style.height = Math.abs(h) + 'px';
+            exportAreaBox.style.left = (w < 0 ? currX : areaStartX) + 'px';
+            exportAreaBox.style.top = (h < 0 ? currY : areaStartY) + 'px';
+        }
+
+        function handleExportAreaDraw(e) {
+            e.preventDefault();
+            if(!drawingExportArea) startExportAreaDraw(e);
+            else updateExportAreaDraw(e);
+        }
+
+        // Final Save Execution
+        document.getElementById('btnDoExport').onclick = async () => {
+            const isTransparent = document.getElementById('checkTransparent').checked;
+            closeExportModal();
+            
+            if (selectedFormat === 'json') {
+                saveProject();
+                return;
+            }
+
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            selectItem(null); // Ensure no selection
+            exportAreaBox.style.border = 'none'; // Hide border for screenshot
+            exportAreaBox.style.background = 'transparent';
+
+            // Wait a tick for UI to update
+            await new Promise(r => setTimeout(r, 100));
+
+            try {
+                if (isTransparent && selectedFormat === 'png') {
+                    workspace.classList.add('workspace-transparent');
+                }
+
+                // Determine capture area
+                let captureOpts = {
+                    useCORS: true, scale: 2, 
+                    backgroundColor: isTransparent && selectedFormat === 'png' ? null : "#ffffff",
+                    ignoreElements: (el) => el.id === 'exportAreaBox'
+                };
+
+                if (exportAreaActive && exportAreaBox.offsetWidth > 10) {
+                    const rect = exportAreaBox.getBoundingClientRect();
+                    const wsRect = workspace.getBoundingClientRect();
+                    captureOpts.x = rect.left - wsRect.left;
+                    captureOpts.y = rect.top - wsRect.top;
+                    captureOpts.width = rect.width;
+                    captureOpts.height = rect.height;
+                }
+
+                const canvas = await html2canvas(workspace, captureOpts);
+                
+                // Restore UI
+                workspace.classList.remove('workspace-transparent');
+                toggleExportArea(false);
+
+                const mimeType = selectedFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+                const fileName = `arrangement_${new Date().getTime()}.${selectedFormat}`;
+                
+                canvas.toBlob(async (blob) => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    const file = new File([blob], fileName, { type: mimeType });
+                    
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        try { await navigator.share({ files: [file] }); } 
+                        catch (err) { if(err.name !== 'AbortError') triggerDownload(blob, fileName); }
+                    } else {
+                        triggerDownload(blob, fileName);
+                    }
+                }, mimeType, 0.95);
+
+            } catch (err) {
+                console.error(err);
+                document.getElementById('loadingOverlay').style.display = 'none';
+                alert("Error saving image.");
+            }
+        };
+
+        // --- Project Save / Load (JSON) ---
+        function saveProject() {
+            const items = [];
+            document.querySelectorAll('.draggable-wrapper').forEach(wrapper => {
+                const img = wrapper.querySelector('.item-content');
+                items.push({
+                    src: img.src,
+                    shapeClass: Array.from(img.classList).find(c => c.startsWith('shape-')) || '',
+                    tx: wrapper.dataset.tx,
+                    ty: wrapper.dataset.ty,
+                    scale: wrapper.dataset.scale,
+                    angle: wrapper.dataset.angle,
+                    zIndex: wrapper.style.zIndex
+                });
+            });
+
+            const blob = new Blob([JSON.stringify(items)], {type: 'application/json'});
+            triggerDownload(blob, `project_${new Date().getTime()}.json`);
+        }
+
+        document.getElementById('btnLoadProject').onclick = () => document.getElementById('projectInput').click();
+        document.getElementById('projectInput').onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const items = JSON.parse(evt.target.result);
+                    workspace.innerHTML = '<div id="exportAreaBox"></div>'; // Clear
+                    items.forEach(data => {
+                        const wrapper = createItem(data.src.startsWith('data:') ? data.src : null, !!data.shapeClass, data.shapeClass);
+                        wrapper.dataset.tx = data.tx; wrapper.dataset.ty = data.ty;
+                        wrapper.dataset.scale = data.scale; wrapper.dataset.angle = data.angle;
+                        wrapper.style.zIndex = data.zIndex;
+                        if(data.zIndex > zIndexCounter) zIndexCounter = parseInt(data.zIndex);
+                        applyTransform(wrapper);
+                    });
+                } catch(err) { alert("Invalid project file."); }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        };
+
+        function triggerDownload(blob, fileName) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = fileName;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
+
+
