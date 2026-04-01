@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Photo Arranger Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body, html { overscroll-behavior-y: none; touch-action: none; }
+        
+        #workspace {
+            touch-action: none;
+            background-color: #f3f4f6;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* The movable, zoomable canvas */
+        #canvas-container {
+            position: absolute;
+            width: 100%; height: 100%;
+            transform-origin: center center;
+            will-change: transform;
+            background-image: radial-gradient(#d1d5db 2px, transparent 2px);
+            background-size: 40px 40px;
+            background-position: center center;
+        }
+        
+        .workspace-transparent #canvas-container {
+            background-image: none !important;
+            background-color: transparent !important;
+        }
+
+        .draggable-wrapper {
+            position: absolute;
+            left: 50%; top: 50%;
+            transform-origin: center center;
+            will-change: transform;
+        }
+
+        .group-wrapper {
+            /* Invisible container for grouped items */
+            width: 0; height: 0;
+            outline: 2px dashed rgba(59, 130, 246, 0.5);
+            border-radius: 8px;
+        }
+
+        .item-content {
+            display: block;
+            max-width: 60vw; max-height: 60vh;
+            border-radius: 8px;
+            pointer-events: none;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            background-color: rgba(200,200,200,0.3);
+            object-fit: cover;
+        }
+
+        .wrapper-selected > .item-content, 
+        .wrapper-selected.group-wrapper {
+            outline: 3px solid #3b82f6;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+
+        /* Controls shown only when selected */
+        .item-controls { display: none; position: absolute; inset: -15px; pointer-events: none; z-index: 50;}
+        .wrapper-selected > .item-controls { display: block; }
+        
+        .control-btn {
+            position: absolute;
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: bold; font-size: 16px;
+            pointer-events: auto; cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        }
+        .btn-delete { top: -5px; right: -5px; background: #ef4444; }
+        .btn-copy { top: -5px; left: -5px; background: #10b981; }
+        .btn-crop { bottom: -5px; right: -5px; background: #8b5cf6; }
+        .btn-camera { bottom: -5px; left: -5px; background: #f59e0b; }
+
+        /* Shape Clip Paths */
+        .shape-circle { clip-path: circle(50% at 50% 50%); border-radius: 50%; }
+        .shape-heart { clip-path: path('M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'); transform: scale(3); transform-origin: top left; }
+        .shape-star { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+        .shape-hexagon { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+        .shape-triangle { clip-path: polygon(50% 0%, 0% 100%, 100% 100%); }
+        .shape-diamond { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+
+        .toolbar-scroll::-webkit-scrollbar { display: none; }
+        .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
+        #exportAreaBox {
+            position: absolute; border: 3px dashed #3b82f6; background: rgba(59, 130, 246, 0.1);
+            display: none; pointer-events: none; z-index: 999;
+        }
+        canvas.drawing-layer { touch-action: none; }
+        
+        /* Modal Animation */
+        .modal-sheet { transform: translateY(100%); transition: transform 0.3s ease-out; }
+        .modal-sheet.open { transform: translateY(0); }
+    </style>
+</head>
+<body class="bg-gray-100 h-[100dvh] w-screen overflow-hidden flex flex-col font-sans text-gray-800">
+
+    <!-- Top Bar -->
+    <div class="bg-white px-4 py-3 shadow-sm z-20 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold text-gray-800">Photo Arranger</h1>
+            <button id="btnInfo" class="text-blue-500 hover:text-blue-700 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></button>
+        </div>
+        <div class="flex gap-2">
+            <button id="btnLoadProject" class="text-sm bg-gray-100 text-gray-700 font-medium px-3 py-1.5 rounded-lg hover:bg-gray-200">Load</button>
+            <button id="btnClear" class="text-sm bg-red-50 text-red-600 font-medium px-3 py-1.5 rounded-lg hover:bg-red-100">Clear</button>
+        </div>
+    </div>
+
+    <!-- Workspace -->
+    <div id="workspace" class="flex-grow relative">
+        <div id="canvas-container">
+            <div id="exportAreaBox"></div>
+            <!-- Items injected here -->
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="bg-white border-t border-gray-200 z-20 pb-safe shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <div class="flex overflow-x-auto toolbar-scroll px-4 py-3 gap-4 items-center justify-between">
+            
+            <input type="file" id="fileInput" accept="image/*" class="hidden" multiple>
+            <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden">
+            <input type="file" id="projectInput" accept=".json" class="hidden">
+            
+            <div class="flex gap-3 items-center">
+                <button id="btnAddGallery" class="flex flex-col items-center min-w-[50px] text-gray-600 active:scale-95 transition-transform">
+                    <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
+                    <span class="text-[10px] font-semibold">Photo</span>
+                </button>
+
+                <button id="btnAddCamera" class="flex flex-col items-center min-w-[50px] text-gray-600 active:scale-95 transition-transform">
+                    <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path></svg></div>
+                    <span class="text-[10px] font-semibold">Camera</span>
+                </button>
+
+                <button id="btnShapesMenu" class="flex flex-col items-center min-w-[50px] text-gray-600 active:scale-95 transition-transform">
+                    <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"></path></svg></div>
+                    <span class="text-[10px] font-semibold">Shapes</span>
+                </button>
+            </div>
+
+            <div class="w-px h-8 bg-gray-300 shrink-0"></div>
+
+            <div class="flex gap-3 items-center">
+                <button id="btnToggleSelect" class="flex flex-col items-center min-w-[50px] text-gray-600 active:scale-95 transition-transform">
+                    <div id="iconSelectBox" class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-1 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
+                    <span class="text-[10px] font-semibold">Select</span>
+                </button>
+
+                <button id="btnArrangeMenu" class="flex flex-col items-center min-w-[50px] text-gray-400 active:scale-95 transition-transform pointer-events-none opacity-50">
+                    <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg></div>
+                    <span class="text-[10px] font-semibold">Arrange</span>
+                </button>
+            </div>
+
+            <div class="w-px h-8 bg-gray-300 shrink-0"></div>
+
+            <button id="btnOpenExport" class="flex flex-col items-center min-w-[50px] text-blue-600 active:scale-95 transition-transform">
+                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mb-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg></div>
+                <span class="text-[10px] font-bold">Export</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Modals Overlay Background -->
+    <div id="modalBackdrop" class="fixed inset-0 bg-black/50 z-40 hidden backdrop-blur-sm transition-opacity"></div>
+
+    <!-- Info Modal -->
+    <div id="modalInfo" class="fixed inset-0 z-50 flex items-center justify-center hidden pointer-events-none">
+        <div class="bg-white w-11/12 max-w-sm rounded-2xl p-6 shadow-2xl pointer-events-auto">
+            <h2 class="text-xl font-bold mb-4">How to use</h2>
+            <ul class="text-sm space-y-3 text-gray-700 mb-6">
+                <li>👉 <b>Move Canvas:</b> Drag the background to pan. Use two fingers on the background to zoom out/in for a giant workspace.</li>
+                <li>👉 <b>Shapes:</b> Add a shape, tap it to take a photo to fill it, or crop it later.</li>
+                <li>👉 <b>Grouping:</b> Tap 'Select', tap multiple items, then tap 'Arrange' to group them together.</li>
+                <li>👉 <b>Export Area:</b> Zoom out and use 'Specific Area' in export to capture large high-res posters!</li>
+            </ul>
+            <button class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl btn-close-modal">Got it!</button>
+        </div>
+    </div>
+
+    <!-- Shapes Menu Modal -->
+    <div id="modalShapes" class="fixed bottom-0 left-0 right-0 z-50 flex justify-center hidden pointer-events-none pb-safe">
+        <div class="bg-white w-full rounded-t-3xl p-6 shadow-2xl pointer-events-auto modal-sheet">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold">Add Shape Placeholder</h2>
+                <button class="p-2 bg-gray-100 rounded-full btn-close-modal"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div class="grid grid-cols-4 gap-4 mb-4">
+                <button class="add-shape-btn flex flex-col items-center" data-shape="circle"><div class="w-12 h-12 border-2 border-gray-400 rounded-full mb-1"></div><span class="text-xs">Circle</span></button>
+                <button class="add-shape-btn flex flex-col items-center" data-shape="star"><div class="w-12 h-12 bg-gray-400 mb-1 shape-star"></div><span class="text-xs">Star</span></button>
+                <button class="add-shape-btn flex flex-col items-center" data-shape="hexagon"><div class="w-12 h-12 bg-gray-400 mb-1 shape-hexagon"></div><span class="text-xs">Hex</span></button>
+                <button class="add-shape-btn flex flex-col items-center" data-shape="triangle"><div class="w-12 h-12 bg-gray-400 mb-1 shape-triangle"></div><span class="text-xs">Triangle</span></button>
+                <button class="add-shape-btn flex flex-col items-center" data-shape="diamond"><div class="w-12 h-12 bg-gray-400 mb-1 shape-diamond"></div><span class="text-xs">Diamond</span></button>
+            </div>
+            <div class="border-t pt-4">
+                <button id="btnOpenCustomShape" class="w-full bg-indigo-50 text-indigo-700 font-bold py-3 rounded-xl flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    Draw Custom Shape
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Arrange Menu Modal -->
+    <div id="modalArrange" class="fixed bottom-0 left-0 right-0 z-50 flex justify-center hidden pointer-events-none pb-safe">
+        <div class="bg-white w-full rounded-t-3xl p-6 shadow-2xl pointer-events-auto modal-sheet">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold" id="arrangeTitle">Arrange Items</h2>
+                <button class="p-2 bg-gray-100 rounded-full btn-close-modal"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <button id="btnLayerUp" class="bg-gray-50 border border-gray-200 py-3 rounded-xl font-medium flex flex-col items-center"><svg class="w-6 h-6 mb-1 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>Bring Forward</button>
+                <button id="btnLayerDown" class="bg-gray-50 border border-gray-200 py-3 rounded-xl font-medium flex flex-col items-center"><svg class="w-6 h-6 mb-1 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>Send Backward</button>
+            </div>
+            <div class="grid grid-cols-2 gap-3" id="groupOptionsContainer">
+                <button id="btnGroup" class="bg-blue-50 text-blue-700 py-3 rounded-xl font-bold border border-blue-200">Group Selected</button>
+                <button id="btnUngroup" class="bg-orange-50 text-orange-700 py-3 rounded-xl font-bold border border-orange-200 opacity-50 pointer-events-none">Ungroup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Draw Custom Shape Modal -->
+    <div id="modalCustomShape" class="fixed inset-0 bg-gray-900 z-50 flex flex-col hidden">
+        <div class="p-4 flex justify-between items-center text-white bg-black shrink-0">
+            <button id="btnCloseCustomShape" class="p-2">Cancel</button>
+            <h2 class="font-bold">Draw Custom Shape</h2>
+            <button id="btnApplyCustomShape" class="p-2 text-blue-400 font-bold">Done</button>
+        </div>
+        <div class="flex-grow relative flex items-center justify-center bg-gray-800" id="customShapeContainer">
+            <canvas id="customShapeCanvas" class="absolute drawing-layer w-full h-full"></canvas>
+        </div>
+        <div class="p-4 text-center text-gray-400 text-sm bg-black shrink-0 pb-safe">
+            Draw a closed loop with your finger.
+        </div>
+    </div>
+
+    <!-- Camera Fill Modal -->
+    <div id="modalCamera" class="fixed inset-0 bg-black z-50 flex flex-col hidden">
+        <div class="p-4 flex justify-between items-center text-white z-10 shrink-0">
+            <button id="btnCloseCamera" class="p-2">Cancel</button>
+            <h2 class="font-bold">Fill Shape</h2>
+            <div class="w-10"></div>
+        </div>
+        <div class="relative flex-grow flex items-center justify-center overflow-hidden">
+            <video id="liveVideo" autoplay playsinline class="absolute inset-0 w-full h-full object-cover origin-center"></video>
+            <div id="cameraMask" class="absolute inset-0 bg-black/60 pointer-events-none" style="mask-image: radial-gradient(circle, transparent 40%, black 41%); -webkit-mask-image: radial-gradient(circle, transparent 40%, black 41%);"></div>
+            <div id="cameraOutline" class="absolute w-64 h-64 border-2 border-yellow-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] pointer-events-none"></div>
+        </div>
+        <div class="p-6 bg-black pb-safe shrink-0">
+            <div class="mb-4 flex items-center gap-4 text-white">
+                <span class="text-sm">Zoom</span>
+                <input type="range" id="cameraZoom" min="1" max="3" step="0.1" value="1" class="flex-grow">
+            </div>
+            <button id="btnSnapPhoto" class="w-full bg-yellow-500 text-black font-bold py-4 rounded-xl text-lg">Snap & Fill</button>
+        </div>
+    </div>
+
+    <!-- Crop Modal (Freehand & Rectangle) -->
+    <div id="modalCrop" class="fixed inset-0 bg-gray-900 z-50 flex flex-col hidden">
+        <div class="p-4 flex justify-between items-center text-white bg-black shrink-0">
+            <button id="btnCloseCrop" class="p-2">Cancel</button>
+            <div class="flex bg-gray-800 rounded-lg p-1">
+                <button id="btnCropModeFree" class="px-3 py-1 rounded text-sm font-medium bg-gray-600 text-white shadow">Freehand</button>
+                <button id="btnCropModeRect" class="px-3 py-1 rounded text-sm font-medium text-gray-400 hover:text-white">Box</button>
+            </div>
+            <button id="btnApplyCrop" class="p-2 text-blue-400 font-bold">Apply</button>
+        </div>
+        <div class="flex-grow relative flex items-center justify-center overflow-hidden bg-gray-800" id="cropContainer">
+            <img id="cropTargetImg" class="max-w-full max-h-full object-contain pointer-events-none opacity-50">
+            <canvas id="cropCanvas" class="absolute drawing-layer z-10 top-0 left-0 w-full h-full"></canvas>
+            
+            <div id="cropRectBox" class="absolute hidden border-2 border-blue-500 z-20 touch-none shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] cursor-move">
+                <div class="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-blue-500 rounded-full crop-handle cursor-nwse-resize" data-handle="nw"></div>
+                <div class="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-blue-500 rounded-full crop-handle cursor-nesw-resize" data-handle="ne"></div>
+                <div class="absolute -bottom-3 -left-3 w-6 h-6 bg-white border-2 border-blue-500 rounded-full crop-handle cursor-nesw-resize" data-handle="sw"></div>
+                <div class="absolute -bottom-3 -right-3 w-6 h-6 bg-white border-2 border-blue-500 rounded-full crop-handle cursor-nwse-resize" data-handle="se"></div>
+            </div>
+        </div>
+        <div id="cropInstruction" class="p-4 text-center text-gray-400 text-sm bg-black shrink-0 pb-safe">
+            Draw a closed shape with your finger.
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="modalExport" class="fixed bottom-0 left-0 right-0 z-50 flex justify-center hidden pointer-events-none pb-safe">
+        <div class="bg-white w-full rounded-t-3xl p-6 shadow-2xl pointer-events-auto modal-sheet" id="exportSheet">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">Export Options</h2>
+                <button class="p-2 bg-gray-100 rounded-full btn-close-modal"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Format</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button class="export-fmt-btn border-2 border-blue-500 bg-blue-50 text-blue-700 py-2 rounded-lg font-medium" data-fmt="png">PNG</button>
+                        <button class="export-fmt-btn border-2 border-gray-200 text-gray-600 py-2 rounded-lg font-medium" data-fmt="jpeg">JPEG</button>
+                        <button class="export-fmt-btn border-2 border-gray-200 text-gray-600 py-2 rounded-lg font-medium" data-fmt="json">Project</button>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <p class="font-medium">Transparent Background</p>
+                        <p class="text-xs text-gray-500">Only works with PNG</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="checkTransparent" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <p class="font-medium">Specific Area Only</p>
+                        <p class="text-xs text-gray-500">Capture giant canvas area</p>
+                    </div>
+                    <button id="btnSelectArea" class="bg-indigo-100 text-indigo-700 px-3 py-1 rounded text-sm font-semibold">Select Area</button>
+                </div>
+            </div>
+
+            <button id="btnDoExport" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-lg shadow-lg active:bg-blue-700">Save to Device</button>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black/70 z-[60] hidden flex-col items-center justify-center backdrop-blur-md">
+        <svg class="animate-spin h-12 w-12 text-white mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        <p class="text-white font-medium text-lg" id="loadingText">Processing...</p>
+    </div>
+
+    <script>
+        const workspace = document.getElementById('workspace');
+        const canvasContainer = document.getElementById('canvas-container');
+        let zIndexCounter = 10;
+        
+        // Canvas State
+        let canvasTx = 0, canvasTy = 0, canvasScale = 1;
+
+        // Selection State
+        let selectedWrappers = [];
+        let isMultiSelectMode = false;
+
+        // --- Modals Management ---
+        const backdrop = document.getElementById('modalBackdrop');
+        let activeModal = null;
+
+        function openModal(id) {
+            if(activeModal) closeModal(activeModal);
+            const modal = document.getElementById(id);
+            modal.classList.remove('hidden');
+            if(id !== 'modalCamera' && id !== 'modalCrop' && id !== 'modalCustomShape') backdrop.classList.remove('hidden');
+            
+            const sheet = modal.querySelector('.modal-sheet');
+            if(sheet) setTimeout(() => sheet.classList.add('open'), 10);
+            activeModal = id;
+        }
+
+        function closeModal(id) {
+            const modal = document.getElementById(id || activeModal);
+            if(!modal) return;
+            const sheet = modal.querySelector('.modal-sheet');
+            if(sheet) {
+                sheet.classList.remove('open');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            } else {
+                modal.classList.add('hidden');
+            }
+            backdrop.classList.add('hidden');
+            activeModal = null;
+        }
+
+        document.querySelectorAll('.btn-close-modal').forEach(btn => btn.onclick = () => closeModal());
+        backdrop.onclick = () => closeModal();
+
+        // Menu triggers
+        document.getElementById('btnInfo').onclick = () => openModal('modalInfo');
+        document.getElementById('btnShapesMenu').onclick = () => openModal('modalShapes');
+        document.getElementById('btnOpenExport').onclick = () => { clearSelection(); openModal('modalExport'); };
+        
+        document.getElementById('btnArrangeMenu').onclick = () => {
+            if(selectedWrappers.length === 0) return;
+            // Config Arrange Menu based on selection
+            const btnUngroup = document.getElementById('btnUngroup');
+            const btnGroup = document.getElementById('btnGroup');
+            
+            if(selectedWrappers.length === 1 && selectedWrappers[0].classList.contains('group-wrapper')) {
+                btnUngroup.classList.remove('opacity-50', 'pointer-events-none');
+                btnGroup.classList.add('opacity-50', 'pointer-events-none');
+                document.getElementById('arrangeTitle').innerText = 'Group Options';
+            } else if(selectedWrappers.length > 1) {
+                btnGroup.classList.remove('opacity-50', 'pointer-events-none');
+                btnUngroup.classList.add('opacity-50', 'pointer-events-none');
+                document.getElementById('arrangeTitle').innerText = `Arrange (${selectedWrappers.length} items)`;
+            } else {
+                btnGroup.classList.add('opacity-50', 'pointer-events-none');
+                btnUngroup.classList.add('opacity-50', 'pointer-events-none');
+                document.getElementById('arrangeTitle').innerText = 'Arrange Item';
+            }
+            openModal('modalArrange');
+        };
+
+        const btnToggleSelect = document.getElementById('btnToggleSelect');
+        const iconSelectBox = document.getElementById('iconSelectBox');
+        btnToggleSelect.onclick = () => {
+            isMultiSelectMode = !isMultiSelectMode;
+            if(isMultiSelectMode) {
+                iconSelectBox.classList.replace('bg-gray-100', 'bg-blue-100');
+                iconSelectBox.classList.add('text-blue-600', 'ring-2', 'ring-blue-500');
+            } else {
+                iconSelectBox.classList.replace('bg-blue-100', 'bg-gray-100');
+                iconSelectBox.classList.remove('text-blue-600', 'ring-2', 'ring-blue-500');
+                if(selectedWrappers.length > 1) clearSelection(); // clear if turning off
+            }
+        };
+
+        function updateToolbarState() {
+            const btnArrange = document.getElementById('btnArrangeMenu');
+            if(selectedWrappers.length > 0) {
+                btnArrange.classList.remove('pointer-events-none', 'opacity-50', 'text-gray-400');
+                btnArrange.classList.add('text-blue-600');
+            } else {
+                btnArrange.classList.add('pointer-events-none', 'opacity-50', 'text-gray-400');
+                btnArrange.classList.remove('text-blue-600');
+            }
+        }
+
+        // --- Core Application Logic ---
+
+        function applyCanvasTransform() {
+            canvasContainer.style.transform = `translate(${canvasTx}px, ${canvasTy}px) scale(${canvasScale})`;
+        }
+
+        function createItem(src, isShape = false, shapeClass = '') {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'draggable-wrapper';
+            
+            // Spawn at center of current view
+            const cx = -canvasTx / canvasScale;
+            const cy = -canvasTy / canvasScale;
+
+            wrapper.dataset.tx = cx; wrapper.dataset.ty = cy;
+            wrapper.dataset.scale = isShape ? 1.5 : 1; 
+            wrapper.dataset.angle = isShape ? 0 : (Math.random() * 10) - 5;
+            
+            const content = document.createElement('img');
+            content.className = `item-content ${shapeClass}`;
+            content.draggable = false;
+            
+            if (src) {
+                content.src = src;
+            } else if (isShape) {
+                content.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
+                content.style.minWidth = '150px'; content.style.minHeight = '150px';
+                content.style.backgroundColor = '#cbd5e1';
+            }
+
+            const controls = document.createElement('div');
+            controls.className = 'item-controls';
+            
+            const btnDel = document.createElement('div'); btnDel.className = 'control-btn btn-delete'; btnDel.innerHTML = '✕';
+            const btnCopy = document.createElement('div'); btnCopy.className = 'control-btn btn-copy'; btnCopy.innerHTML = '⧉';
+            controls.appendChild(btnDel); controls.appendChild(btnCopy);
+
+            if (isShape && !src && !shapeClass.includes('custom')) {
+                const btnCam = document.createElement('div'); btnCam.className = 'control-btn btn-camera'; btnCam.innerHTML = '📷';
+                controls.appendChild(btnCam);
+                btnCam.onclick = (e) => { e.stopPropagation(); openCameraModal(wrapper, shapeClass); };
+            } else if (!isShape || src || shapeClass.includes('custom')) {
+                const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
+                controls.appendChild(btnCrop);
+                btnCrop.onclick = (e) => { e.stopPropagation(); openCropModal(wrapper); };
+            }
+
+            btnDel.onclick = (e) => { e.stopPropagation(); wrapper.remove(); updateSelectionAfterRemove(wrapper); };
+            btnCopy.onclick = (e) => { e.stopPropagation(); duplicateItem(wrapper); };
+
+            wrapper.appendChild(content); wrapper.appendChild(controls);
+            
+            applyTransform(wrapper);
+            canvasContainer.appendChild(wrapper);
+            selectItem(wrapper);
+            return wrapper;
+        }
+
+        function duplicateItem(wrapper) {
+            const clone = wrapper.cloneNode(true);
+            const controls = clone.querySelector('.item-controls');
+            controls.innerHTML = '';
+            
+            const btnDel = document.createElement('div'); btnDel.className = 'control-btn btn-delete'; btnDel.innerHTML = '✕';
+            const btnCopy = document.createElement('div'); btnCopy.className = 'control-btn btn-copy'; btnCopy.innerHTML = '⧉';
+            controls.appendChild(btnDel); controls.appendChild(btnCopy);
+            
+            btnDel.onclick = (e) => { e.stopPropagation(); clone.remove(); updateSelectionAfterRemove(clone); };
+            btnCopy.onclick = (e) => { e.stopPropagation(); duplicateItem(clone); };
+            
+            if(wrapper.querySelector('.btn-crop')) {
+                const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
+                btnCrop.onclick = (e) => { e.stopPropagation(); openCropModal(clone); };
+                controls.appendChild(btnCrop);
+            }
+            
+            clone.dataset.tx = parseFloat(wrapper.dataset.tx) + 20;
+            clone.dataset.ty = parseFloat(wrapper.dataset.ty) + 20;
+            
+            applyTransform(clone);
+            canvasContainer.appendChild(clone);
+            selectItem(clone);
+        }
+
+        function selectItem(wrapper) {
+            if(!isMultiSelectMode) clearSelection();
+            if(wrapper) {
+                if(selectedWrappers.includes(wrapper)) {
+                    // Deselect if already selected in multi-mode
+                    if(isMultiSelectMode) {
+                        wrapper.classList.remove('wrapper-selected');
+                        selectedWrappers = selectedWrappers.filter(w => w !== wrapper);
+                    }
+                } else {
+                    zIndexCounter++;
+                    wrapper.style.zIndex = zIndexCounter;
+                    wrapper.classList.add('wrapper-selected');
+                    selectedWrappers.push(wrapper);
+                }
+            }
+            updateToolbarState();
+        }
+
+        function clearSelection() {
+            selectedWrappers.forEach(w => w.classList.remove('wrapper-selected'));
+            selectedWrappers = [];
+            updateToolbarState();
+        }
+
+        function updateSelectionAfterRemove(wrapper) {
+            selectedWrappers = selectedWrappers.filter(w => w !== wrapper);
+            updateToolbarState();
+        }
+
+        function applyTransform(el) {
+            el.style.transform = `translate(calc(-50% + ${el.dataset.tx}px), calc(-50% + ${el.dataset.ty}px)) scale(${el.dataset.scale}) rotate(${el.dataset.angle}deg)`;
+        }
+
+        // --- Layers & Groups ---
+        document.getElementById('btnLayerUp').onclick = () => {
+            selectedWrappers.forEach(w => w.style.zIndex = ++zIndexCounter);
+            closeModal();
+        };
+        document.getElementById('btnLayerDown').onclick = () => {
+            selectedWrappers.forEach(w => w.style.zIndex = Math.max(0, parseInt(w.style.zIndex||0) - 1));
+            closeModal();
+        };
+
+        document.getElementById('btnGroup').onclick = () => {
+            if(selectedWrappers.length < 2) return;
+            let cx=0, cy=0;
+            selectedWrappers.forEach(w => { cx += parseFloat(w.dataset.tx); cy += parseFloat(w.dataset.ty); });
+            cx /= selectedWrappers.length; cy /= selectedWrappers.length;
+
+            const group = document.createElement('div');
+            group.className = 'draggable-wrapper group-wrapper';
+            group.dataset.tx = cx; group.dataset.ty = cy;
+            group.dataset.scale = 1; group.dataset.angle = 0;
+            group.style.zIndex = ++zIndexCounter;
+
+            const controls = document.createElement('div');
+            controls.className = 'item-controls';
+            const btnDel = document.createElement('div'); btnDel.className = 'control-btn btn-delete'; btnDel.innerHTML = '✕';
+            btnDel.onclick = (e) => { e.stopPropagation(); group.remove(); updateSelectionAfterRemove(group); };
+            controls.appendChild(btnDel);
+            group.appendChild(controls);
+
+            selectedWrappers.forEach(w => {
+                w.dataset.tx = parseFloat(w.dataset.tx) - cx;
+                w.dataset.ty = parseFloat(w.dataset.ty) - cy;
+                w.classList.remove('wrapper-selected');
+                w.querySelector('.item-controls').style.display = 'none'; // hide inner controls
+                group.appendChild(w);
+                applyTransform(w);
+            });
+            canvasContainer.appendChild(group);
+            applyTransform(group);
+            
+            isMultiSelectMode = false;
+            iconSelectBox.classList.replace('bg-blue-100', 'bg-gray-100');
+            iconSelectBox.classList.remove('text-blue-600', 'ring-2', 'ring-blue-500');
+            clearSelection();
+            selectItem(group);
+            closeModal();
+        };
+
+        document.getElementById('btnUngroup').onclick = () => {
+            const group = selectedWrappers[0];
+            if(!group || !group.classList.contains('group-wrapper')) return;
+            
+            const pTx = parseFloat(group.dataset.tx); const pTy = parseFloat(group.dataset.ty);
+            const pS = parseFloat(group.dataset.scale); const pA = parseFloat(group.dataset.angle) * Math.PI/180;
+            
+            Array.from(group.children).forEach(c => {
+                if(!c.classList.contains('draggable-wrapper')) return;
+                const ctx = parseFloat(c.dataset.tx); const cty = parseFloat(c.dataset.ty);
+                const rtx = ctx * Math.cos(pA) - cty * Math.sin(pA);
+                const rty = ctx * Math.sin(pA) + cty * Math.cos(pA);
+                
+                c.dataset.tx = pTx + (rtx * pS);
+                c.dataset.ty = pTy + (rty * pS);
+                c.dataset.scale = parseFloat(c.dataset.scale) * pS;
+                c.dataset.angle = parseFloat(c.dataset.angle) + (pA * 180/Math.PI);
+                
+                c.querySelector('.item-controls').style.display = ''; 
+                canvasContainer.appendChild(c);
+                applyTransform(c);
+            });
+            group.remove();
+            clearSelection();
+            closeModal();
+        };
+
+        // --- Unified Gesture Engine (Canvas + Items) ---
+        let getDist = (t1, t2) => Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        let getAngle = (t1, t2) => Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * 180 / Math.PI;
+
+        // Canvas state for gesture
+        let cInitTx=0, cInitTy=0, cInitScale=1;
+        let cStartT1=null, cStartT2=null;
+        
+        // Item state for gesture
+        let iInitData = new Map(); // Store initial states for all selected items
+        let primaryWrapper = null; // The main item being interacted with
+        let startT1=null, startT2=null;
+
+        workspace.addEventListener('touchstart', e => {
+            if (drawingExportArea) return;
+            
+            const controlBtn = e.target.closest('.control-btn');
+            if(controlBtn) return; // Let buttons handle their own clicks
+
+            const wrapper = e.target.closest('.draggable-wrapper');
+            
+            if (wrapper) {
+                // Item Interaction
+                if(!selectedWrappers.includes(wrapper)) selectItem(wrapper);
+                primaryWrapper = wrapper;
+                
+                // Save initial state for all selected items
+                iInitData.clear();
+                selectedWrappers.forEach(w => {
+                    iInitData.set(w, {
+                        tx: parseFloat(w.dataset.tx), ty: parseFloat(w.dataset.ty),
+                        scale: parseFloat(w.dataset.scale), angle: parseFloat(w.dataset.angle)
+                    });
+                });
+
+                if (e.touches.length === 1) {
+                    startT1 = {x: e.touches[0].clientX, y: e.touches[0].clientY}; startT2 = null;
+                } else if (e.touches.length === 2) {
+                    startT1 = e.touches[0]; startT2 = e.touches[1];
+                }
+            } else if (e.target === workspace || e.target === canvasContainer) {
+                // Canvas Interaction
+                clearSelection();
+                primaryWrapper = null;
+                cInitTx = canvasTx; cInitTy = canvasTy; cInitScale = canvasScale;
+                
+                if(e.touches.length===1) {
+                    cStartT1 = {x: e.touches[0].clientX, y: e.touches[0].clientY}; cStartT2 = null;
+                } else if(e.touches.length===2) {
+                    cStartT1 = e.touches[0]; cStartT2 = e.touches[1];
+                }
+            }
+        }, { passive: false });
+
+        workspace.addEventListener('touchmove', e => {
+            if (drawingExportArea) return handleExportAreaDraw(e);
+            if (e.target.closest('.control-btn')) return;
+            e.preventDefault();
+
+            if (primaryWrapper && startT1) {
+                // Item Movement (Scale delta by canvasScale so it tracks perfectly)
+                if (e.touches.length === 1 && !startT2) {
+                    const dx = (e.touches[0].clientX - startT1.x) / canvasScale;
+                    const dy = (e.touches[0].clientY - startT1.y) / canvasScale;
+                    
+                    // Move ALL selected items
+                    selectedWrappers.forEach(w => {
+                        const init = iInitData.get(w);
+                        w.dataset.tx = init.tx + dx; w.dataset.ty = init.ty + dy;
+                        applyTransform(w);
+                    });
+                } else if (e.touches.length === 2 && startT2) {
+                    // Pinch/Rotate applies ONLY to the primary touched item unless grouped
+                    const cDist = getDist(e.touches[0], e.touches[1]);
+                    const cAngle = getAngle(e.touches[0], e.touches[1]);
+                    const iDist = getDist(startT1, startT2);
+                    const iAngle = getAngle(startT1, startT2);
+                    
+                    const init = iInitData.get(primaryWrapper);
+                    primaryWrapper.dataset.scale = Math.max(0.1, init.scale * (cDist / iDist));
+                    primaryWrapper.dataset.angle = init.angle + (cAngle - iAngle);
+                    applyTransform(primaryWrapper);
+                }
+            } else if (!primaryWrapper && cStartT1) {
+                // Canvas Movement
+                if(e.touches.length === 1 && !cStartT2) {
+                    canvasTx = cInitTx + (e.touches[0].clientX - cStartT1.x);
+                    canvasTy = cInitTy + (e.touches[0].clientY - cStartT1.y);
+                } else if(e.touches.length === 2 && cStartT2) {
+                    const cDist = getDist(e.touches[0], e.touches[1]);
+                    const iDist = getDist(cStartT1, cStartT2);
+                    canvasScale = Math.max(0.1, Math.min(5, cInitScale * (cDist / iDist)));
+                    
+                    // Basic center-screen zoom for simplicity
+                    canvasTx = cInitTx + (e.touches[0].clientX - cStartT1.x); // rough pan while zooming
+                    canvasTy = cInitTy + (e.touches[0].clientY - cStartT1.y);
+                }
+                applyCanvasTransform();
+            }
+        }, { passive: false });
+
+        workspace.addEventListener('touchend', e => {
+            if (drawingExportArea) { drawingExportArea = false; return; }
+            if (primaryWrapper) {
+                if (e.touches.length === 0) { startT1 = null; startT2 = null; primaryWrapper = null; }
+                else if (e.touches.length === 1) {
+                    startT1 = {x: e.touches[0].clientX, y: e.touches[0].clientY}; startT2 = null;
+                    iInitData.forEach((init, w) => { init.tx = parseFloat(w.dataset.tx); init.ty = parseFloat(w.dataset.ty); });
+                }
+            } else {
+                if(e.touches.length === 0) { cStartT1 = null; cStartT2 = null; }
+                else if(e.touches.length === 1) {
+                    cStartT1 = {x: e.touches[0].clientX, y: e.touches[0].clientY}; cStartT2 = null;
+                    cInitTx = canvasTx; cInitTy = canvasTy;
+                }
+            }
+        });
+
+        // Mouse Support
+        let isMouseDown = false, mouseStartX = 0, mouseStartY = 0, isCanvasPan = false;
+        workspace.addEventListener('mousedown', e => {
+            if (drawingExportArea) { startExportAreaDraw(e); return; }
+            if (e.target.closest('.control-btn')) return;
+            const wrapper = e.target.closest('.draggable-wrapper');
+            
+            isMouseDown = true; mouseStartX = e.clientX; mouseStartY = e.clientY;
+            
+            if (wrapper) {
+                isCanvasPan = false;
+                if(!selectedWrappers.includes(wrapper)) selectItem(wrapper);
+                iInitData.clear();
+                selectedWrappers.forEach(w => {
+                    iInitData.set(w, { tx: parseFloat(w.dataset.tx), ty: parseFloat(w.dataset.ty) });
+                });
+            } else {
+                isCanvasPan = true;
+                clearSelection();
+                cInitTx = canvasTx; cInitTy = canvasTy;
+            }
+        });
+        window.addEventListener('mousemove', e => {
+            if (drawingExportArea && isMouseDown) { updateExportAreaDraw(e); return; }
+            if (!isMouseDown) return;
+            
+            const dx = e.clientX - mouseStartX;
+            const dy = e.clientY - mouseStartY;
+
+            if (isCanvasPan) {
+                canvasTx = cInitTx + dx; canvasTy = cInitTy + dy;
+                applyCanvasTransform();
+            } else {
+                selectedWrappers.forEach(w => {
+                    const init = iInitData.get(w);
+                    w.dataset.tx = init.tx + (dx / canvasScale); 
+                    w.dataset.ty = init.ty + (dy / canvasScale);
+                    applyTransform(w);
+                });
+            }
+        });
+        window.addEventListener('mouseup', () => { isMouseDown = false; drawingExportArea = false; });
+        
+        // Mouse wheel to zoom canvas
+        workspace.addEventListener('wheel', e => {
+            if(e.target.closest('.modal-sheet')) return;
+            e.preventDefault();
+            const zoomAmount = e.deltaY * -0.001;
+            canvasScale = Math.max(0.1, Math.min(5, canvasScale * (1 + zoomAmount)));
+            applyCanvasTransform();
+        }, {passive: false});
+
+        // --- Inputs ---
+        function readFileAsBase64(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        document.getElementById('btnAddGallery').onclick = () => document.getElementById('fileInput').click();
+        document.getElementById('btnAddCamera').onclick = () => document.getElementById('cameraInput').click();
+
+        async function handleImageFiles(e) {
+            const files = e.target.files;
+            for (let file of files) {
+                if (!file.type.startsWith('image/')) continue;
+                const base64 = await readFileAsBase64(file);
+                createItem(base64);
+            }
+            e.target.value = '';
+        }
+        document.getElementById('fileInput').onchange = handleImageFiles;
+        document.getElementById('cameraInput').onchange = handleImageFiles;
+        document.getElementById('btnClear').onclick = () => { 
+            if(confirm('Clear workspace?')) {
+                const arr = Array.from(canvasContainer.children);
+                arr.forEach(c => { if(c.id !== 'exportAreaBox') c.remove(); });
+                canvasTx=0; canvasTy=0; canvasScale=1; applyCanvasTransform();
+            }
+        };
+
+        document.querySelectorAll('.add-shape-btn').forEach(btn => {
+            btn.onclick = () => {
+                createItem(null, true, `shape-${btn.dataset.shape}`);
+                closeModal();
+            };
+        });
+
+        // --- Draw Custom Shape Modal ---
+        const modalCustomShape = document.getElementById('modalCustomShape');
+        const customCanvas = document.getElementById('customShapeCanvas');
+        const customCtx = customCanvas.getContext('2d');
+        let customPoints = [];
+        let isDrawingCustom = false;
+
+        document.getElementById('btnOpenCustomShape').onclick = () => {
+            closeModal();
+            modalCustomShape.classList.remove('hidden');
+            setTimeout(() => {
+                const rect = document.getElementById('customShapeContainer').getBoundingClientRect();
+                customCanvas.width = rect.width; customCanvas.height = rect.height;
+                customCtx.clearRect(0,0, customCanvas.width, customCanvas.height);
+                customPoints = [];
+            }, 50);
+        };
+        document.getElementById('btnCloseCustomShape').onclick = () => modalCustomShape.classList.add('hidden');
+
+        function startCustomDraw(e) {
+            isDrawingCustom = true;
+            customPoints = [getMousePos(customCanvas, e)];
+            customCtx.clearRect(0,0, customCanvas.width, customCanvas.height);
+        }
+        function doCustomDraw(e) {
+            if(!isDrawingCustom) return;
+            e.preventDefault();
+            customPoints.push(getMousePos(customCanvas, e));
+            customCtx.clearRect(0,0, customCanvas.width, customCanvas.height);
+            customCtx.beginPath();
+            customCtx.moveTo(customPoints[0].x, customPoints[0].y);
+            for(let i=1; i<customPoints.length; i++) customCtx.lineTo(customPoints[i].x, customPoints[i].y);
+            customCtx.strokeStyle = '#cbd5e1'; customCtx.lineWidth = 5; customCtx.stroke();
+        }
+        function endCustomDraw() { isDrawingCustom = false; }
+        
+        customCanvas.addEventListener('mousedown', startCustomDraw);
+        customCanvas.addEventListener('mousemove', doCustomDraw);
+        customCanvas.addEventListener('mouseup', endCustomDraw);
+        customCanvas.addEventListener('touchstart', startCustomDraw, {passive: false});
+        customCanvas.addEventListener('touchmove', doCustomDraw, {passive: false});
+        customCanvas.addEventListener('touchend', endCustomDraw);
+
+        document.getElementById('btnApplyCustomShape').onclick = () => {
+            if(customPoints.length < 3) return alert("Draw a shape!");
+            
+            // Find bounds
+            let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+            customPoints.forEach(p => { minX=Math.min(minX,p.x); minY=Math.min(minY,p.y); maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y); });
+            const w = maxX - minX, h = maxY - minY;
+            
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = w + 10; tempCanvas.height = h + 10;
+            const tCtx = tempCanvas.getContext('2d');
+            
+            tCtx.beginPath();
+            customPoints.forEach((p, i) => {
+                const nx = p.x - minX + 5; const ny = p.y - minY + 5;
+                if(i===0) tCtx.moveTo(nx, ny); else tCtx.lineTo(nx, ny);
+            });
+            tCtx.closePath();
+            tCtx.fillStyle = '#cbd5e1';
+            tCtx.fill();
+
+            createItem(tempCanvas.toDataURL('image/png'), true, 'shape-custom');
+            modalCustomShape.classList.add('hidden');
+        };
+
+        // --- Camera Modal ---
+        const modalCamera = document.getElementById('modalCamera');
+        const liveVideo = document.getElementById('liveVideo');
+        const cameraOutline = document.getElementById('cameraOutline');
+        const cameraZoom = document.getElementById('cameraZoom');
+        let currentCameraStream = null;
+        let targetShapeWrapper = null;
+
+        async function openCameraModal(wrapper, shapeClass) {
+            targetShapeWrapper = wrapper;
+            modalCamera.classList.remove('hidden');
+            cameraOutline.className = `absolute w-64 h-64 border-2 border-yellow-400 pointer-events-none shadow-[0_0_0_9999px_rgba(0,0,0,0.8)] ${shapeClass}`;
+            
+            try {
+                currentCameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1080 } } });
+                liveVideo.srcObject = currentCameraStream;
+            } catch (err) { alert("Camera access denied."); closeCameraModal(); }
+        }
+
+        function closeCameraModal() {
+            modalCamera.classList.add('hidden');
+            if(currentCameraStream) { currentCameraStream.getTracks().forEach(t => t.stop()); currentCameraStream = null; }
+        }
+        document.getElementById('btnCloseCamera').onclick = closeCameraModal;
+
+        cameraZoom.oninput = (e) => { liveVideo.style.transform = `scale(${e.target.value})`; };
+
+        document.getElementById('btnSnapPhoto').onclick = () => {
+            if(!currentCameraStream) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = 800; canvas.height = 800;
+            const ctx = canvas.getContext('2d');
+            
+            const scale = parseFloat(cameraZoom.value);
+            const vw = liveVideo.videoWidth; const vh = liveVideo.videoHeight;
+            const minDim = Math.min(vw, vh) / scale;
+            const sx = (vw - minDim) / 2; const sy = (vh - minDim) / 2;
+            
+            ctx.drawImage(liveVideo, sx, sy, minDim, minDim, 0, 0, canvas.width, canvas.height);
+            
+            const content = targetShapeWrapper.querySelector('.item-content');
+            content.src = canvas.toDataURL('image/png');
+            content.style.backgroundColor = 'transparent';
+            
+            targetShapeWrapper.querySelector('.btn-camera')?.remove();
+            if(!targetShapeWrapper.querySelector('.btn-crop')) {
+                const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
+                btnCrop.onclick = (e) => { e.stopPropagation(); openCropModal(targetShapeWrapper); };
+                targetShapeWrapper.querySelector('.item-controls').appendChild(btnCrop);
+            }
+            closeCameraModal();
+        };
+
+        // --- Crop Modal (Freehand & Rect) ---
+        const modalCrop = document.getElementById('modalCrop');
+        const cropTargetImg = document.getElementById('cropTargetImg');
+        const cropCanvas = document.getElementById('cropCanvas');
+        const cropRectBox = document.getElementById('cropRectBox');
+        const ctxCrop = cropCanvas.getContext('2d');
+        let targetCropWrapper = null;
+        let cropPoints = [];
+        let isDrawingCrop = false;
+        let cropMode = 'freehand';
+
+        function setCropMode(mode) {
+            cropMode = mode;
+            if (mode === 'freehand') {
+                document.getElementById('btnCropModeFree').className = 'px-3 py-1 rounded text-sm font-medium bg-gray-600 text-white shadow';
+                document.getElementById('btnCropModeRect').className = 'px-3 py-1 rounded text-sm font-medium text-gray-400 hover:text-white';
+                cropCanvas.style.display = 'block'; cropRectBox.classList.add('hidden');
+                document.getElementById('cropInstruction').innerText = 'Draw a closed shape with your finger.';
+            } else {
+                document.getElementById('btnCropModeRect').className = 'px-3 py-1 rounded text-sm font-medium bg-gray-600 text-white shadow';
+                document.getElementById('btnCropModeFree').className = 'px-3 py-1 rounded text-sm font-medium text-gray-400 hover:text-white';
+                cropCanvas.style.display = 'none'; cropRectBox.classList.remove('hidden');
+                document.getElementById('cropInstruction').innerText = 'Drag box or corners to adjust.';
+                initRectBox();
+            }
+        }
+
+        document.getElementById('btnCropModeFree').onclick = () => setCropMode('freehand');
+        document.getElementById('btnCropModeRect').onclick = () => setCropMode('rect');
+
+        function openCropModal(wrapper) {
+            targetCropWrapper = wrapper;
+            const img = wrapper.querySelector('.item-content');
+            cropTargetImg.src = img.src;
+            modalCrop.classList.remove('hidden');
+            
+            setTimeout(() => {
+                const rect = document.getElementById('cropContainer').getBoundingClientRect();
+                cropCanvas.width = rect.width; cropCanvas.height = rect.height;
+                ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+                cropPoints = [];
+                setCropMode('freehand');
+            }, 50);
+        }
+        document.getElementById('btnCloseCrop').onclick = () => modalCrop.classList.add('hidden');
+
+        function getImgMetrics() {
+            if(!cropTargetImg.naturalWidth) return null;
+            const rect = cropTargetImg.getBoundingClientRect();
+            const canvasRect = document.getElementById('cropContainer').getBoundingClientRect();
+            const imgRatio = cropTargetImg.naturalWidth / cropTargetImg.naturalHeight;
+            const boxRatio = rect.width / rect.height;
+            let drawWidth, drawHeight, offsetX, offsetY;
+            
+            if (imgRatio > boxRatio) {
+                drawWidth = rect.width; drawHeight = rect.width / imgRatio;
+                offsetX = rect.left - canvasRect.left; offsetY = rect.top - canvasRect.top + (rect.height - drawHeight)/2;
+            } else {
+                drawHeight = rect.height; drawWidth = rect.height * imgRatio;
+                offsetY = rect.top - canvasRect.top; offsetX = rect.left - canvasRect.left + (rect.width - drawWidth)/2;
+            }
+            return { drawWidth, drawHeight, offsetX, offsetY, scale: cropTargetImg.naturalWidth / drawWidth };
+        }
+
+        // Rect Crop Logic
+        function initRectBox() {
+            const metrics = getImgMetrics(); if(!metrics) return;
+            const w = metrics.drawWidth * 0.8; const h = metrics.drawHeight * 0.8;
+            cropRectBox.style.width = w + 'px'; cropRectBox.style.height = h + 'px';
+            cropRectBox.style.left = (metrics.offsetX + (metrics.drawWidth - w) / 2) + 'px';
+            cropRectBox.style.top = (metrics.offsetY + (metrics.drawHeight - h) / 2) + 'px';
+        }
+
+        let activeHandle = null, isMovingRect = false;
+        let rectStartX=0, rectStartY=0, rectInitL=0, rectInitT=0, rectInitW=0, rectInitH=0;
+
+        function startRectInteraction(e) {
+            if(cropMode !== 'rect') return; e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            rectStartX = touch.clientX; rectStartY = touch.clientY;
+            rectInitL = cropRectBox.offsetLeft; rectInitT = cropRectBox.offsetTop;
+            rectInitW = cropRectBox.offsetWidth; rectInitH = cropRectBox.offsetHeight;
+            if(e.target.classList.contains('crop-handle')) activeHandle = e.target.dataset.handle;
+            else isMovingRect = true;
+        }
+
+        function moveRectInteraction(e) {
+            if(cropMode !== 'rect' || (!activeHandle && !isMovingRect)) return; e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            const dx = touch.clientX - rectStartX; const dy = touch.clientY - rectStartY;
+            if (isMovingRect) {
+                cropRectBox.style.left = (rectInitL + dx) + 'px'; cropRectBox.style.top = (rectInitT + dy) + 'px';
+            } else if (activeHandle) {
+                let newL = rectInitL, newT = rectInitT, newW = rectInitW, newH = rectInitH;
+                if(activeHandle.includes('w')) { newL = rectInitL + dx; newW = rectInitW - dx; }
+                if(activeHandle.includes('e')) { newW = rectInitW + dx; }
+                if(activeHandle.includes('n')) { newT = rectInitT + dy; newH = rectInitH - dy; }
+                if(activeHandle.includes('s')) { newH = rectInitH + dy; }
+                if(newW > 40) { cropRectBox.style.left = newL + 'px'; cropRectBox.style.width = newW + 'px'; }
+                if(newH > 40) { cropRectBox.style.top = newT + 'px'; cropRectBox.style.height = newH + 'px'; }
+            }
+        }
+        function endRectInteraction() { activeHandle = null; isMovingRect = false; }
+
+        cropRectBox.addEventListener('touchstart', startRectInteraction, {passive:false});
+        cropRectBox.addEventListener('mousedown', startRectInteraction);
+        window.addEventListener('touchmove', moveRectInteraction, {passive:false});
+        window.addEventListener('mousemove', moveRectInteraction);
+        window.addEventListener('touchend', endRectInteraction);
+        window.addEventListener('mouseup', endRectInteraction);
+
+        // Freehand Draw Logic
+        function getMousePos(canvas, evt) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        const startCropDraw = (e) => {
+            if(cropMode !== 'freehand') return;
+            isDrawingCrop = true; cropPoints = [getMousePos(cropCanvas, e)];
+            ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+        };
+        const doCropDraw = (e) => {
+            if (!isDrawingCrop || cropMode !== 'freehand') return; e.preventDefault();
+            cropPoints.push(getMousePos(cropCanvas, e));
+            ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+            ctxCrop.beginPath();
+            ctxCrop.moveTo(cropPoints[0].x, cropPoints[0].y);
+            for(let i=1; i<cropPoints.length; i++) ctxCrop.lineTo(cropPoints[i].x, cropPoints[i].y);
+            ctxCrop.strokeStyle = '#3b82f6'; ctxCrop.lineWidth = 3; ctxCrop.setLineDash([5, 5]); ctxCrop.stroke();
+            ctxCrop.fillStyle = 'rgba(59, 130, 246, 0.2)'; ctxCrop.fill();
+        };
+        const endCropDraw = () => { isDrawingCrop = false; };
+
+        cropCanvas.addEventListener('mousedown', startCropDraw); cropCanvas.addEventListener('mousemove', doCropDraw); cropCanvas.addEventListener('mouseup', endCropDraw);
+        cropCanvas.addEventListener('touchstart', startCropDraw, {passive: false}); cropCanvas.addEventListener('touchmove', doCropDraw, {passive: false}); cropCanvas.addEventListener('touchend', endCropDraw);
+
+        document.getElementById('btnApplyCrop').onclick = () => {
+            const metrics = getImgMetrics(); if(!metrics) return alert("Image not loaded.");
+            const finalCanvas = document.createElement('canvas'); const fctx = finalCanvas.getContext('2d');
+
+            if (cropMode === 'freehand') {
+                if(cropPoints.length < 3) return alert("Draw a shape first!");
+                finalCanvas.width = cropTargetImg.naturalWidth; finalCanvas.height = cropTargetImg.naturalHeight;
+                fctx.beginPath();
+                cropPoints.forEach((p, i) => {
+                    const mappedX = (p.x - metrics.offsetX) * metrics.scale; const mappedY = (p.y - metrics.offsetY) * metrics.scale;
+                    if(i===0) fctx.moveTo(mappedX, mappedY); else fctx.lineTo(mappedX, mappedY);
+                });
+                fctx.closePath(); fctx.clip(); fctx.drawImage(cropTargetImg, 0, 0);
+            } else {
+                const rL = cropRectBox.offsetLeft; const rT = cropRectBox.offsetTop; const rW = cropRectBox.offsetWidth; const rH = cropRectBox.offsetHeight;
+                let sX = (rL - metrics.offsetX) * metrics.scale; let sY = (rT - metrics.offsetY) * metrics.scale;
+                let sW = rW * metrics.scale; let sH = rH * metrics.scale;
+
+                if(sX < 0) { sW += sX; sX = 0; } if(sY < 0) { sH += sY; sY = 0; }
+                if(sX + sW > cropTargetImg.naturalWidth) sW = cropTargetImg.naturalWidth - sX;
+                if(sY + sH > cropTargetImg.naturalHeight) sH = cropTargetImg.naturalHeight - sY;
+                if(sW <= 0 || sH <= 0) return alert("Selected area is outside the image.");
+
+                finalCanvas.width = sW; finalCanvas.height = sH;
+                fctx.drawImage(cropTargetImg, sX, sY, sW, sH, 0, 0, sW, sH);
+            }
+
+            const content = targetCropWrapper.querySelector('.item-content');
+            content.src = finalCanvas.toDataURL('image/png'); content.className = 'item-content'; 
+            modalCrop.classList.add('hidden');
+        };
+
+        // --- Export Logic ---
+        let selectedFormat = 'png';
+        let exportAreaActive = false;
+        const exportAreaBox = document.getElementById('exportAreaBox');
+        let drawingExportArea = false, areaStartX=0, areaStartY=0;
+
+        document.querySelectorAll('.export-fmt-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                document.querySelectorAll('.export-fmt-btn').forEach(b => {
+                    b.classList.remove('border-blue-500', 'bg-blue-50', 'text-blue-700');
+                    b.classList.add('border-gray-200', 'text-gray-600');
+                });
+                e.target.classList.add('border-blue-500', 'bg-blue-50', 'text-blue-700');
+                e.target.classList.remove('border-gray-200', 'text-gray-600');
+                selectedFormat = e.target.dataset.fmt;
+            };
+        });
+
+        document.getElementById('btnSelectArea').onclick = () => {
+            closeModal('modalExport');
+            exportAreaActive = true;
+            workspace.style.cursor = 'crosshair';
+            exportAreaBox.style.display = 'block';
+            exportAreaBox.style.width = '0px'; exportAreaBox.style.height = '0px';
+            alert("Draw a box over the area you want to save. You can zoom out first to capture a larger area.");
+        };
+
+        function startExportAreaDraw(e) {
+            drawingExportArea = true;
+            const rect = canvasContainer.getBoundingClientRect();
+            // Map coordinates relative to un-scaled canvas container inner space
+            areaStartX = ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) / canvasScale;
+            areaStartY = ((e.touches ? e.touches[0].clientY : e.clientY) - rect.top) / canvasScale;
+            exportAreaBox.style.left = areaStartX + 'px';
+            exportAreaBox.style.top = areaStartY + 'px';
+            exportAreaBox.style.width = '0px'; exportAreaBox.style.height = '0px';
+        }
+
+        function updateExportAreaDraw(e) {
+            const rect = canvasContainer.getBoundingClientRect();
+            const currX = ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) / canvasScale;
+            const currY = ((e.touches ? e.touches[0].clientY : e.clientY) - rect.top) / canvasScale;
+            const w = currX - areaStartX; const h = currY - areaStartY;
+            
+            exportAreaBox.style.width = Math.abs(w) + 'px';
+            exportAreaBox.style.height = Math.abs(h) + 'px';
+            exportAreaBox.style.left = (w < 0 ? currX : areaStartX) + 'px';
+            exportAreaBox.style.top = (h < 0 ? currY : areaStartY) + 'px';
+        }
+
+        function handleExportAreaDraw(e) { e.preventDefault(); if(!drawingExportArea) startExportAreaDraw(e); else updateExportAreaDraw(e); }
+
+        document.getElementById('btnDoExport').onclick = async () => {
+            const isTransparent = document.getElementById('checkTransparent').checked;
+            closeModal('modalExport');
+            
+            if (selectedFormat === 'json') return saveProject();
+
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            clearSelection();
+            exportAreaBox.style.border = 'none'; exportAreaBox.style.background = 'transparent';
+
+            // Temporarily reset canvas scale/pan so html2canvas captures unclipped native resolution
+            const oldTx = canvasTx, oldTy = canvasTy, oldScale = canvasScale;
+            canvasTx = 0; canvasTy = 0; canvasScale = 1; applyCanvasTransform();
+
+            await new Promise(r => setTimeout(r, 100)); // wait for reflow
+
+            try {
+                if (isTransparent && selectedFormat === 'png') workspace.classList.add('workspace-transparent');
+
+                let captureOpts = {
+                    useCORS: true, scale: 2, 
+                    backgroundColor: isTransparent && selectedFormat === 'png' ? null : "#ffffff",
+                    ignoreElements: (el) => el.id === 'exportAreaBox'
+                };
+
+                // If they drew a specific box inside the canvas-container
+                if (exportAreaActive && exportAreaBox.offsetWidth > 10) {
+                    captureOpts.x = exportAreaBox.offsetLeft;
+                    captureOpts.y = exportAreaBox.offsetTop;
+                    captureOpts.width = exportAreaBox.offsetWidth;
+                    captureOpts.height = exportAreaBox.offsetHeight;
+                }
+
+                // Capture the raw container
+                const canvas = await html2canvas(canvasContainer, captureOpts);
+                
+                // Restore Canvas transform
+                workspace.classList.remove('workspace-transparent');
+                canvasTx = oldTx; canvasTy = oldTy; canvasScale = oldScale; applyCanvasTransform();
+                exportAreaActive = false; exportAreaBox.style.display = 'none'; workspace.style.cursor = '';
+
+                const mimeType = selectedFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+                const fileName = `arrangement_${new Date().getTime()}.${selectedFormat}`;
+                
+                canvas.toBlob(async (blob) => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    const file = new File([blob], fileName, { type: mimeType });
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        try { await navigator.share({ files: [file] }); } 
+                        catch (err) { if(err.name !== 'AbortError') triggerDownload(blob, fileName); }
+                    } else triggerDownload(blob, fileName);
+                }, mimeType, 0.95);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('loadingOverlay').style.display = 'none';
+                canvasTx = oldTx; canvasTy = oldTy; canvasScale = oldScale; applyCanvasTransform();
+                alert("Error saving image.");
+            }
+        };
+
+        function saveProject() {
+            const items = [];
+            // recursive function to save groups
+            function saveChildren(parent) {
+                const data = [];
+                Array.from(parent.children).forEach(w => {
+                    if(!w.classList.contains('draggable-wrapper')) return;
+                    const isGroup = w.classList.contains('group-wrapper');
+                    const img = w.querySelector('.item-content');
+                    data.push({
+                        isGroup: isGroup,
+                        src: img ? img.src : null,
+                        shapeClass: img ? (Array.from(img.classList).find(c => c.startsWith('shape-')) || '') : '',
+                        tx: w.dataset.tx, ty: w.dataset.ty,
+                        scale: w.dataset.scale, angle: w.dataset.angle,
+                        zIndex: w.style.zIndex,
+                        children: isGroup ? saveChildren(w) : []
+                    });
+                });
+                return data;
+            }
+            const blob = new Blob([JSON.stringify(saveChildren(canvasContainer))], {type: 'application/json'});
+            triggerDownload(blob, `project_${new Date().getTime()}.json`);
+        }
+
+        document.getElementById('btnLoadProject').onclick = () => document.getElementById('projectInput').click();
+        document.getElementById('projectInput').onchange = (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const items = JSON.parse(evt.target.result);
+                    const arr = Array.from(canvasContainer.children);
+                    arr.forEach(c => { if(c.id !== 'exportAreaBox') c.remove(); });
+                    
+                    function loadChildren(itemsData, parent) {
+                        itemsData.forEach(data => {
+                            if(data.isGroup) {
+                                const group = document.createElement('div');
+                                group.className = 'draggable-wrapper group-wrapper';
+                                group.dataset.tx = data.tx; group.dataset.ty = data.ty;
+                                group.dataset.scale = data.scale; group.dataset.angle = data.angle;
+                                group.style.zIndex = data.zIndex;
+                                const controls = document.createElement('div'); controls.className = 'item-controls';
+                                const btnDel = document.createElement('div'); btnDel.className = 'control-btn btn-delete'; btnDel.innerHTML = '✕';
+                                btnDel.onclick = (e) => { e.stopPropagation(); group.remove(); updateSelectionAfterRemove(group); };
+                                controls.appendChild(btnDel); group.appendChild(controls);
+                                loadChildren(data.children, group);
+                                parent.appendChild(group); applyTransform(group);
+                            } else {
+                                const wrapper = createItem(data.src && data.src.startsWith('data:') ? data.src : null, !!data.shapeClass, data.shapeClass);
+                                wrapper.dataset.tx = data.tx; wrapper.dataset.ty = data.ty;
+                                wrapper.dataset.scale = data.scale; wrapper.dataset.angle = data.angle;
+                                wrapper.style.zIndex = data.zIndex;
+                                if(data.zIndex > zIndexCounter) zIndexCounter = parseInt(data.zIndex);
+                                applyTransform(wrapper);
+                                if(parent !== canvasContainer) {
+                                    wrapper.querySelector('.item-controls').style.display = 'none';
+                                    parent.appendChild(wrapper);
+                                }
+                            }
+                        });
+                    }
+                    loadChildren(items, canvasContainer);
+                    clearSelection();
+                } catch(err) { alert("Invalid project file."); }
+            };
+            reader.readAsText(file); e.target.value = '';
+        };
+
+        function triggerDownload(blob, fileName) {
+            const url = URL.createObjectURL(blob); const a = document.createElement('a');
+            a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
+
+
