@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -339,4 +340,635 @@
         }
 
         function selectItem(wrapper) {
-            if (selectedWrapper) selectedWrapper.classList.r
+            if (selectedWrapper) selectedWrapper.classList.remove('wrapper-selected');
+            if (wrapper) {
+                zIndexCounter++;
+                wrapper.style.zIndex = zIndexCounter;
+                wrapper.classList.add('wrapper-selected');
+                selectedWrapper = wrapper;
+            } else {
+                selectedWrapper = null;
+            }
+        }
+
+        // --- Gesture Engine ---
+        let initX=0, initY=0, initScale=1, initAngle=0;
+        let startT1=null, startT2=null;
+        
+        function getDist(t1, t2) { return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY); }
+        function getAngle(t1, t2) { return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * 180 / Math.PI; }
+        
+        function applyTransform(el) {
+            el.style.transform = `translate(calc(-50% + ${el.dataset.tx}px), calc(-50% + ${el.dataset.ty}px)) scale(${el.dataset.scale}) rotate(${el.dataset.angle}deg)`;
+        }
+
+        workspace.addEventListener('touchstart', e => {
+            if (drawingExportArea) return; // Prevent selection when drawing crop box
+            
+            const wrapper = e.target.closest('.draggable-wrapper');
+            if (wrapper && !e.target.classList.contains('control-btn')) {
+                selectItem(wrapper);
+                initX = parseFloat(wrapper.dataset.tx); initY = parseFloat(wrapper.dataset.ty);
+                initScale = parseFloat(wrapper.dataset.scale); initAngle = parseFloat(wrapper.dataset.angle);
+                
+                if (e.touches.length === 1) {
+                    startT1 = {x: e.touches[0].clientX, y: e.touches[0].clientY}; startT2 = null;
+                } else if (e.touches.length === 2) {
+                    startT1 = e.touches[0]; startT2 = e.touches[1];
+                }
+            } else if (e.target === workspace && !e.target.classList.contains('control-btn')) {
+                selectItem(null);
+            }
+        }, { passive: false });
+
+        workspace.addEventListener('touchmove', e => {
+            if (drawingExportArea) return handleExportAreaDraw(e);
+            
+            if (!selectedWrapper || e.target.classList.contains('control-btn')) return;
+            e.preventDefault();
+
+            if (e.touches.length === 1 && startT1 && !startT2) {
+                selectedWrapper.dataset.tx = initX + (e.touches[0].clientX - startT1.x);
+                selectedWrapper.dataset.ty = initY + (e.touches[0].clientY - startT1.y);
+            } else if (e.touches.length === 2 && startT1 && startT2) {
+                const cDist = getDist(e.touches[0], e.touches[1]);
+                const cAngle = getAngle(e.touches[0], e.touches[1]);
+                const iDist = getDist(startT1, startT2);
+                const iAngle = getAngle(startT1, startT2);
+                
+                selectedWrapper.dataset.scale = Math.max(0.1, initScale * (cDist / iDist));
+                selectedWrapper.dataset.angle = initAngle + (cAngle - iAngle);
+            }
+            applyTransform(selectedWrapper);
+        }, { passive: false });
+
+        workspace.addEventListener('touchend', e => {
+            if (drawingExportArea) { drawingExportArea = false; return; }
+            if (!selectedWrapper) return;
+            if (e.touches.length === 0) { startT1 = null; startT2 = null; }
+            else if (e.touches.length === 1) {
+                startT1 = {x: e.touches[0].clientX, y: e.touches[0].clientY}; startT2 = null;
+                initX = parseFloat(selectedWrapper.dataset.tx); initY = parseFloat(selectedWrapper.dataset.ty);
+            }
+        });
+
+        // Desktop Mouse support
+        let isMouseDown = false, mouseStartX = 0, mouseStartY = 0;
+        workspace.addEventListener('mousedown', e => {
+            if (drawingExportArea) { startExportAreaDraw(e); return; }
+            const wrapper = e.target.closest('.draggable-wrapper');
+            if (wrapper && !e.target.classList.contains('control-btn')) {
+                selectItem(wrapper);
+                isMouseDown = true; mouseStartX = e.clientX; mouseStartY = e.clientY;
+                initX = parseFloat(wrapper.dataset.tx); initY = parseFloat(wrapper.dataset.ty);
+            } else if (e.target === workspace) {
+                selectItem(null);
+            }
+        });
+        window.addEventListener('mousemove', e => {
+            if (drawingExportArea && isMouseDown) { updateExportAreaDraw(e); return; }
+            if (!isMouseDown || !selectedWrapper) return;
+            selectedWrapper.dataset.tx = initX + (e.clientX - mouseStartX);
+            selectedWrapper.dataset.ty = initY + (e.clientY - mouseStartY);
+            applyTransform(selectedWrapper);
+        });
+        window.addEventListener('mouseup', () => { isMouseDown = false; drawingExportArea = false; });
+
+        // --- Input Handlers ---
+        
+        // Handle File Read (Convert to Base64 to store easily)
+        function readFileAsBase64(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        document.getElementById('btnAddGallery').onclick = () => document.getElementById('fileInput').click();
+        document.getElementById('btnAddCamera').onclick = () => document.getElementById('cameraInput').click();
+
+        async function handleImageFiles(e) {
+            const files = e.target.files;
+            for (let file of files) {
+                if (!file.type.startsWith('image/')) continue;
+                const base64 = await readFileAsBase64(file);
+                createItem(base64);
+            }
+            e.target.value = ''; // reset
+        }
+        document.getElementById('fileInput').onchange = handleImageFiles;
+        document.getElementById('cameraInput').onchange = handleImageFiles;
+        document.getElementById('btnClear').onclick = () => { if(confirm('Clear workspace?')) workspace.innerHTML = '<div id="exportAreaBox"></div>'; };
+
+        // Shapes
+        document.querySelectorAll('.add-shape-btn').forEach(btn => {
+            btn.onclick = () => createItem(null, true, `shape-${btn.dataset.shape}`);
+        });
+
+        // --- Live Camera Fill logic ---
+        const modalCamera = document.getElementById('modalCamera');
+        const liveVideo = document.getElementById('liveVideo');
+        const cameraOutline = document.getElementById('cameraOutline');
+        const cameraZoom = document.getElementById('cameraZoom');
+        let currentCameraStream = null;
+        let targetShapeWrapper = null;
+
+        async function openCameraModal(wrapper, shapeClass) {
+            targetShapeWrapper = wrapper;
+            modalCamera.classList.remove('hidden');
+            
+            // Adjust visual outline based on shape
+            cameraOutline.className = `absolute w-64 h-64 border-2 border-yellow-400 pointer-events-none shadow-[0_0_0_9999px_rgba(0,0,0,0.8)] ${shapeClass}`;
+            
+            try {
+                currentCameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment', width: { ideal: 1080 } } 
+                });
+                liveVideo.srcObject = currentCameraStream;
+            } catch (err) {
+                alert("Camera access denied or unavailable.");
+                closeCameraModal();
+            }
+        }
+
+        function closeCameraModal() {
+            modalCamera.classList.add('hidden');
+            if(currentCameraStream) {
+                currentCameraStream.getTracks().forEach(t => t.stop());
+                currentCameraStream = null;
+            }
+        }
+        document.getElementById('btnCloseCamera').onclick = closeCameraModal;
+
+        cameraZoom.oninput = (e) => {
+            liveVideo.style.transform = `scale(${e.target.value})`;
+        };
+
+        document.getElementById('btnSnapPhoto').onclick = () => {
+            if(!currentCameraStream) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = 800; canvas.height = 800; // Square output for shape
+            const ctx = canvas.getContext('2d');
+            
+            // Calculate crop based on video dimensions and zoom
+            const scale = parseFloat(cameraZoom.value);
+            const vw = liveVideo.videoWidth;
+            const vh = liveVideo.videoHeight;
+            const minDim = Math.min(vw, vh) / scale;
+            
+            const sx = (vw - minDim) / 2;
+            const sy = (vh - minDim) / 2;
+            
+            ctx.drawImage(liveVideo, sx, sy, minDim, minDim, 0, 0, canvas.width, canvas.height);
+            
+            const content = targetShapeWrapper.querySelector('.item-content');
+            content.src = canvas.toDataURL('image/png');
+            content.style.backgroundColor = 'transparent';
+            
+            // Replace controls to remove camera button, add crop button
+            targetShapeWrapper.querySelector('.btn-camera')?.remove();
+            if(!targetShapeWrapper.querySelector('.btn-crop')) {
+                const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
+                btnCrop.onclick = (e) => { e.stopPropagation(); openCropModal(targetShapeWrapper); };
+                targetShapeWrapper.querySelector('.item-controls').appendChild(btnCrop);
+            }
+            
+            closeCameraModal();
+        };
+
+        // --- Freehand Crop Logic ---
+        const modalCrop = document.getElementById('modalCrop');
+        const cropTargetImg = document.getElementById('cropTargetImg');
+        const cropCanvas = document.getElementById('cropCanvas');
+        const cropRectBox = document.getElementById('cropRectBox');
+        const ctxCrop = cropCanvas.getContext('2d');
+        let targetCropWrapper = null;
+        let cropPoints = [];
+        let isDrawingCrop = false;
+        let cropMode = 'freehand';
+
+        const btnCropModeFree = document.getElementById('btnCropModeFree');
+        const btnCropModeRect = document.getElementById('btnCropModeRect');
+        const cropInstruction = document.getElementById('cropInstruction');
+
+        function setCropMode(mode) {
+            cropMode = mode;
+            if (mode === 'freehand') {
+                btnCropModeFree.className = 'px-3 py-1 rounded text-sm font-medium bg-gray-600 text-white shadow';
+                btnCropModeRect.className = 'px-3 py-1 rounded text-sm font-medium text-gray-400 hover:text-white';
+                cropCanvas.style.display = 'block';
+                cropRectBox.classList.add('hidden');
+                cropInstruction.innerText = 'Draw a closed shape with your finger.';
+            } else {
+                btnCropModeRect.className = 'px-3 py-1 rounded text-sm font-medium bg-gray-600 text-white shadow';
+                btnCropModeFree.className = 'px-3 py-1 rounded text-sm font-medium text-gray-400 hover:text-white';
+                cropCanvas.style.display = 'none';
+                cropRectBox.classList.remove('hidden');
+                cropInstruction.innerText = 'Drag box or corners to adjust.';
+                initRectBox();
+            }
+        }
+
+        btnCropModeFree.onclick = () => setCropMode('freehand');
+        btnCropModeRect.onclick = () => setCropMode('rect');
+
+        function openCropModal(wrapper) {
+            targetCropWrapper = wrapper;
+            const img = wrapper.querySelector('.item-content');
+            cropTargetImg.src = img.src;
+            modalCrop.classList.remove('hidden');
+            
+            // Wait for image to load to get dimensions for rect box
+            setTimeout(() => {
+                const rect = document.getElementById('cropContainer').getBoundingClientRect();
+                cropCanvas.width = rect.width;
+                cropCanvas.height = rect.height;
+                ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+                cropPoints = [];
+                setCropMode('freehand'); // Reset to default mode
+            }, 50);
+        }
+
+        document.getElementById('btnCloseCrop').onclick = () => modalCrop.classList.add('hidden');
+
+        // --- Helper for Mapping ---
+        function getImgMetrics() {
+            if(!cropTargetImg.naturalWidth) return null;
+            const rect = cropTargetImg.getBoundingClientRect();
+            const canvasRect = document.getElementById('cropContainer').getBoundingClientRect();
+            const imgRatio = cropTargetImg.naturalWidth / cropTargetImg.naturalHeight;
+            const boxRatio = rect.width / rect.height;
+            let drawWidth, drawHeight, offsetX, offsetY;
+            
+            if (imgRatio > boxRatio) {
+                drawWidth = rect.width; drawHeight = rect.width / imgRatio;
+                offsetX = rect.left - canvasRect.left; offsetY = rect.top - canvasRect.top + (rect.height - drawHeight)/2;
+            } else {
+                drawHeight = rect.height; drawWidth = rect.height * imgRatio;
+                offsetY = rect.top - canvasRect.top; offsetX = rect.left - canvasRect.left + (rect.width - drawWidth)/2;
+            }
+            const scale = cropTargetImg.naturalWidth / drawWidth;
+            return { drawWidth, drawHeight, offsetX, offsetY, scale };
+        }
+
+        // --- Rectangle Crop Logic ---
+        function initRectBox() {
+            const metrics = getImgMetrics();
+            if(!metrics) return;
+            const w = metrics.drawWidth * 0.8;
+            const h = metrics.drawHeight * 0.8;
+            cropRectBox.style.width = w + 'px';
+            cropRectBox.style.height = h + 'px';
+            cropRectBox.style.left = (metrics.offsetX + (metrics.drawWidth - w) / 2) + 'px';
+            cropRectBox.style.top = (metrics.offsetY + (metrics.drawHeight - h) / 2) + 'px';
+        }
+
+        let activeHandle = null, isMovingRect = false;
+        let rectStartX=0, rectStartY=0, rectInitL=0, rectInitT=0, rectInitW=0, rectInitH=0;
+
+        function startRectInteraction(e) {
+            if(cropMode !== 'rect') return;
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            rectStartX = touch.clientX; rectStartY = touch.clientY;
+            rectInitL = cropRectBox.offsetLeft; rectInitT = cropRectBox.offsetTop;
+            rectInitW = cropRectBox.offsetWidth; rectInitH = cropRectBox.offsetHeight;
+            if(e.target.classList.contains('crop-handle')) activeHandle = e.target.dataset.handle;
+            else isMovingRect = true;
+        }
+
+        function moveRectInteraction(e) {
+            if(cropMode !== 'rect' || (!activeHandle && !isMovingRect)) return;
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            const dx = touch.clientX - rectStartX; const dy = touch.clientY - rectStartY;
+            
+            if (isMovingRect) {
+                cropRectBox.style.left = (rectInitL + dx) + 'px'; cropRectBox.style.top = (rectInitT + dy) + 'px';
+            } else if (activeHandle) {
+                let newL = rectInitL, newT = rectInitT, newW = rectInitW, newH = rectInitH;
+                if(activeHandle.includes('w')) { newL = rectInitL + dx; newW = rectInitW - dx; }
+                if(activeHandle.includes('e')) { newW = rectInitW + dx; }
+                if(activeHandle.includes('n')) { newT = rectInitT + dy; newH = rectInitH - dy; }
+                if(activeHandle.includes('s')) { newH = rectInitH + dy; }
+                if(newW > 40) { cropRectBox.style.left = newL + 'px'; cropRectBox.style.width = newW + 'px'; }
+                if(newH > 40) { cropRectBox.style.top = newT + 'px'; cropRectBox.style.height = newH + 'px'; }
+            }
+        }
+
+        function endRectInteraction() { activeHandle = null; isMovingRect = false; }
+
+        cropRectBox.addEventListener('touchstart', startRectInteraction, {passive:false});
+        cropRectBox.addEventListener('mousedown', startRectInteraction);
+        window.addEventListener('touchmove', moveRectInteraction, {passive:false});
+        window.addEventListener('mousemove', moveRectInteraction);
+        window.addEventListener('touchend', endRectInteraction);
+        window.addEventListener('mouseup', endRectInteraction);
+
+
+        // --- Freehand Draw Logic ---
+        function getMousePos(canvas, evt) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        const startCropDraw = (e) => {
+            if(cropMode !== 'freehand') return;
+            isDrawingCrop = true;
+            cropPoints = [getMousePos(cropCanvas, e)];
+            ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+        };
+        const doCropDraw = (e) => {
+            if (!isDrawingCrop || cropMode !== 'freehand') return;
+            e.preventDefault(); // prevent scroll
+            const pos = getMousePos(cropCanvas, e);
+            cropPoints.push(pos);
+            
+            ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
+            ctxCrop.beginPath();
+            ctxCrop.moveTo(cropPoints[0].x, cropPoints[0].y);
+            for(let i=1; i<cropPoints.length; i++) ctxCrop.lineTo(cropPoints[i].x, cropPoints[i].y);
+            ctxCrop.strokeStyle = '#3b82f6';
+            ctxCrop.lineWidth = 3;
+            ctxCrop.setLineDash([5, 5]);
+            ctxCrop.stroke();
+            ctxCrop.fillStyle = 'rgba(59, 130, 246, 0.2)';
+            ctxCrop.fill();
+        };
+        const endCropDraw = () => { isDrawingCrop = false; };
+
+        cropCanvas.addEventListener('mousedown', startCropDraw);
+        cropCanvas.addEventListener('mousemove', doCropDraw);
+        cropCanvas.addEventListener('mouseup', endCropDraw);
+        cropCanvas.addEventListener('touchstart', startCropDraw, {passive: false});
+        cropCanvas.addEventListener('touchmove', doCropDraw, {passive: false});
+        cropCanvas.addEventListener('touchend', endCropDraw);
+
+        document.getElementById('btnApplyCrop').onclick = () => {
+            const metrics = getImgMetrics();
+            if(!metrics) return alert("Image not loaded properly.");
+
+            const finalCanvas = document.createElement('canvas');
+            const fctx = finalCanvas.getContext('2d');
+
+            if (cropMode === 'freehand') {
+                if(cropPoints.length < 3) return alert("Draw a shape first!");
+                finalCanvas.width = cropTargetImg.naturalWidth;
+                finalCanvas.height = cropTargetImg.naturalHeight;
+
+                fctx.beginPath();
+                cropPoints.forEach((p, i) => {
+                    const mappedX = (p.x - metrics.offsetX) * metrics.scale;
+                    const mappedY = (p.y - metrics.offsetY) * metrics.scale;
+                    if(i===0) fctx.moveTo(mappedX, mappedY); else fctx.lineTo(mappedX, mappedY);
+                });
+                fctx.closePath();
+                fctx.clip(); // Apply mask
+                fctx.drawImage(cropTargetImg, 0, 0);
+
+            } else {
+                // Rectangle mode
+                const rL = cropRectBox.offsetLeft;
+                const rT = cropRectBox.offsetTop;
+                const rW = cropRectBox.offsetWidth;
+                const rH = cropRectBox.offsetHeight;
+
+                let sX = (rL - metrics.offsetX) * metrics.scale;
+                let sY = (rT - metrics.offsetY) * metrics.scale;
+                let sW = rW * metrics.scale;
+                let sH = rH * metrics.scale;
+
+                // Clamp to natural image bounds to avoid empty space
+                if(sX < 0) { sW += sX; sX = 0; }
+                if(sY < 0) { sH += sY; sY = 0; }
+                if(sX + sW > cropTargetImg.naturalWidth) sW = cropTargetImg.naturalWidth - sX;
+                if(sY + sH > cropTargetImg.naturalHeight) sH = cropTargetImg.naturalHeight - sY;
+
+                if(sW <= 0 || sH <= 0) return alert("Selected area is outside the image.");
+
+                finalCanvas.width = sW;
+                finalCanvas.height = sH;
+                fctx.drawImage(cropTargetImg, sX, sY, sW, sH, 0, 0, sW, sH);
+            }
+
+            // Replace source and remove CSS shape if any
+            const content = targetCropWrapper.querySelector('.item-content');
+            content.src = finalCanvas.toDataURL('image/png');
+            content.className = 'item-content'; // strips shape classes
+            
+            modalCrop.classList.add('hidden');
+        };
+
+        // --- Export Logic ---
+        const modalExport = document.getElementById('modalExport');
+        const exportSheet = document.getElementById('exportSheet');
+        let selectedFormat = 'png';
+        let exportAreaActive = false;
+        
+        // Export Area Selection variables
+        const exportAreaBox = document.getElementById('exportAreaBox');
+        let drawingExportArea = false;
+        let areaStartX=0, areaStartY=0;
+
+        document.getElementById('btnOpenExport').onclick = () => {
+            selectItem(null); // deselect to hide borders
+            modalExport.classList.remove('hidden');
+            setTimeout(() => exportSheet.classList.remove('translate-y-full'), 10);
+        };
+        
+        document.getElementById('btnCloseExport').onclick = closeExportModal;
+        
+        function closeExportModal() {
+            exportSheet.classList.add('translate-y-full');
+            setTimeout(() => modalExport.classList.add('hidden'), 300);
+            if(exportAreaActive) toggleExportArea(false);
+        }
+
+        // Format Selection UI
+        document.querySelectorAll('.export-fmt-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                document.querySelectorAll('.export-fmt-btn').forEach(b => {
+                    b.classList.remove('border-blue-500', 'bg-blue-50', 'text-blue-700');
+                    b.classList.add('border-gray-200', 'text-gray-600');
+                });
+                e.target.classList.add('border-blue-500', 'bg-blue-50', 'text-blue-700');
+                e.target.classList.remove('border-gray-200', 'text-gray-600');
+                selectedFormat = e.target.dataset.fmt;
+            };
+        });
+
+        // Area Selection UI
+        const btnSelectArea = document.getElementById('btnSelectArea');
+        btnSelectArea.onclick = () => {
+            closeExportModal();
+            toggleExportArea(true);
+        };
+
+        function toggleExportArea(active) {
+            exportAreaActive = active;
+            if (active) {
+                workspace.style.cursor = 'crosshair';
+                exportAreaBox.style.display = 'block';
+                exportAreaBox.style.width = '0px'; exportAreaBox.style.height = '0px';
+                alert("Draw a box over the area you want to save.");
+            } else {
+                workspace.style.cursor = '';
+                exportAreaBox.style.display = 'none';
+            }
+        }
+
+        // Handle drawing the export box directly on workspace
+        function startExportAreaDraw(e) {
+            drawingExportArea = true;
+            const rect = workspace.getBoundingClientRect();
+            areaStartX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+            areaStartY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+            exportAreaBox.style.left = areaStartX + 'px';
+            exportAreaBox.style.top = areaStartY + 'px';
+            exportAreaBox.style.width = '0px';
+            exportAreaBox.style.height = '0px';
+        }
+
+        function updateExportAreaDraw(e) {
+            const rect = workspace.getBoundingClientRect();
+            const currX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+            const currY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+            
+            const w = currX - areaStartX;
+            const h = currY - areaStartY;
+            
+            exportAreaBox.style.width = Math.abs(w) + 'px';
+            exportAreaBox.style.height = Math.abs(h) + 'px';
+            exportAreaBox.style.left = (w < 0 ? currX : areaStartX) + 'px';
+            exportAreaBox.style.top = (h < 0 ? currY : areaStartY) + 'px';
+        }
+
+        function handleExportAreaDraw(e) {
+            e.preventDefault();
+            if(!drawingExportArea) startExportAreaDraw(e);
+            else updateExportAreaDraw(e);
+        }
+
+        // Final Save Execution
+        document.getElementById('btnDoExport').onclick = async () => {
+            const isTransparent = document.getElementById('checkTransparent').checked;
+            closeExportModal();
+            
+            if (selectedFormat === 'json') {
+                saveProject();
+                return;
+            }
+
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            selectItem(null); // Ensure no selection
+            exportAreaBox.style.border = 'none'; // Hide border for screenshot
+            exportAreaBox.style.background = 'transparent';
+
+            // Wait a tick for UI to update
+            await new Promise(r => setTimeout(r, 100));
+
+            try {
+                if (isTransparent && selectedFormat === 'png') {
+                    workspace.classList.add('workspace-transparent');
+                }
+
+                // Determine capture area
+                let captureOpts = {
+                    useCORS: true, scale: 2, 
+                    backgroundColor: isTransparent && selectedFormat === 'png' ? null : "#ffffff",
+                    ignoreElements: (el) => el.id === 'exportAreaBox'
+                };
+
+                if (exportAreaActive && exportAreaBox.offsetWidth > 10) {
+                    const rect = exportAreaBox.getBoundingClientRect();
+                    const wsRect = workspace.getBoundingClientRect();
+                    captureOpts.x = rect.left - wsRect.left;
+                    captureOpts.y = rect.top - wsRect.top;
+                    captureOpts.width = rect.width;
+                    captureOpts.height = rect.height;
+                }
+
+                const canvas = await html2canvas(workspace, captureOpts);
+                
+                // Restore UI
+                workspace.classList.remove('workspace-transparent');
+                toggleExportArea(false);
+
+                const mimeType = selectedFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+                const fileName = `arrangement_${new Date().getTime()}.${selectedFormat}`;
+                
+                canvas.toBlob(async (blob) => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    const file = new File([blob], fileName, { type: mimeType });
+                    
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        try { await navigator.share({ files: [file] }); } 
+                        catch (err) { if(err.name !== 'AbortError') triggerDownload(blob, fileName); }
+                    } else {
+                        triggerDownload(blob, fileName);
+                    }
+                }, mimeType, 0.95);
+
+            } catch (err) {
+                console.error(err);
+                document.getElementById('loadingOverlay').style.display = 'none';
+                alert("Error saving image.");
+            }
+        };
+
+        // --- Project Save / Load (JSON) ---
+        function saveProject() {
+            const items = [];
+            document.querySelectorAll('.draggable-wrapper').forEach(wrapper => {
+                const img = wrapper.querySelector('.item-content');
+                items.push({
+                    src: img.src,
+                    shapeClass: Array.from(img.classList).find(c => c.startsWith('shape-')) || '',
+                    tx: wrapper.dataset.tx,
+                    ty: wrapper.dataset.ty,
+                    scale: wrapper.dataset.scale,
+                    angle: wrapper.dataset.angle,
+                    zIndex: wrapper.style.zIndex
+                });
+            });
+
+            const blob = new Blob([JSON.stringify(items)], {type: 'application/json'});
+            triggerDownload(blob, `project_${new Date().getTime()}.json`);
+        }
+
+        document.getElementById('btnLoadProject').onclick = () => document.getElementById('projectInput').click();
+        document.getElementById('projectInput').onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const items = JSON.parse(evt.target.result);
+                    workspace.innerHTML = '<div id="exportAreaBox"></div>'; // Clear
+                    items.forEach(data => {
+                        const wrapper = createItem(data.src.startsWith('data:') ? data.src : null, !!data.shapeClass, data.shapeClass);
+                        wrapper.dataset.tx = data.tx; wrapper.dataset.ty = data.ty;
+                        wrapper.dataset.scale = data.scale; wrapper.dataset.angle = data.angle;
+                        wrapper.style.zIndex = data.zIndex;
+                        if(data.zIndex > zIndexCounter) zIndexCounter = parseInt(data.zIndex);
+                        applyTransform(wrapper);
+                    });
+                } catch(err) { alert("Invalid project file."); }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        };
+
+        function triggerDownload(blob, fileName) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = fileName;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
