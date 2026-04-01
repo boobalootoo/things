@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,16 +25,15 @@
             left: 50%; top: 50%;
             transform-origin: center center;
             will-change: transform;
-            /* Container doesn't have styling, the inner content does */
         }
 
         .item-content {
             display: block;
             max-width: 60vw; max-height: 60vh;
             border-radius: 8px;
-            pointer-events: none; /* Let the wrapper handle events */
+            pointer-events: none;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            background-color: rgba(200,200,200,0.2); /* For empty shapes */
+            background-color: rgba(200,200,200,0.2);
             object-fit: cover;
         }
 
@@ -65,13 +63,12 @@
 
         /* Shape Clip Paths */
         .shape-circle { clip-path: circle(50% at 50% 50%); border-radius: 50%; }
-        .shape-heart { clip-path: path('M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'); transform: scale(3); transform-origin: top left; } /* Simplified heart for CSS */
+        .shape-heart { clip-path: path('M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'); transform: scale(3); transform-origin: top left; }
         .shape-star { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
         .shape-hexagon { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
 
-        /* Custom Scrollbar for tools */
+        /* Custom Scrollbar & Safe Area */
         .toolbar-scroll::-webkit-scrollbar { display: none; }
-        
         .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 
         /* Export Area Box */
@@ -148,7 +145,7 @@
         </div>
     </div>
 
-    <!-- Modals (Hidden by default) -->
+    <!-- Modals -->
     
     <!-- Camera Fill Modal -->
     <div id="modalCamera" class="fixed inset-0 bg-black z-50 flex flex-col hidden">
@@ -159,9 +156,7 @@
         </div>
         <div class="relative flex-grow flex items-center justify-center overflow-hidden">
             <video id="liveVideo" autoplay playsinline class="absolute inset-0 w-full h-full object-cover origin-center"></video>
-            <!-- Overlay to visualize the shape cutout -->
             <div id="cameraMask" class="absolute inset-0 bg-black/60 pointer-events-none" style="mask-image: radial-gradient(circle, transparent 40%, black 41%); -webkit-mask-image: radial-gradient(circle, transparent 40%, black 41%);"></div>
-            <!-- Outline -->
             <div id="cameraOutline" class="absolute w-64 h-64 border-2 border-yellow-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] pointer-events-none"></div>
         </div>
         <div class="p-6 bg-black pb-safe">
@@ -173,20 +168,21 @@
         </div>
     </div>
 
-    <!-- Freehand Crop Modal -->
+    <!-- Crop Modal (Freehand & Rectangle) -->
     <div id="modalCrop" class="fixed inset-0 bg-gray-900 z-50 flex flex-col hidden">
         <div class="p-4 flex justify-between items-center text-white bg-black shrink-0">
             <button id="btnCloseCrop" class="p-2">Cancel</button>
             <div class="flex bg-gray-800 rounded-lg p-1">
                 <button id="btnCropModeFree" class="px-3 py-1 rounded text-sm font-medium bg-gray-600 text-white shadow">Freehand</button>
-                <button id="btnCropModeRect" class="px-3 py-1 rounded text-sm font-medium text-gray-400">Rectangle</button>
+                <button id="btnCropModeRect" class="px-3 py-1 rounded text-sm font-medium text-gray-400 hover:text-white">Rectangle</button>
             </div>
             <button id="btnApplyCrop" class="p-2 text-blue-400 font-bold">Apply</button>
         </div>
         <div class="flex-grow relative flex items-center justify-center overflow-hidden bg-gray-800" id="cropContainer">
             <img id="cropTargetImg" class="max-w-full max-h-full object-contain pointer-events-none opacity-50">
             <canvas id="cropCanvas" class="absolute drawing-layer z-10 top-0 left-0 w-full h-full"></canvas>
-            <!-- New Rectangle Box -->
+            
+            <!-- Rectangle Crop Box -->
             <div id="cropRectBox" class="absolute hidden border-2 border-blue-500 z-20 touch-none shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] cursor-move">
                 <div class="absolute -top-3 -left-3 w-6 h-6 bg-white border-2 border-blue-500 rounded-full crop-handle cursor-nwse-resize" data-handle="nw"></div>
                 <div class="absolute -top-3 -right-3 w-6 h-6 bg-white border-2 border-blue-500 rounded-full crop-handle cursor-nesw-resize" data-handle="ne"></div>
@@ -254,12 +250,10 @@
 
         // --- Core Application Logic ---
 
-        // Create a new draggable item
         function createItem(src, isShape = false, shapeClass = '') {
             const wrapper = document.createElement('div');
             wrapper.className = 'draggable-wrapper';
             
-            // Initial transform data
             wrapper.dataset.tx = 0; wrapper.dataset.ty = 0;
             wrapper.dataset.scale = isShape ? 1.5 : 1; 
             wrapper.dataset.angle = isShape ? 0 : (Math.random() * 10) - 5;
@@ -271,14 +265,12 @@
             if (src) {
                 content.src = src;
             } else if (isShape) {
-                // Placeholder styling for empty shape
-                content.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='; // 1x1 transparent
+                content.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
                 content.style.minWidth = '150px';
                 content.style.minHeight = '150px';
                 content.style.backgroundColor = '#cbd5e1';
             }
 
-            // Controls
             const controls = document.createElement('div');
             controls.className = 'item-controls';
             
@@ -288,11 +280,9 @@
             controls.appendChild(btnDel);
             controls.appendChild(btnCopy);
 
-            // Conditional buttons
             if (isShape && !src) {
                 const btnCam = document.createElement('div'); btnCam.className = 'control-btn btn-camera'; btnCam.innerHTML = '📷';
                 controls.appendChild(btnCam);
-                
                 btnCam.onclick = (e) => { e.stopPropagation(); openCameraModal(wrapper, shapeClass); };
             } else if (!isShape || src) {
                 const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
@@ -314,11 +304,8 @@
 
         function duplicateItem(wrapper) {
             const clone = wrapper.cloneNode(true);
-            const content = clone.querySelector('.item-content');
-            
-            // Re-bind events (cloneNode doesn't copy event listeners)
             const controls = clone.querySelector('.item-controls');
-            controls.innerHTML = ''; // Rebuild buttons to easily bind
+            controls.innerHTML = '';
             
             const btnDel = document.createElement('div'); btnDel.className = 'control-btn btn-delete'; btnDel.innerHTML = '✕';
             const btnCopy = document.createElement('div'); btnCopy.className = 'control-btn btn-copy'; btnCopy.innerHTML = '⧉';
@@ -328,7 +315,13 @@
             btnDel.onclick = (e) => { e.stopPropagation(); clone.remove(); };
             btnCopy.onclick = (e) => { e.stopPropagation(); duplicateItem(clone); };
             
-            // Copy data
+            // Re-add crop if it was an image
+            if(wrapper.querySelector('.btn-crop')) {
+                const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
+                btnCrop.onclick = (e) => { e.stopPropagation(); openCropModal(clone); };
+                controls.appendChild(btnCrop);
+            }
+            
             clone.dataset.tx = parseFloat(wrapper.dataset.tx) + 20;
             clone.dataset.ty = parseFloat(wrapper.dataset.ty) + 20;
             clone.dataset.scale = wrapper.dataset.scale;
@@ -363,7 +356,7 @@
         }
 
         workspace.addEventListener('touchstart', e => {
-            if (drawingExportArea) return; // Prevent selection when drawing crop box
+            if (drawingExportArea) return;
             
             const wrapper = e.target.closest('.draggable-wrapper');
             if (wrapper && !e.target.classList.contains('control-btn')) {
@@ -412,7 +405,6 @@
             }
         });
 
-        // Desktop Mouse support
         let isMouseDown = false, mouseStartX = 0, mouseStartY = 0;
         workspace.addEventListener('mousedown', e => {
             if (drawingExportArea) { startExportAreaDraw(e); return; }
@@ -434,9 +426,7 @@
         });
         window.addEventListener('mouseup', () => { isMouseDown = false; drawingExportArea = false; });
 
-        // --- Input Handlers ---
-        
-        // Handle File Read (Convert to Base64 to store easily)
+        // --- Inputs ---
         function readFileAsBase64(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -455,18 +445,17 @@
                 const base64 = await readFileAsBase64(file);
                 createItem(base64);
             }
-            e.target.value = ''; // reset
+            e.target.value = '';
         }
         document.getElementById('fileInput').onchange = handleImageFiles;
         document.getElementById('cameraInput').onchange = handleImageFiles;
         document.getElementById('btnClear').onclick = () => { if(confirm('Clear workspace?')) workspace.innerHTML = '<div id="exportAreaBox"></div>'; };
 
-        // Shapes
         document.querySelectorAll('.add-shape-btn').forEach(btn => {
             btn.onclick = () => createItem(null, true, `shape-${btn.dataset.shape}`);
         });
 
-        // --- Live Camera Fill logic ---
+        // --- Camera Modal ---
         const modalCamera = document.getElementById('modalCamera');
         const liveVideo = document.getElementById('liveVideo');
         const cameraOutline = document.getElementById('cameraOutline');
@@ -477,14 +466,10 @@
         async function openCameraModal(wrapper, shapeClass) {
             targetShapeWrapper = wrapper;
             modalCamera.classList.remove('hidden');
-            
-            // Adjust visual outline based on shape
             cameraOutline.className = `absolute w-64 h-64 border-2 border-yellow-400 pointer-events-none shadow-[0_0_0_9999px_rgba(0,0,0,0.8)] ${shapeClass}`;
             
             try {
-                currentCameraStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: { ideal: 1080 } } 
-                });
+                currentCameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1080 } } });
                 liveVideo.srcObject = currentCameraStream;
             } catch (err) {
                 alert("Camera access denied or unavailable.");
@@ -501,17 +486,14 @@
         }
         document.getElementById('btnCloseCamera').onclick = closeCameraModal;
 
-        cameraZoom.oninput = (e) => {
-            liveVideo.style.transform = `scale(${e.target.value})`;
-        };
+        cameraZoom.oninput = (e) => { liveVideo.style.transform = `scale(${e.target.value})`; };
 
         document.getElementById('btnSnapPhoto').onclick = () => {
             if(!currentCameraStream) return;
             const canvas = document.createElement('canvas');
-            canvas.width = 800; canvas.height = 800; // Square output for shape
+            canvas.width = 800; canvas.height = 800;
             const ctx = canvas.getContext('2d');
             
-            // Calculate crop based on video dimensions and zoom
             const scale = parseFloat(cameraZoom.value);
             const vw = liveVideo.videoWidth;
             const vh = liveVideo.videoHeight;
@@ -526,7 +508,6 @@
             content.src = canvas.toDataURL('image/png');
             content.style.backgroundColor = 'transparent';
             
-            // Replace controls to remove camera button, add crop button
             targetShapeWrapper.querySelector('.btn-camera')?.remove();
             if(!targetShapeWrapper.querySelector('.btn-crop')) {
                 const btnCrop = document.createElement('div'); btnCrop.className = 'control-btn btn-crop'; btnCrop.innerHTML = '✂';
@@ -537,7 +518,7 @@
             closeCameraModal();
         };
 
-        // --- Freehand Crop Logic ---
+        // --- Crop Modal ---
         const modalCrop = document.getElementById('modalCrop');
         const cropTargetImg = document.getElementById('cropTargetImg');
         const cropCanvas = document.getElementById('cropCanvas');
@@ -579,20 +560,18 @@
             cropTargetImg.src = img.src;
             modalCrop.classList.remove('hidden');
             
-            // Wait for image to load to get dimensions for rect box
             setTimeout(() => {
                 const rect = document.getElementById('cropContainer').getBoundingClientRect();
                 cropCanvas.width = rect.width;
                 cropCanvas.height = rect.height;
                 ctxCrop.clearRect(0,0, cropCanvas.width, cropCanvas.height);
                 cropPoints = [];
-                setCropMode('freehand'); // Reset to default mode
+                setCropMode('freehand');
             }, 50);
         }
 
         document.getElementById('btnCloseCrop').onclick = () => modalCrop.classList.add('hidden');
 
-        // --- Helper for Mapping ---
         function getImgMetrics() {
             if(!cropTargetImg.naturalWidth) return null;
             const rect = cropTargetImg.getBoundingClientRect();
@@ -612,7 +591,7 @@
             return { drawWidth, drawHeight, offsetX, offsetY, scale };
         }
 
-        // --- Rectangle Crop Logic ---
+        // Rect Crop Logic
         function initRectBox() {
             const metrics = getImgMetrics();
             if(!metrics) return;
@@ -666,8 +645,7 @@
         window.addEventListener('touchend', endRectInteraction);
         window.addEventListener('mouseup', endRectInteraction);
 
-
-        // --- Freehand Draw Logic ---
+        // Freehand Draw Logic
         function getMousePos(canvas, evt) {
             const rect = canvas.getBoundingClientRect();
             const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
@@ -683,7 +661,7 @@
         };
         const doCropDraw = (e) => {
             if (!isDrawingCrop || cropMode !== 'freehand') return;
-            e.preventDefault(); // prevent scroll
+            e.preventDefault();
             const pos = getMousePos(cropCanvas, e);
             cropPoints.push(pos);
             
@@ -726,11 +704,10 @@
                     if(i===0) fctx.moveTo(mappedX, mappedY); else fctx.lineTo(mappedX, mappedY);
                 });
                 fctx.closePath();
-                fctx.clip(); // Apply mask
+                fctx.clip();
                 fctx.drawImage(cropTargetImg, 0, 0);
 
             } else {
-                // Rectangle mode
                 const rL = cropRectBox.offsetLeft;
                 const rT = cropRectBox.offsetTop;
                 const rW = cropRectBox.offsetWidth;
@@ -741,7 +718,6 @@
                 let sW = rW * metrics.scale;
                 let sH = rH * metrics.scale;
 
-                // Clamp to natural image bounds to avoid empty space
                 if(sX < 0) { sW += sX; sX = 0; }
                 if(sY < 0) { sH += sY; sY = 0; }
                 if(sX + sW > cropTargetImg.naturalWidth) sW = cropTargetImg.naturalWidth - sX;
@@ -754,10 +730,9 @@
                 fctx.drawImage(cropTargetImg, sX, sY, sW, sH, 0, 0, sW, sH);
             }
 
-            // Replace source and remove CSS shape if any
             const content = targetCropWrapper.querySelector('.item-content');
             content.src = finalCanvas.toDataURL('image/png');
-            content.className = 'item-content'; // strips shape classes
+            content.className = 'item-content'; 
             
             modalCrop.classList.add('hidden');
         };
@@ -768,13 +743,12 @@
         let selectedFormat = 'png';
         let exportAreaActive = false;
         
-        // Export Area Selection variables
         const exportAreaBox = document.getElementById('exportAreaBox');
         let drawingExportArea = false;
         let areaStartX=0, areaStartY=0;
 
         document.getElementById('btnOpenExport').onclick = () => {
-            selectItem(null); // deselect to hide borders
+            selectItem(null);
             modalExport.classList.remove('hidden');
             setTimeout(() => exportSheet.classList.remove('translate-y-full'), 10);
         };
@@ -787,7 +761,6 @@
             if(exportAreaActive) toggleExportArea(false);
         }
 
-        // Format Selection UI
         document.querySelectorAll('.export-fmt-btn').forEach(btn => {
             btn.onclick = (e) => {
                 document.querySelectorAll('.export-fmt-btn').forEach(b => {
@@ -800,9 +773,7 @@
             };
         });
 
-        // Area Selection UI
-        const btnSelectArea = document.getElementById('btnSelectArea');
-        btnSelectArea.onclick = () => {
+        document.getElementById('btnSelectArea').onclick = () => {
             closeExportModal();
             toggleExportArea(true);
         };
@@ -820,7 +791,6 @@
             }
         }
 
-        // Handle drawing the export box directly on workspace
         function startExportAreaDraw(e) {
             drawingExportArea = true;
             const rect = workspace.getBoundingClientRect();
@@ -852,7 +822,6 @@
             else updateExportAreaDraw(e);
         }
 
-        // Final Save Execution
         document.getElementById('btnDoExport').onclick = async () => {
             const isTransparent = document.getElementById('checkTransparent').checked;
             closeExportModal();
@@ -863,11 +832,10 @@
             }
 
             document.getElementById('loadingOverlay').style.display = 'flex';
-            selectItem(null); // Ensure no selection
-            exportAreaBox.style.border = 'none'; // Hide border for screenshot
+            selectItem(null);
+            exportAreaBox.style.border = 'none';
             exportAreaBox.style.background = 'transparent';
 
-            // Wait a tick for UI to update
             await new Promise(r => setTimeout(r, 100));
 
             try {
@@ -875,7 +843,6 @@
                     workspace.classList.add('workspace-transparent');
                 }
 
-                // Determine capture area
                 let captureOpts = {
                     useCORS: true, scale: 2, 
                     backgroundColor: isTransparent && selectedFormat === 'png' ? null : "#ffffff",
@@ -893,7 +860,6 @@
 
                 const canvas = await html2canvas(workspace, captureOpts);
                 
-                // Restore UI
                 workspace.classList.remove('workspace-transparent');
                 toggleExportArea(false);
 
@@ -919,7 +885,6 @@
             }
         };
 
-        // --- Project Save / Load (JSON) ---
         function saveProject() {
             const items = [];
             document.querySelectorAll('.draggable-wrapper').forEach(wrapper => {
@@ -927,14 +892,11 @@
                 items.push({
                     src: img.src,
                     shapeClass: Array.from(img.classList).find(c => c.startsWith('shape-')) || '',
-                    tx: wrapper.dataset.tx,
-                    ty: wrapper.dataset.ty,
-                    scale: wrapper.dataset.scale,
-                    angle: wrapper.dataset.angle,
+                    tx: wrapper.dataset.tx, ty: wrapper.dataset.ty,
+                    scale: wrapper.dataset.scale, angle: wrapper.dataset.angle,
                     zIndex: wrapper.style.zIndex
                 });
             });
-
             const blob = new Blob([JSON.stringify(items)], {type: 'application/json'});
             triggerDownload(blob, `project_${new Date().getTime()}.json`);
         }
@@ -947,9 +909,9 @@
             reader.onload = (evt) => {
                 try {
                     const items = JSON.parse(evt.target.result);
-                    workspace.innerHTML = '<div id="exportAreaBox"></div>'; // Clear
+                    workspace.innerHTML = '<div id="exportAreaBox"></div>';
                     items.forEach(data => {
-                        const wrapper = createItem(data.src.startsWith('data:') ? data.src : null, !!data.shapeClass, data.shapeClass);
+                        const wrapper = createItem(data.src && data.src.startsWith('data:') ? data.src : null, !!data.shapeClass, data.shapeClass);
                         wrapper.dataset.tx = data.tx; wrapper.dataset.ty = data.ty;
                         wrapper.dataset.scale = data.scale; wrapper.dataset.angle = data.angle;
                         wrapper.style.zIndex = data.zIndex;
@@ -972,3 +934,5 @@
     </script>
 </body>
 </html>
+
+
