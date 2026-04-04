@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spider-Man Mocap Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; color: white; font-family: ui-sans-serif, system-ui; }
+        #canvas-container { position: absolute; inset: 0; z-index: 1; }
+        .ui-card { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(15, 23, 42, 0.9); padding: 20px; border-radius: 16px; border: 1px solid #ef4444; width: 280px; backdrop-filter: blur(8px); }
+        #video-preview { position: absolute; bottom: 20px; right: 20px; width: 200px; border-radius: 12px; border: 2px solid #ef4444; transform: scaleX(-1); z-index: 5; background: #000; }
+        .drop-zone { position: fixed; inset: 0; background: rgba(239, 68, 68, 0.2); border: 4px dashed #ef4444; z-index: 100; display: none; align-items: center; justify-content: center; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="drop-indicator" class="drop-zone">
+        <p class="text-2xl font-bold">Drop .GLB file here</p>
+    </div>
+
+    <div class="ui-card shadow-2xl">
+        <h1 class="text-xl font-black text-red-500 italic tracking-tighter mb-1">SPIDEY-MOCAP v2</h1>
+        <p class="text-[10px] uppercase tracking-widest text-slate-400 mb-4">Body Tracking Interface</p>
+        
+        <div id="status-container" class="space-y-3 mb-6">
+            <div class="flex items-center justify-between">
+                <span class="text-xs text-slate-300">Model:</span>
+                <span id="model-status" class="text-[10px] font-bold px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-500">Loading...</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-xs text-slate-300">Camera:</span>
+                <span id="camera-status" class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-500">Offline</span>
+            </div>
+        </div>
+
+        <button id="start-btn" class="w-full py-3 bg-red-600 rounded-xl font-bold text-sm hover:bg-red-500 transition-all shadow-lg shadow-red-900/40 active:scale-95 disabled:opacity-50">
+            INITIALIZE SYSTEM
+        </button>
+        
+        <p class="text-[9px] mt-4 text-slate-500 text-center">Tip: If GitHub fails, drag your .glb file here.</p>
+    </div>
+
+    <video id="video-input" class="hidden" playsinline></video>
+    <canvas id="video-preview"></canvas>
+    <div id="canvas-container"></div>
+
+    <script>
+        let scene, camera, renderer, model;
+        let pose, cameraUtil;
+        const MODEL_URL = 'https://github.com/boobalootoo/things/raw/refs/heads/main/puppet/models/spiderman.glb';
+        
+        const bones = {};
+        const BONE_MAP = {
+            hips: ['Hips', 'pelvis'],
+            leftUpperArm: ['LeftArm', 'L_UpperArm', 'Left_Arm'],
+            rightUpperArm: ['RightArm', 'R_UpperArm', 'Right_Arm']
+        };
+
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+            
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.2, 4);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 1));
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(5, 10, 7.5);
+            scene.add(light);
+
+            const grid = new THREE.GridHelper(20, 20, 0x1e293b, 0x0f172a);
+            scene.add(grid);
+
+            loadModel(MODEL_URL);
+            animate();
+        }
+
+        function loadModel(url, isBlob = false) {
+            const loader = new THREE.GLTFLoader();
+            if (!isBlob) loader.setCrossOrigin('anonymous');
+            
+            const modelStatus = document.getElementById('model-status');
+            modelStatus.innerText = "Downloading...";
+            modelStatus.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-500";
+
+            loader.load(url, (gltf) => {
+                if (model) scene.remove(model);
+                model = gltf.scene;
+                scene.add(model);
+                
+                // Map bones
+                model.traverse((n) => {
+                    if (n.isBone) {
+                        for (const [key, search] of Object.entries(BONE_MAP)) {
+                            if (search.some(s => n.name.toLowerCase().includes(s.toLowerCase()))) bones[key] = n;
+                        }
+                    }
+                });
+
+                modelStatus.innerText = "Loaded";
+                modelStatus.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-green-500/20 text-green-500";
+            }, undefined, (err) => {
+                modelStatus.innerText = "CORS Error";
+                modelStatus.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-red-500/20 text-red-500";
+                console.error("Model load failed:", err);
+            });
+        }
+
+        async function initMocap() {
+            const videoElement = document.getElementById('video-input');
+            const previewCanvas = document.getElementById('video-preview');
+            const canvasCtx = previewCanvas.getContext('2d');
+
+            pose = new Pose({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+            });
+
+            pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+
+            pose.onResults((results) => {
+                if (!results.poseLandmarks || !model) return;
+                const lm = results.poseLandmarks;
+
+                // Simple Arms logic
+                if (bones.leftUpperArm) {
+                    const angle = Math.atan2(lm[13].y - lm[11].y, lm[13].x - lm[11].x);
+                    bones.leftUpperArm.rotation.z = angle + Math.PI/2;
+                }
+                if (bones.rightUpperArm) {
+                    const angle = Math.atan2(lm[14].y - lm[12].y, lm[14].x - lm[12].x);
+                    bones.rightUpperArm.rotation.z = angle - Math.PI/2;
+                }
+
+                if (lm[23] && lm[24]) {
+                    model.position.x = (0.5 - (lm[23].x + lm[24].x)/2) * 5;
+                }
+
+                // 2D Feed
+                previewCanvas.width = 200; previewCanvas.height = 150;
+                canvasCtx.drawImage(results.image, 0, 0, 200, 150);
+            });
+
+            cameraUtil = new Camera(videoElement, {
+                onFrame: async () => { await pose.send({ image: videoElement }); }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // START BUTTON
+        document.getElementById('start-btn').onclick = async function() {
+            const camStatus = document.getElementById('camera-status');
+            try {
+                this.innerText = "WAITING...";
+                await cameraUtil.start();
+                this.style.display = 'none';
+                camStatus.innerText = "Active";
+                camStatus.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-green-500/20 text-green-500";
+            } catch (err) {
+                camStatus.innerText = "Denied";
+                camStatus.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-red-500/20 text-red-500";
+                this.innerText = "CAMERA FAILED";
+            }
+        };
+
+        // DRAG AND DROP FIX
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            document.getElementById('drop-indicator').style.display = 'flex';
+        });
+        window.addEventListener('dragleave', () => {
+            document.getElementById('drop-indicator').style.display = 'none';
+        });
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            document.getElementById('drop-indicator').style.display = 'none';
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.glb')) {
+                const url = URL.createObjectURL(file);
+                loadModel(url, true);
+            }
+        });
+
+        window.onload = () => { initThree(); initMocap(); };
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body>
+</html>
