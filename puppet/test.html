@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Mocap Controller</title>
+    <title>Ultimate Mocap Controller</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
@@ -12,45 +12,65 @@
     <style>
         body { margin: 0; overflow: hidden; background: #020617; color: white; font-family: sans-serif; }
         #canvas-container { position: absolute; inset: 0; z-index: 1; }
-        .ui-card { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(15, 23, 42, 0.9); padding: 20px; border-radius: 16px; border: 1px solid #3b82f6; width: 300px; backdrop-filter: blur(12px); pointer-events: auto; }
-        #video-preview { position: absolute; bottom: 20px; right: 20px; width: 180px; border-radius: 12px; border: 2px solid #3b82f6; transform: scaleX(-1); z-index: 5; }
-        .control-group { background: rgba(30, 41, 59, 0.5); padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+        .ui-card { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(15, 23, 42, 0.9); padding: 15px 20px; border-radius: 16px; border: 1px solid #3b82f6; width: 300px; backdrop-filter: blur(12px); pointer-events: auto; transition: height 0.3s ease; }
+        #video-preview { position: absolute; bottom: 20px; right: 20px; width: 180px; border-radius: 12px; border: 2px solid #3b82f6; transform: scaleX(-1); z-index: 5; background: #000; }
+        .drop-overlay { position: fixed; inset: 0; background: rgba(59, 130, 246, 0.4); border: 4px dashed #3b82f6; z-index: 100; display: none; align-items: center; justify-content: center; pointer-events: none; }
+        
+        /* Custom scrollbar for UI body if needed */
+        #ui-body { transition: max-height 0.3s ease-out, opacity 0.3s ease-out; overflow: hidden; }
+        .collapsed #ui-body { max-height: 0; opacity: 0; margin-top: 0; }
+        .expanded #ui-body { max-height: 500px; opacity: 1; margin-top: 16px; }
+        #ui-chevron { transition: transform 0.3s ease; }
+        .collapsed #ui-chevron { transform: rotate(-90deg); }
     </style>
 </head>
 <body>
 
-    <div class="ui-card shadow-2xl">
-        <h1 class="text-xl font-black bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent italic mb-4">MOCAP ENGINE v3</h1>
-        
-        <div class="control-group">
-            <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">Display Settings</p>
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs">Show Spiderman</span>
-                <input type="checkbox" id="toggle-model" checked class="w-4 h-4 accent-blue-500 cursor-pointer">
-            </div>
-            <div class="flex items-center justify-between">
-                <span class="text-xs">Show Stickman</span>
-                <input type="checkbox" id="toggle-stick" checked class="w-4 h-4 accent-blue-500 cursor-pointer">
-            </div>
-        </div>
+    <div id="drop-zone" class="drop-overlay">
+        <p class="text-3xl font-bold">DROP .GLB FILE HERE</p>
+    </div>
 
-        <div class="control-group">
-            <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">System Diagnostics</p>
-            <div class="text-[11px] flex justify-between">
-                <span class="text-slate-400">Model Rig:</span>
-                <span id="rig-status" class="text-yellow-500">Checking...</span>
-            </div>
-            <div class="text-[11px] flex justify-between mt-1">
-                <span class="text-slate-400">Tracking:</span>
-                <span id="track-status" class="text-red-500">Offline</span>
-            </div>
+    <div id="ui-panel" class="ui-card shadow-2xl expanded">
+        <!-- Collapsible Header -->
+        <div id="ui-header" class="flex justify-between items-center cursor-pointer select-none pb-1 border-b border-transparent hover:border-slate-700 transition-colors">
+            <h1 class="text-xl font-black text-blue-500">MOCAP COMMANDER</h1>
+            <span id="ui-chevron" class="text-blue-500 font-bold text-lg">▼</span>
         </div>
-
-        <button id="start-btn" class="w-full py-3 bg-blue-600 rounded-xl font-bold text-sm hover:bg-blue-500 transition-all shadow-lg active:scale-95">
-            START CAMERA
-        </button>
         
-        <p class="text-[9px] mt-4 text-slate-500 leading-tight">Note: If Spiderman doesn't move his arms, the .glb file might not have a skeleton (Rigged = No).</p>
+        <!-- UI Body Content -->
+        <div id="ui-body">
+            <div class="space-y-4 mb-6">
+                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                    <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">Display Toggles</p>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs">Show Model</span>
+                        <input type="checkbox" id="check-model" checked class="w-4 h-4 accent-blue-500 cursor-pointer">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs">Show Stickman</span>
+                        <input type="checkbox" id="check-stick" checked class="w-4 h-4 accent-blue-500 cursor-pointer">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                    <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">Status</p>
+                    <div class="flex justify-between text-[11px] mb-1">
+                        <span>Source:</span>
+                        <span id="load-src" class="text-slate-400 italic text-right truncate max-w-[120px]">None</span>
+                    </div>
+                    <div class="flex justify-between text-[11px]">
+                        <span>Camera:</span>
+                        <span id="cam-status" class="text-red-400 font-bold">Offline</span>
+                    </div>
+                    <div id="rig-alert" class="text-[10px] mt-2 text-yellow-400 hidden">⚠️ Model lacks full rig (will track head only)</div>
+                </div>
+            </div>
+
+            <button id="start-btn" class="w-full py-3 bg-blue-600 rounded-xl font-bold text-sm hover:bg-blue-500 transition-all shadow-lg active:scale-95 mb-2">
+                START CAMERA
+            </button>
+            <p class="text-[9px] text-slate-500 text-center leading-tight">Drag and drop a .glb file anywhere to load it locally.</p>
+        </div>
     </div>
 
     <video id="video-input" class="hidden" playsinline></video>
@@ -58,12 +78,26 @@
     <div id="canvas-container"></div>
 
     <script>
+        // UI Collapse Logic
+        const uiPanel = document.getElementById('ui-panel');
+        document.getElementById('ui-header').addEventListener('click', () => {
+            if (uiPanel.classList.contains('expanded')) {
+                uiPanel.classList.remove('expanded');
+                uiPanel.classList.add('collapsed');
+            } else {
+                uiPanel.classList.remove('collapsed');
+                uiPanel.classList.add('expanded');
+            }
+        });
+
+        // Three.js & Mocap Logic
         let scene, camera, renderer, model, stickman;
         let pose, cameraUtil;
-        const MODEL_URL = 'https://github.com/boobalootoo/things/raw/refs/heads/main/puppet/models/spiderman.glb';
+        let modelTopOffset = 0; // Distance from model center to its head
         
-        const bones = {};
-        const BONE_PAIRS = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28]];
+        // Minimum visibility score (0.0 to 1.0) for a body part to be drawn
+        const VISIBILITY_THRESHOLD = 0.65; 
+        const BONE_PAIRS = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28], [0,11], [0,12]]; // Added neck bones
 
         function initThree() {
             scene = new THREE.Scene();
@@ -73,128 +107,171 @@
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
             renderer.outputEncoding = THREE.sRGBEncoding;
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 1));
-            const light = new THREE.DirectionalLight(0xffffff, 1);
-            light.position.set(5, 10, 7.5);
-            scene.add(light);
+            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            const sun = new THREE.DirectionalLight(0xffffff, 1);
+            sun.position.set(5, 10, 5);
+            scene.add(sun);
             scene.add(new THREE.GridHelper(20, 20, 0x1e293b, 0x0f172a));
 
-            createStickman();
-            loadModel(MODEL_URL);
+            setupStickman();
             animate();
+            
+            // Try loading the github model by default
+            loadAnyModel('https://github.com/boobalootoo/things/raw/refs/heads/main/puppet/models/spiderman.glb');
         }
 
-        function createStickman() {
+        function setupStickman() {
             stickman = new THREE.Group();
-            const jointGeo = new THREE.SphereGeometry(0.06, 8, 8);
-            const jointMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
-            
             stickman.joints = [];
+            const geo = new THREE.SphereGeometry(0.06, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+            
             for(let i=0; i<33; i++) {
-                const s = new THREE.Mesh(jointGeo, jointMat);
+                const s = new THREE.Mesh(geo, mat);
                 stickman.joints.push(s);
                 stickman.add(s);
             }
 
+            // Make the nose (0) act as a full-sized head, matching the normalized model size
+            stickman.joints[0].material = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.8 });
+            stickman.joints[0].scale.set(4.5, 4.5, 4.5);
+
             stickman.bones = [];
-            const boneMat = new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.5 });
+            const bMat = new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.5 });
             BONE_PAIRS.forEach(() => {
-                const b = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 6), boneMat);
+                const b = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 6), bMat);
                 stickman.bones.push(b);
                 stickman.add(b);
             });
-
             scene.add(stickman);
         }
 
-        function loadModel(url) {
+        function loadAnyModel(url, isLocal = false) {
             const loader = new THREE.GLTFLoader();
-            loader.setCrossOrigin('anonymous');
+            if (!isLocal) loader.setCrossOrigin('anonymous');
             
+            document.getElementById('load-src').innerText = isLocal ? "Local File" : "GitHub";
+
             loader.load(url, (gltf) => {
+                if (model) scene.remove(model);
                 model = gltf.scene;
+                
+                // AUTO-CENTER AND SCALE LOGIC
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const center = box.getCenter(new THREE.Vector3());
+                
+                // Center the local origin to the middle of the bounding box
+                model.position.x -= center.x;
+                model.position.y -= center.y;
+                model.position.z -= center.z;
+                
+                const scaleFactor = 4 / maxDim;
+                model.scale.setScalar(scaleFactor);
+                
+                // Calculate the offset from the center to the top (the head)
+                // Add a tiny buffer so the anchor sits at face level, not hair tip
+                modelTopOffset = (size.y / 2) * scaleFactor;
+                
                 scene.add(model);
                 
-                let foundBones = false;
-                model.traverse((n) => {
-                    if (n.isBone) {
-                        foundBones = true;
-                        // Map bones based on common naming conventions
-                        const name = n.name.toLowerCase();
-                        if (name.includes('arm')) {
-                            if (name.includes('l')) bones.lArm = n;
-                            else if (name.includes('r')) bones.rArm = n;
+                let hasBones = false;
+                model.traverse(n => { if(n.isBone) hasBones = true; });
+                document.getElementById('rig-alert').style.display = hasBones ? 'none' : 'block';
+            }, undefined, (e) => {
+                console.error("Load Failed:", e);
+                document.getElementById('load-src').innerText = "Load Failed (CORS)";
+            });
+        }
+
+        async function startMocap() {
+            const video = document.getElementById('video-input');
+            const preview = document.getElementById('video-preview');
+            const ctx = preview.getContext('2d');
+
+            pose = new Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+            pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+
+            pose.onResults((res) => {
+                if (!res.poseLandmarks) return;
+                const lm = res.poseLandmarks;
+
+                let isUserVisible = false;
+                let highestVisibleJoint = null;
+                let highestY = -Infinity;
+
+                // 1. UPDATE STICKMAN JOINTS (Culling invisible ones)
+                const showStickman = document.getElementById('check-stick').checked;
+                stickman.visible = showStickman;
+                
+                lm.forEach((p, i) => {
+                    const jointIsVisible = p.visibility > VISIBILITY_THRESHOLD;
+                    if (jointIsVisible) isUserVisible = true;
+
+                    if (stickman.joints[i]) {
+                        const joint = stickman.joints[i];
+                        joint.visible = showStickman && jointIsVisible;
+                        joint.position.set((0.5-p.x)*8, (0.5-p.y)*8, -p.z*4);
+                        
+                        // Keep track of the highest visible joint for fallback anchoring
+                        if (jointIsVisible && joint.position.y > highestY) {
+                            highestY = joint.position.y;
+                            highestVisibleJoint = joint;
                         }
                     }
                 });
 
-                const status = document.getElementById('rig-status');
-                status.innerText = foundBones ? "Rigged (Ready)" : "No Rig Found";
-                status.className = foundBones ? "text-green-500" : "text-red-500";
-            }, undefined, (e) => console.error("Load failed", e));
-        }
-
-        async function initMocap() {
-            const videoElement = document.getElementById('video-input');
-            const previewCanvas = document.getElementById('video-preview');
-            const canvasCtx = previewCanvas.getContext('2d');
-
-            pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-            pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
-
-            pose.onResults((results) => {
-                if (!results.poseLandmarks) return;
-                const lm = results.poseLandmarks;
-
-                document.getElementById('track-status').innerText = "Active";
-                document.getElementById('track-status').className = "text-green-500";
-
-                // Update Stickman
-                stickman.visible = document.getElementById('toggle-stick').checked;
-                lm.forEach((p, i) => {
-                    if (stickman.joints[i]) {
-                        stickman.joints[i].position.set((0.5 - p.x) * 8, (0.5 - p.y) * 8, -p.z * 4);
-                    }
-                });
-
-                BONE_PAIRS.forEach((pair, i) => {
-                    const start = stickman.joints[pair[0]].position;
-                    const end = stickman.joints[pair[1]].position;
+                // 2. UPDATE STICKMAN BONES
+                BONE_PAIRS.forEach((p, i) => {
+                    const j1 = stickman.joints[p[0]];
+                    const j2 = stickman.joints[p[1]];
                     const bone = stickman.bones[i];
-                    bone.position.copy(start).lerp(end, 0.5);
-                    bone.scale.set(1, start.distanceTo(end), 1);
-                    bone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize());
+                    
+                    // Only show bone if both connected joints are visible
+                    if (j1.visible && j2.visible && showStickman) {
+                        bone.visible = true;
+                        const s = j1.position;
+                        const e = j2.position;
+                        bone.position.copy(s).lerp(e, 0.5);
+                        bone.scale.set(1, s.distanceTo(e), 1);
+                        bone.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), e.clone().sub(s).normalize());
+                    } else {
+                        bone.visible = false;
+                    }
                 });
 
-                // Update Spiderman Model
+                // 3. UPDATE MODEL (Head Alignment & Offscreen Culling)
                 if (model) {
-                    model.visible = document.getElementById('toggle-model').checked;
-                    // Position mapping
-                    model.position.x = (0.5 - (lm[11].x + lm[12].x)/2) * 8;
-                    model.position.y = (0.5 - (lm[11].y + lm[12].y)/2) * 8 - 1;
+                    const showModel = document.getElementById('check-model').checked;
+                    model.visible = showModel && isUserVisible;
 
-                    // Bone Rotations (Only if Rigged)
-                    if (bones.lArm) {
-                        const angle = Math.atan2(lm[13].y - lm[11].y, lm[13].x - lm[11].x);
-                        bones.lArm.rotation.z = angle + Math.PI/2;
-                    }
-                    if (bones.rArm) {
-                        const angle = Math.atan2(lm[14].y - lm[12].y, lm[14].x - lm[12].x);
-                        bones.rArm.rotation.z = angle - Math.PI/2;
+                    if (model.visible && highestVisibleJoint) {
+                        // Prefer the nose (0) as the anchor. If hidden, use highest visible joint
+                        const isNoseVisible = stickman.joints[0].visible;
+                        const anchorJoint = isNoseVisible ? stickman.joints[0] : highestVisibleJoint;
+                        
+                        const targetX = anchorJoint.position.x;
+                        // Align model's top (head) to the anchor, offset by 0.3 to align at face level
+                        const targetY = anchorJoint.position.y - modelTopOffset + 0.3;
+
+                        // Smooth lerp interpolation to prevent jittering
+                        model.position.x += (targetX - model.position.x) * 0.2;
+                        model.position.y += (targetY - model.position.y) * 0.2;
                     }
                 }
 
-                // 2D Preview
-                previewCanvas.width = 180; previewCanvas.height = 135;
-                canvasCtx.drawImage(results.image, 0, 0, 180, 135);
+                // 2D Feed
+                preview.width = 180; preview.height = 135;
+                ctx.drawImage(res.image, 0, 0, 180, 135);
             });
 
-            cameraUtil = new Camera(videoElement, {
-                onFrame: async () => { await pose.send({ image: videoElement }); }
-            });
+            cameraUtil = new Camera(video, { onFrame: async () => { await pose.send({ image: video }); } });
+            await cameraUtil.start();
         }
 
         function animate() {
@@ -202,13 +279,36 @@
             renderer.render(scene, camera);
         }
 
+        // DRAG AND DROP
+        window.addEventListener('dragover', (e) => { e.preventDefault(); document.getElementById('drop-zone').style.display = 'flex'; });
+        window.addEventListener('dragleave', () => { document.getElementById('drop-zone').style.display = 'none'; });
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            document.getElementById('drop-zone').style.display = 'none';
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.glb')) loadAnyModel(URL.createObjectURL(file), true);
+        });
+
         document.getElementById('start-btn').onclick = async function() {
-            this.innerText = "INITIALIZING...";
-            await cameraUtil.start();
-            this.style.display = 'none';
+            const btn = this;
+            const status = document.getElementById('cam-status');
+            try {
+                btn.innerText = "STARTING...";
+                await startMocap();
+                btn.style.display = 'none';
+                status.innerText = "Active";
+                status.className = "text-green-400 font-bold";
+                // Automatically collapse UI when started so it doesn't block the view
+                uiPanel.classList.remove('expanded');
+                uiPanel.classList.add('collapsed');
+            } catch (err) {
+                console.error("Camera Error:", err);
+                btn.innerText = "CAMERA FAILED";
+                status.innerText = "Denied";
+            }
         };
 
-        window.onload = () => { initThree(); initMocap(); };
+        window.onload = initThree;
         window.onresize = () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
