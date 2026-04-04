@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Mocap Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #020617; color: white; font-family: sans-serif; }
+        #canvas-container { position: absolute; inset: 0; z-index: 1; }
+        .ui-card { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(15, 23, 42, 0.9); padding: 20px; border-radius: 16px; border: 1px solid #3b82f6; width: 300px; backdrop-filter: blur(12px); pointer-events: auto; }
+        #video-preview { position: absolute; bottom: 20px; right: 20px; width: 180px; border-radius: 12px; border: 2px solid #3b82f6; transform: scaleX(-1); z-index: 5; }
+        .control-group { background: rgba(30, 41, 59, 0.5); padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="ui-card shadow-2xl">
+        <h1 class="text-xl font-black bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent italic mb-4">MOCAP ENGINE v3</h1>
+        
+        <div class="control-group">
+            <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">Display Settings</p>
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs">Show Spiderman</span>
+                <input type="checkbox" id="toggle-model" checked class="w-4 h-4 accent-blue-500 cursor-pointer">
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-xs">Show Stickman</span>
+                <input type="checkbox" id="toggle-stick" checked class="w-4 h-4 accent-blue-500 cursor-pointer">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">System Diagnostics</p>
+            <div class="text-[11px] flex justify-between">
+                <span class="text-slate-400">Model Rig:</span>
+                <span id="rig-status" class="text-yellow-500">Checking...</span>
+            </div>
+            <div class="text-[11px] flex justify-between mt-1">
+                <span class="text-slate-400">Tracking:</span>
+                <span id="track-status" class="text-red-500">Offline</span>
+            </div>
+        </div>
+
+        <button id="start-btn" class="w-full py-3 bg-blue-600 rounded-xl font-bold text-sm hover:bg-blue-500 transition-all shadow-lg active:scale-95">
+            START CAMERA
+        </button>
+        
+        <p class="text-[9px] mt-4 text-slate-500 leading-tight">Note: If Spiderman doesn't move his arms, the .glb file might not have a skeleton (Rigged = No).</p>
+    </div>
+
+    <video id="video-input" class="hidden" playsinline></video>
+    <canvas id="video-preview"></canvas>
+    <div id="canvas-container"></div>
+
+    <script>
+        let scene, camera, renderer, model, stickman;
+        let pose, cameraUtil;
+        const MODEL_URL = 'https://github.com/boobalootoo/things/raw/refs/heads/main/puppet/models/spiderman.glb';
+        
+        const bones = {};
+        const BONE_PAIRS = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28]];
+
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 6);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 1));
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(5, 10, 7.5);
+            scene.add(light);
+            scene.add(new THREE.GridHelper(20, 20, 0x1e293b, 0x0f172a));
+
+            createStickman();
+            loadModel(MODEL_URL);
+            animate();
+        }
+
+        function createStickman() {
+            stickman = new THREE.Group();
+            const jointGeo = new THREE.SphereGeometry(0.06, 8, 8);
+            const jointMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+            
+            stickman.joints = [];
+            for(let i=0; i<33; i++) {
+                const s = new THREE.Mesh(jointGeo, jointMat);
+                stickman.joints.push(s);
+                stickman.add(s);
+            }
+
+            stickman.bones = [];
+            const boneMat = new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.5 });
+            BONE_PAIRS.forEach(() => {
+                const b = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 6), boneMat);
+                stickman.bones.push(b);
+                stickman.add(b);
+            });
+
+            scene.add(stickman);
+        }
+
+        function loadModel(url) {
+            const loader = new THREE.GLTFLoader();
+            loader.setCrossOrigin('anonymous');
+            
+            loader.load(url, (gltf) => {
+                model = gltf.scene;
+                scene.add(model);
+                
+                let foundBones = false;
+                model.traverse((n) => {
+                    if (n.isBone) {
+                        foundBones = true;
+                        // Map bones based on common naming conventions
+                        const name = n.name.toLowerCase();
+                        if (name.includes('arm')) {
+                            if (name.includes('l')) bones.lArm = n;
+                            else if (name.includes('r')) bones.rArm = n;
+                        }
+                    }
+                });
+
+                const status = document.getElementById('rig-status');
+                status.innerText = foundBones ? "Rigged (Ready)" : "No Rig Found";
+                status.className = foundBones ? "text-green-500" : "text-red-500";
+            }, undefined, (e) => console.error("Load failed", e));
+        }
+
+        async function initMocap() {
+            const videoElement = document.getElementById('video-input');
+            const previewCanvas = document.getElementById('video-preview');
+            const canvasCtx = previewCanvas.getContext('2d');
+
+            pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+            pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+
+            pose.onResults((results) => {
+                if (!results.poseLandmarks) return;
+                const lm = results.poseLandmarks;
+
+                document.getElementById('track-status').innerText = "Active";
+                document.getElementById('track-status').className = "text-green-500";
+
+                // Update Stickman
+                stickman.visible = document.getElementById('toggle-stick').checked;
+                lm.forEach((p, i) => {
+                    if (stickman.joints[i]) {
+                        stickman.joints[i].position.set((0.5 - p.x) * 8, (0.5 - p.y) * 8, -p.z * 4);
+                    }
+                });
+
+                BONE_PAIRS.forEach((pair, i) => {
+                    const start = stickman.joints[pair[0]].position;
+                    const end = stickman.joints[pair[1]].position;
+                    const bone = stickman.bones[i];
+                    bone.position.copy(start).lerp(end, 0.5);
+                    bone.scale.set(1, start.distanceTo(end), 1);
+                    bone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize());
+                });
+
+                // Update Spiderman Model
+                if (model) {
+                    model.visible = document.getElementById('toggle-model').checked;
+                    // Position mapping
+                    model.position.x = (0.5 - (lm[11].x + lm[12].x)/2) * 8;
+                    model.position.y = (0.5 - (lm[11].y + lm[12].y)/2) * 8 - 1;
+
+                    // Bone Rotations (Only if Rigged)
+                    if (bones.lArm) {
+                        const angle = Math.atan2(lm[13].y - lm[11].y, lm[13].x - lm[11].x);
+                        bones.lArm.rotation.z = angle + Math.PI/2;
+                    }
+                    if (bones.rArm) {
+                        const angle = Math.atan2(lm[14].y - lm[12].y, lm[14].x - lm[12].x);
+                        bones.rArm.rotation.z = angle - Math.PI/2;
+                    }
+                }
+
+                // 2D Preview
+                previewCanvas.width = 180; previewCanvas.height = 135;
+                canvasCtx.drawImage(results.image, 0, 0, 180, 135);
+            });
+
+            cameraUtil = new Camera(videoElement, {
+                onFrame: async () => { await pose.send({ image: videoElement }); }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        document.getElementById('start-btn').onclick = async function() {
+            this.innerText = "INITIALIZING...";
+            await cameraUtil.start();
+            this.style.display = 'none';
+        };
+
+        window.onload = () => { initThree(); initMocap(); };
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body>
+</html>
