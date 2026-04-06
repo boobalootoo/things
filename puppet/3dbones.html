@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D Motion Capture Mirror</title>
+    
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Three.js for 3D rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls to allow the user to rotate the 3D view -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- MediaPipe Pose for Body Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a; /* Slate 900 */
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        /* Picture-in-Picture Video Feed */
+        #video-preview {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 120px;
+            height: auto;
+            border-radius: 12px;
+            border: 2px solid #38bdf8;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            transform: scaleX(-1); /* Mirror the video feed visually */
+            z-index: 10;
+            background: #000;
+        }
+        @media (min-width: 768px) {
+            #video-preview { width: 240px; }
+        }
+    </style>
+</head>
+<body class="text-white font-sans antialiased">
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="absolute inset-0 flex flex-col items-center justify-center z-20 bg-slate-900/80 backdrop-blur-sm transition-opacity duration-500">
+        <h1 class="text-4xl font-bold mb-4 text-center bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">
+            3D Motion Mirror
+        </h1>
+        <p class="text-slate-300 mb-8 text-center max-w-md px-4">
+            Stand back so the camera can see your full body. Use your body to control the 3D avatar.
+        </p>
+        <button id="start-btn" class="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-semibold shadow-lg shadow-blue-500/30 transition-all transform hover:scale-105 active:scale-95">
+            Start Camera & AI Model
+        </button>
+        <div id="loading-status" class="hidden mt-6 flex flex-col items-center">
+            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-cyan-400 mb-3"></div>
+            <p class="text-cyan-400 font-medium tracking-wide animate-pulse">Loading AI Models...</p>
+        </div>
+    </div>
+
+    <!-- Hidden Video Element (used for processing) -->
+    <video id="input_video" class="hidden" playsinline></video>
+    
+    <!-- Visible small preview for the user -->
+    <video id="video-preview" autoplay playsinline muted></video>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- System States & DOM Elements ---
+        const startBtn = document.getElementById('start-btn');
+        const uiLayer = document.getElementById('ui-layer');
+        const loadingStatus = document.getElementById('loading-status');
+        const videoElement = document.getElementById('input_video');
+        const videoPreview = document.getElementById('video-preview');
+        const canvasContainer = document.getElementById('canvas-container');
+
+        // --- Three.js Variables ---
+        let scene, camera, renderer, controls;
+        const joints = []; // Spheres representing body landmarks
+        const bones = [];  // Cylinders connecting the joints
+        const MODEL_SCALE = 15; // Scale factor from MediaPipe meters to Three.js units
+
+        // MediaPipe tracks 33 landmarks. We define connections between them to draw "bones".
+        // Format: [Start_Landmark_Index, End_Landmark_Index]
+        const POSE_CONNECTIONS = [
+            // Head / Face
+            [0, 1], [1, 2], [2, 3], [3, 7], // Right Eye
+            [0, 4], [4, 5], [5, 6], [6, 8], // Left Eye
+            [9, 10], // Mouth
+            // Torso
+            [11, 12], // Shoulders
+            [23, 24], // Hips
+            [11, 23], [12, 24], // Sides
+            // Right Arm
+            [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+            // Left Arm
+            [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+            // Right Leg
+            [24, 26], [26, 28], [28, 30], [28, 32], [32, 30],
+            // Left Leg
+            [23, 25], [25, 27], [27, 29], [27, 31], [31, 29]
+        ];
+
+        // --- Initialization Sequence ---
+        startBtn.addEventListener('click', async () => {
+            startBtn.classList.add('hidden');
+            loadingStatus.classList.remove('hidden');
+            
+            initThreeJS();
+            await initMediaPipe();
+        });
+
+        // --- Three.js Setup ---
+        function initThreeJS() {
+            // 1. Scene
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.02); // Blend into background
+
+            // 2. Camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 35); // Position camera slightly up and back
+
+            // 3. Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimize for mobile
+            canvasContainer.appendChild(renderer.domElement);
+
+            // 4. Controls (Orbit controls for touch/mouse interaction)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.target.set(0, 0, 0); // Look at center
+
+            // 5. Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0x38bdf8, 1);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+
+            const pointLight = new THREE.PointLight(0xf472b6, 1); // Pinkish backlight
+            pointLight.position.set(-10, 10, -10);
+            scene.add(pointLight);
+
+            // 6. Environment (Floor Grid)
+            const gridHelper = new THREE.GridHelper(50, 50, 0x38bdf8, 0x334155);
+            gridHelper.position.y = -15; // Move grid down relative to the hips (origin)
+            scene.add(gridHelper);
+
+            // 7. Create 3D Avatar (Joints and Bones)
+            createAvatar();
+
+            // 8. Handle Window Resize
+            window.addEventListener('resize', onWindowResize, false);
+
+            // 9. Start Animation Loop
+            animate();
+        }
+
+        function createAvatar() {
+            // Materials for our "Robotic Skeleton"
+            const jointGeo = new THREE.SphereGeometry(0.4, 16, 16);
+            const jointMat = new THREE.MeshPhongMaterial({ 
+                color: 0x38bdf8, // Cyan
+                emissive: 0x0ea5e9,
+                emissiveIntensity: 0.5
+            });
+
+            // Head joint is larger
+            const headGeo = new THREE.SphereGeometry(1.5, 32, 32);
+
+            // Create 33 joints corresponding to MediaPipe landmarks
+            for (let i = 0; i < 33; i++) {
+                let mesh;
+                if (i === 0) { // Nose/Head area
+                    mesh = new THREE.Mesh(headGeo, jointMat);
+                } else {
+                    mesh = new THREE.Mesh(jointGeo, jointMat);
+                }
+                scene.add(mesh);
+                joints.push(mesh);
+            }
+
+            // Material for bones connecting joints
+            const boneGeo = new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
+            // Translate geometry so origin is at the base, making stretching easier
+            boneGeo.translate(0, 0.5, 0); 
+            const boneMat = new THREE.MeshPhongMaterial({ 
+                color: 0x94a3b8, // Slate
+                transparent: true,
+                opacity: 0.8
+            });
+
+            // Create bones based on connection map
+            POSE_CONNECTIONS.forEach(() => {
+                const bone = new THREE.Mesh(boneGeo, boneMat);
+                scene.add(bone);
+                bones.push(bone);
+            });
+        }
+
+        // Update a single cylinder (bone) to connect two points (joints)
+        function updateBone(bone, startVec, endVec) {
+            const distance = startVec.distanceTo(endVec);
+            
+            // If points are essentially the same or missing, hide bone
+            if (distance < 0.01) {
+                bone.visible = false;
+                return;
+            }
+            bone.visible = true;
+
+            // Position at start point
+            bone.position.copy(startVec);
+            
+            // Scale Y axis to match distance between points
+            bone.scale.set(1, distance, 1);
+            
+            // Point the cylinder towards the end point
+            const direction = new THREE.Vector3().subVectors(endVec, startVec).normalize();
+            // Default cylinder points UP (0, 1, 0)
+            const up = new THREE.Vector3(0, 1, 0);
+            
+            // Calculate and apply rotation quaternion
+            bone.quaternion.setFromUnitVectors(up, direction);
+        }
+
+        function onWindowResize() {
+            if (!camera || !renderer) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (controls) controls.update();
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        // --- MediaPipe Setup & Processing ---
+        async function initMediaPipe() {
+            const pose = new Pose({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+            }});
+
+            pose.setOptions({
+                modelComplexity: 1, // 0 = Fast/Less Accurate, 1 = Balanced, 2 = Slow/Accurate
+                smoothLandmarks: true,
+                enableSegmentation: false,
+                smoothSegmentation: false,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            pose.onResults(onPoseResults);
+
+            // Setup Camera stream
+            try {
+                // Request camera stream
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user', // Front camera preferred
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    } 
+                });
+                
+                videoElement.srcObject = stream;
+                videoPreview.srcObject = stream;
+                
+                await videoElement.play();
+
+                // Start processing frames
+                const processVideo = async () => {
+                    await pose.send({image: videoElement});
+                    requestAnimationFrame(processVideo);
+                };
+                processVideo();
+
+                // Hide UI once camera is running
+                uiLayer.classList.add('opacity-0', 'pointer-events-none');
+                
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                loadingStatus.innerHTML = `<p class="text-red-400">Camera access denied or unavailable. Please ensure you have given permissions.</p>`;
+            }
+        }
+
+        function onPoseResults(results) {
+            // Use poseWorldLandmarks for real 3D coordinates (meters, origin at hips)
+            if (!results.poseWorldLandmarks) {
+                return; // No body detected
+            }
+
+            const landmarks = results.poseWorldLandmarks;
+
+            // 1. Update Joint Positions
+            for (let i = 0; i < 33; i++) {
+                const lm = landmarks[i];
+                // Visibility check (optional, can hide joints if confidence is too low)
+                if (lm.visibility > 0.3) {
+                    joints[i].visible = true;
+                    // MediaPipe coords -> Three.js coords mapping
+                    // - Flip X axis to create a mirror effect
+                    // - Flip Y axis (MediaPipe Y points down, Three.js Y points up)
+                    // - Flip Z axis (MediaPipe Z negative is closer to camera)
+                    joints[i].position.set(
+                        -lm.x * MODEL_SCALE, 
+                        -lm.y * MODEL_SCALE, 
+                        -lm.z * MODEL_SCALE  
+                    );
+                } else {
+                    joints[i].visible = false;
+                }
+            }
+
+            // 2. Update Bone Positions and Rotations
+            POSE_CONNECTIONS.forEach((connection, index) => {
+                const p1Index = connection[0];
+                const p2Index = connection[1];
+                
+                const joint1 = joints[p1Index];
+                const joint2 = joints[p2Index];
+
+                // Only draw bone if both joints are reasonably visible
+                if (joint1.visible && joint2.visible) {
+                    updateBone(bones[index], joint1.position, joint2.position);
+                } else {
+                    bones[index].visible = false;
+                }
+            });
+            
+            // Note: In a full game, you would apply rotations from these calculated vectors
+            // directly to an imported rigged 3D character's bones. By rendering the bones 
+            // directly here, we guarantee it works perfectly in any browser without needing
+            // to host or load heavy external .glb assets.
+        }
+    </script>
+</body>
+</html>
