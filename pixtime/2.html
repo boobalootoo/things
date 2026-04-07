@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelTime Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // Custom palette to ensure all shades are available dynamically
+                        brand: { 500: '#3b82f6' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* The wrap-reverse allows blocks to stack from the bottom up naturally */
+        .pixel-container {
+            display: flex;
+            flex-wrap: wrap-reverse;
+            align-content: flex-start;
+            gap: 2px;
+            padding: 4px;
+            overflow-y: auto;
+            height: 100%;
+        }
+
+        /* The individual minute block */
+        .pixel {
+            width: 14px;
+            height: 14px;
+            border-radius: 2px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            animation: dropIn 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            opacity: 0;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .pixel:hover {
+            transform: scale(1.2);
+            z-index: 10;
+        }
+
+        @keyframes dropIn {
+            0% { transform: translateY(-100px) scale(0.8); opacity: 0; }
+            100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        /* Dynamic Color Classes (Pre-generating for standard Tailwind colors/shades used in JS) */
+        .bg-red-300 { background-color: #fca5a5; } .bg-red-400 { background-color: #f87171; } .bg-red-500 { background-color: #ef4444; } .bg-red-600 { background-color: #dc2626; } .bg-red-700 { background-color: #b91c1c; }
+        .bg-orange-300 { background-color: #fdba74; } .bg-orange-400 { background-color: #fb923c; } .bg-orange-500 { background-color: #f97316; } .bg-orange-600 { background-color: #ea580c; } .bg-orange-700 { background-color: #c2410c; }
+        .bg-yellow-300 { background-color: #fde047; } .bg-yellow-400 { background-color: #facc15; } .bg-yellow-500 { background-color: #eab308; } .bg-yellow-600 { background-color: #ca8a04; } .bg-yellow-700 { background-color: #a16207; }
+        .bg-green-300 { background-color: #86efac; } .bg-green-400 { background-color: #4ade80; } .bg-green-500 { background-color: #22c55e; } .bg-green-600 { background-color: #16a34a; } .bg-green-700 { background-color: #15803d; }
+        .bg-blue-300 { background-color: #93c5fd; } .bg-blue-400 { background-color: #60a5fa; } .bg-blue-500 { background-color: #3b82f6; } .bg-blue-600 { background-color: #2563eb; } .bg-blue-700 { background-color: #1d4ed8; }
+        .bg-indigo-300 { background-color: #a5b4fc; } .bg-indigo-400 { background-color: #818cf8; } .bg-indigo-500 { background-color: #6366f1; } .bg-indigo-600 { background-color: #4f46e5; } .bg-indigo-700 { background-color: #4338ca; }
+        .bg-purple-300 { background-color: #d8b4fe; } .bg-purple-400 { background-color: #c084fc; } .bg-purple-500 { background-color: #a855f7; } .bg-purple-600 { background-color: #9333ea; } .bg-purple-700 { background-color: #7e22ce; }
+        .bg-gray-400 { background-color: #9ca3af; }
+        
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+        }
+        
+        .hide { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Header & Controls -->
+    <header class="bg-white border-b border-gray-200 shadow-sm p-4 z-10 flex-shrink-0">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            
+            <!-- Logo & Title -->
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded grid grid-cols-2 gap-0.5 bg-gray-200 p-0.5 transform rotate-45">
+                    <div class="bg-blue-500 rounded-sm"></div><div class="bg-purple-500 rounded-sm"></div>
+                    <div class="bg-green-500 rounded-sm"></div><div class="bg-yellow-500 rounded-sm"></div>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold leading-tight">PixelTime</h1>
+                    <p class="text-xs text-gray-500 font-mono">Visual Productivity Tracker</p>
+                </div>
+            </div>
+
+            <!-- Timer Controls -->
+            <div class="flex flex-col items-center">
+                <div class="text-4xl font-mono font-bold tracking-wider mb-1" id="timer-display">00:00</div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-play" class="bg-green-500 hover:bg-green-600 text-white p-2 rounded-full shadow transition-transform hover:scale-105" title="Start Working">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                    </button>
+                    <button id="btn-pause" class="bg-yellow-500 hover:bg-yellow-600 text-white p-2 rounded-full shadow transition-transform hover:scale-105 hide" title="Pause Timer">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                    </button>
+                    <button id="btn-stop" class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full shadow transition-transform hover:scale-105" title="Stop & Reset">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"></path></svg>
+                    </button>
+                    <!-- Quick Add Minute (for testing without waiting 60s) -->
+                    <button id="btn-add-minute" class="ml-2 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded" title="Add 1 minute instantly">+1m</button>
+                </div>
+            </div>
+
+            <!-- Task Selection & Actions -->
+            <div class="flex items-center gap-3">
+                <div class="flex flex-col gap-1 text-sm">
+                    <select id="task-select" class="bg-gray-50 border border-gray-300 text-gray-900 rounded focus:ring-blue-500 focus:border-blue-500 block w-40 p-1"></select>
+                    <select id="subtask-select" class="bg-gray-50 border border-gray-300 text-gray-900 rounded focus:ring-blue-500 focus:border-blue-500 block w-40 p-1"></select>
+                </div>
+                
+                <div class="flex gap-2 border-l pl-3 ml-1">
+                    <button id="btn-settings" class="text-gray-500 hover:text-blue-600 transition-colors" title="Manage Tasks & Colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </button>
+                    <button id="btn-info" class="text-gray-500 hover:text-blue-600 transition-colors" title="Information & Files">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </button>
+                    <button id="btn-download" class="text-gray-500 hover:text-blue-600 transition-colors" title="Download Data">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-hidden flex flex-col p-4 max-w-7xl mx-auto w-full">
+        
+        <!-- View Controls & Legend -->
+        <div class="flex justify-between items-center mb-3 flex-shrink-0 bg-white p-2 rounded shadow-sm">
+            <div class="flex items-center gap-2">
+                <button id="btn-prev-date" class="p-1 hover:bg-gray-100 rounded">&larr;</button>
+                <span id="date-range-label" class="font-semibold text-gray-700 min-w-[150px] text-center">Loading...</span>
+                <button id="btn-next-date" class="p-1 hover:bg-gray-100 rounded">&rarr;</button>
+                <button id="btn-today" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 ml-2">Today</button>
+            </div>
+            
+            <div class="flex bg-gray-100 p-1 rounded">
+                <button id="tab-week" class="px-3 py-1 text-sm font-medium rounded bg-white shadow-sm">Week View</button>
+                <button id="tab-day" class="px-3 py-1 text-sm font-medium rounded text-gray-600 hover:text-gray-900">Hour by Hour</button>
+            </div>
+        </div>
+
+        <div id="legend-container" class="flex flex-wrap gap-4 mb-3 text-xs bg-white p-2 rounded shadow-sm flex-shrink-0">
+            <!-- Populated via JS -->
+        </div>
+
+        <!-- Weekly View Container (Matches user image format) -->
+        <div id="view-week" class="flex-1 border border-gray-400 bg-white grid grid-cols-7 rounded shadow-sm overflow-hidden">
+            <!-- 7 Columns generated via JS -->
+        </div>
+
+        <!-- Daily (Hour-by-Hour) View Container -->
+        <div id="view-day" class="flex-1 border border-gray-300 bg-white rounded shadow-sm overflow-y-auto hide p-4">
+            <div id="hourly-grid" class="flex flex-col gap-2">
+                <!-- 24 Rows generated via JS -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ================= MODALS ================= -->
+
+    <!-- Info & Related Files Modal -->
+    <div id="modal-info" class="fixed inset-0 modal-overlay flex items-center justify-center z-50 hide">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full m-4 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-blue-50">
+                <h2 class="text-lg font-bold text-blue-800">Information & Files</h2>
+                <button class="close-modal text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto text-sm text-gray-700 space-y-4">
+                <div>
+                    <h3 class="font-bold text-gray-900 mb-1">How to use PixelTime:</h3>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>Select a <b>Task</b> and <b>Subtask</b> from the dropdowns at the top.</li>
+                        <li>Click <b>Play</b> to start working. The timer will begin.</li>
+                        <li>For every <b>1 minute</b> you work, a colored pixel drops into the container for the current day.</li>
+                        <li>Pixels stack from the bottom up. Hover over a pixel to see exactly what you were working on and when.</li>
+                        <li>Switch between <b>Week View</b> (daily totals) and <b>Hour by Hour</b> (detailed breakdown).</li>
+                        <li>Use the Settings icon to create your own color-coded Tasks.</li>
+                    </ul>
+                </div>
+                
+                <div class="bg-gray-50 p-3 rounded border border-gray-200">
+                    <h3 class="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                        Related Files (Project Structure)
+                    </h3>
+                    <p class="text-xs text-gray-500 mb-2">Because this is a persistent browser tool, files exist virtually in LocalStorage. Click to access them.</p>
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="#" class="flex items-center gap-2 text-blue-600 hover:underline">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                                index.html (Current UI)
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" id="link-download-data" class="flex items-center gap-2 text-green-600 hover:underline">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                pixeltime_data.json (Export Data)
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="flex items-center gap-2 text-gray-600 hover:underline cursor-not-allowed">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                README.md (Documentation)
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings (Task Management) Modal -->
+    <div id="modal-settings" class="fixed inset-0 modal-overlay flex items-center justify-center z-50 hide">
+        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full m-4 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h2 class="text-lg font-bold text-gray-800">Manage Tasks & Colors</h2>
+                <button class="close-modal text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1">
+                <div id="settings-task-list" class="space-y-4">
+                    <!-- Populated via JS -->
+                </div>
+                
+                <div class="mt-6 border-t pt-4">
+                    <h3 class="font-bold text-sm mb-2 text-gray-700">Add New Task Category</h3>
+                    <div class="flex gap-2">
+                        <input type="text" id="new-task-name" placeholder="Task Name..." class="border p-2 rounded flex-1 text-sm">
+                        <select id="new-task-color" class="border p-2 rounded text-sm w-32">
+                            <option value="blue">Blue</option>
+                            <option value="green">Green</option>
+                            <option value="red">Red</option>
+                            <option value="yellow">Yellow</option>
+                            <option value="purple">Purple</option>
+                            <option value="orange">Orange</option>
+                            <option value="indigo">Indigo</option>
+                        </select>
+                        <button id="btn-add-task" class="bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 text-sm">Add</button>
+                    </div>
+                </div>
+                
+                <div class="mt-4 border-t pt-4">
+                    <h3 class="font-bold text-sm mb-2 text-gray-700">Add Subtask</h3>
+                    <div class="flex gap-2">
+                        <select id="new-subtask-parent" class="border p-2 rounded text-sm w-32"></select>
+                        <input type="text" id="new-subtask-name" placeholder="Subtask Name..." class="border p-2 rounded flex-1 text-sm">
+                        <select id="new-subtask-shade" class="border p-2 rounded text-sm w-24">
+                            <option value="300">Light</option>
+                            <option value="400">Med-Light</option>
+                            <option value="500">Medium</option>
+                            <option value="600">Med-Dark</option>
+                            <option value="700">Dark</option>
+                        </select>
+                        <button id="btn-add-subtask" class="bg-gray-200 text-gray-800 px-3 py-2 rounded hover:bg-gray-300 text-sm">Add</button>
+                    </div>
+                </div>
+                
+                <div class="mt-6 border-t pt-4 text-center">
+                   <button id="btn-factory-reset" class="text-xs text-red-500 hover:text-red-700 underline">Danger: Clear All Data & Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Logic -->
+    <script>
+        // --- DATA STATE & PERSISTENCE ---
+        const DEFAULT_DATA = {
+            tasks: [],
+            subtasks: [],
+            pixels: [] // { id, timestamp, date(YYYY-MM-DD), hour(0-23), taskId, subtaskId }
+        };
+
+        let appData = JSON.parse(localStorage.getItem('pixelTimeData')) || DEFAULT_DATA;
+        
+        // Timer & Session State
+        const DEFAULT_SESSION = {
+            isRunning: false,
+            startTime: null,
+            accumulatedMs: 0,
+            lastDroppedMinute: 0,
+            taskId: null,
+            subtaskId: null
+        };
+        let activeSession = JSON.parse(localStorage.getItem('pixelTimeSession')) || DEFAULT_SESSION;
+        let timerInterval = null;
+        
+        // View State
+        let currentView = 'week'; // 'week' or 'day'
+        let currentDate = new Date();
+
+        function saveData() {
+            localStorage.setItem('pixelTimeData', JSON.stringify(appData));
+        }
+
+        // --- UTILITY FUNCTIONS ---
+        function padZero(num) { return num.toString().padStart(2, '0'); }
+        
+        function getYYYYMMDD(dateObj) {
+            return `${dateObj.getFullYear()}-${padZero(dateObj.getMonth()+1)}-${padZero(dateObj.getDate())}`;
+        }
+
+        function getStartOfWeek(dateObj) {
+            const d = new Date(dateObj);
+            const day = d.getDay() || 7; // Get current day number, converting Sun(0) to 7
+            if (day !== 1) d.setHours(-24 * (day - 1)); // Adjust to previous Monday
+            return d;
+        }
+
+        function formatDateLabel(dateObj) {
+            return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        function formatFullDateLabel(dateObj) {
+            return dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+        }
+
+        function generateId() {
+            return Math.random().toString(36).substr(2, 9);
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed top-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded shadow-lg z-50 transition-opacity duration-300 text-sm font-medium';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function getColorClass(taskId, subtaskId) {
+            const task = appData.tasks.find(t => t.id === taskId);
+            const subtask = appData.subtasks.find(s => s.id === subtaskId);
+            if (!task) return 'bg-gray-400';
+            const color = task.color;
+            const shade = subtask ? subtask.shade : '500';
+            return `bg-${color}-${shade}`;
+        }
+
+        function getTaskDetails(taskId, subtaskId) {
+            const task = appData.tasks.find(t => t.id === taskId);
+            const subtask = appData.subtasks.find(s => s.id === subtaskId);
+            return `${task ? task.name : 'Unknown'} - ${subtask ? subtask.name : 'General'}`;
+        }
+
+        // --- TIMER LOGIC ---
+        const displayEl = document.getElementById('timer-display');
+        
+        function updateTimerDisplay() {
+            let totalElapsedMs = activeSession.accumulatedMs;
+            if (activeSession.isRunning && activeSession.startTime) {
+                totalElapsedMs += (Date.now() - activeSession.startTime);
+            }
+            const totalSecs = Math.floor(totalElapsedMs / 1000);
+            const displayMins = Math.floor(totalSecs / 60);
+            const displaySecs = totalSecs % 60;
+            displayEl.textContent = `${padZero(displayMins)}:${padZero(displaySecs)}`;
+        }
+
+        function triggerMinuteDrop(overrideTaskId = null, overrideSubtaskId = null, timestamp = null) {
+            const taskId = overrideTaskId || document.getElementById('task-select').value;
+            const subtaskId = overrideSubtaskId || document.getElementById('subtask-select').value;
+            if(!taskId || !subtaskId) {
+                showToast("Please create a Task and Subtask in Settings first.");
+                return;
+            }
+
+            const now = timestamp ? new Date(timestamp) : new Date();
+            const pixel = {
+                id: generateId(),
+                timestamp: now.getTime(),
+                date: getYYYYMMDD(now),
+                hour: now.getHours(),
+                taskId: taskId,
+                subtaskId: subtaskId
+            };
+            
+            appData.pixels.push(pixel);
+            saveData();
+            
+            // If the current view encompasses today, dynamically append the pixel
+            if (currentView === 'week') {
+                const weekStart = getStartOfWeek(currentDate);
+                const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
+                if (now >= weekStart && now <= new Date(weekEnd.setHours(23,59,59,999))) {
+                     // Get the container for today (0=Mon, 6=Sun)
+                    let dayIndex = now.getDay() - 1;
+                    if(dayIndex === -1) dayIndex = 6;
+                    
+                    const containerId = `week-col-content-${dayIndex}`;
+                    const container = document.getElementById(containerId);
+                    if(container) {
+                        const el = createPixelElement(pixel);
+                        container.appendChild(el);
+                    }
+                }
+            } else if (currentView === 'day' && getYYYYMMDD(currentDate) === pixel.date) {
+                const containerId = `hour-row-${pixel.hour}`;
+                const container = document.getElementById(containerId);
+                if(container) {
+                    const el = createPixelElement(pixel);
+                    container.appendChild(el);
+                }
+            }
+        }
+
+        function tickTimer() {
+            if (!activeSession.isRunning) return;
+            
+            const now = Date.now();
+            const totalElapsedMs = activeSession.accumulatedMs + (now - activeSession.startTime);
+            const totalSecs = Math.floor(totalElapsedMs / 1000);
+            const totalMins = Math.floor(totalSecs / 60);
+
+            // Update UI
+            updateTimerDisplay();
+
+            // Check if we need to drop pixels (works even if page was in background/closed)
+            if (totalMins > activeSession.lastDroppedMinute) {
+                const drops = totalMins - activeSession.lastDroppedMinute;
+                for(let i = 0; i < drops; i++) {
+                    // Approximate the exact time this pixel should have dropped
+                    const pixelTime = activeSession.startTime + ((activeSession.lastDroppedMinute + i + 1) * 60000);
+                    triggerMinuteDrop(activeSession.taskId, activeSession.subtaskId, pixelTime);
+                }
+                activeSession.lastDroppedMinute = totalMins;
+                localStorage.setItem('pixelTimeSession', JSON.stringify(activeSession));
+            }
+        }
+
+        function toggleTimer() {
+            const taskId = document.getElementById('task-select').value;
+            const subtaskId = document.getElementById('subtask-select').value;
+
+            if (!activeSession.isRunning && (!taskId || !subtaskId)) {
+                showToast("Please create a Task and Subtask in Settings first.");
+                return;
+            }
+
+            const btnPlay = document.getElementById('btn-play');
+            const btnPause = document.getElementById('btn-pause');
+            
+            if (!activeSession.isRunning) {
+                // STARTING
+                activeSession.isRunning = true;
+                activeSession.startTime = Date.now();
+                activeSession.taskId = taskId;
+                activeSession.subtaskId = subtaskId;
+                localStorage.setItem('pixelTimeSession', JSON.stringify(activeSession));
+
+                btnPlay.classList.add('hide');
+                btnPause.classList.remove('hide');
+                
+                timerInterval = setInterval(tickTimer, 1000);
+                tickTimer();
+            } else {
+                // PAUSING
+                activeSession.isRunning = false;
+                activeSession.accumulatedMs += (Date.now() - activeSession.startTime);
+                activeSession.startTime = null;
+                localStorage.setItem('pixelTimeSession', JSON.stringify(activeSession));
+
+                btnPlay.classList.remove('hide');
+                btnPause.classList.add('hide');
+                clearInterval(timerInterval);
+                updateTimerDisplay();
+            }
+        }
+
+        function stopTimer() {
+            if(activeSession.isRunning) {
+                document.getElementById('btn-play').classList.remove('hide');
+                document.getElementById('btn-pause').classList.add('hide');
+                clearInterval(timerInterval);
+            }
+            activeSession = { isRunning: false, startTime: null, accumulatedMs: 0, lastDroppedMinute: 0, taskId: null, subtaskId: null };
+            localStorage.setItem('pixelTimeSession', JSON.stringify(activeSession));
+            updateTimerDisplay();
+        }
+
+        // --- DOM RENDERERS ---
+        
+        function populateDropdowns() {
+            const taskSelect = document.getElementById('task-select');
+            const subtaskSelect = document.getElementById('subtask-select');
+            const settingsParentSelect = document.getElementById('new-subtask-parent');
+            
+            // Retain selection
+            const currentTask = taskSelect.value;
+            const currentSubtask = subtaskSelect.value;
+
+            taskSelect.innerHTML = '';
+            settingsParentSelect.innerHTML = '';
+            
+            appData.tasks.forEach(t => {
+                taskSelect.add(new Option(t.name, t.id));
+                settingsParentSelect.add(new Option(t.name, t.id));
+            });
+
+            if(currentTask && appData.tasks.find(t=>t.id === currentTask)) taskSelect.value = currentTask;
+
+            function updateSubtasks() {
+                subtaskSelect.innerHTML = '';
+                const activeTaskId = taskSelect.value;
+                const subs = appData.subtasks.filter(s => s.taskId === activeTaskId);
+                subs.forEach(s => subtaskSelect.add(new Option(s.name, s.id)));
+                if(currentSubtask && subs.find(s=>s.id === currentSubtask)) subtaskSelect.value = currentSubtask;
+            }
+
+            taskSelect.onchange = updateSubtasks;
+            updateSubtasks(); // Initial load
+            
+            renderLegend();
+        }
+
+        function renderLegend() {
+            const container = document.getElementById('legend-container');
+            container.innerHTML = '<div class="font-bold text-gray-500 mr-2 flex items-center">Key:</div>';
+            
+            appData.tasks.forEach(task => {
+                const subs = appData.subtasks.filter(s => s.taskId === task.id);
+                if(subs.length === 0) return;
+                
+                const taskGrp = document.createElement('div');
+                taskGrp.className = 'flex items-center gap-1 border-r pr-3 last:border-0';
+                
+                let html = `<span class="font-semibold text-gray-700">${task.name}:</span> <div class="flex gap-1 ml-1">`;
+                subs.forEach(s => {
+                    html += `<div class="w-3 h-3 rounded-sm bg-${task.color}-${s.shade}" title="${s.name}"></div>`;
+                });
+                html += `</div>`;
+                taskGrp.innerHTML = html;
+                container.appendChild(taskGrp);
+            });
+        }
+
+        function createPixelElement(pixelData) {
+            const div = document.createElement('div');
+            div.className = `pixel ${getColorClass(pixelData.taskId, pixelData.subtaskId)}`;
+            
+            // Format time of pixel
+            const d = new Date(pixelData.timestamp);
+            const timeStr = `${padZero(d.getHours())}:${padZero(d.getMinutes())}`;
+            const details = getTaskDetails(pixelData.taskId, pixelData.subtaskId);
+            
+            div.title = `[${timeStr}] ${details}`;
+            return div;
+        }
+
+        function renderWeekView() {
+            const container = document.getElementById('view-week');
+            container.innerHTML = '';
+            
+            const startOfWeek = getStartOfWeek(currentDate);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(endOfWeek.getDate() + 6);
+            
+            document.getElementById('date-range-label').textContent = `${formatDateLabel(startOfWeek)} - ${formatDateLabel(endOfWeek)}`;
+            
+            // Create 7 columns
+            for (let i = 0; i < 7; i++) {
+                const dayDate = new Date(startOfWeek);
+                dayDate.setDate(dayDate.getDate() + i);
+                const dateString = getYYYYMMDD(dayDate);
+                const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+                const isToday = dateString === getYYYYMMDD(new Date());
+
+                const col = document.createElement('div');
+                col.className = `flex flex-col h-full ${i !== 6 ? 'border-r border-gray-400' : ''} ${isToday ? 'bg-blue-50/30' : 'bg-white'}`;
+                
+                // Pixel container (fills remaining space)
+                const pixelArea = document.createElement('div');
+                pixelArea.className = 'pixel-container flex-1';
+                pixelArea.id = `week-col-content-${i}`;
+                
+                // Add pixels for this day
+                const dayPixels = appData.pixels.filter(p => p.date === dateString);
+                dayPixels.forEach(p => pixelArea.appendChild(createPixelElement(p)));
+
+                // Bottom label (matches user image layout)
+                const labelArea = document.createElement('div');
+                labelArea.className = `h-10 border-t border-gray-400 flex flex-col items-center justify-center text-xs ${isToday ? 'font-bold text-blue-600' : 'text-gray-600'}`;
+                labelArea.innerHTML = `<span>${dayName}</span><span>${dayDate.getDate()}</span>`;
+
+                col.appendChild(pixelArea);
+                col.appendChild(labelArea);
+                container.appendChild(col);
+            }
+        }
+
+        function renderDayView() {
+            const container = document.getElementById('hourly-grid');
+            container.innerHTML = '';
+            
+            document.getElementById('date-range-label').textContent = formatFullDateLabel(currentDate);
+            const targetDateStr = getYYYYMMDD(currentDate);
+            
+            // Pre-filter today's pixels
+            const dayPixels = appData.pixels.filter(p => p.date === targetDateStr);
+
+            for(let h=0; h<24; h++) {
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-4 border-b border-gray-100 pb-2 mb-2 min-h-[30px]';
+                
+                const timeLabel = document.createElement('div');
+                timeLabel.className = 'w-12 text-xs text-gray-400 text-right font-mono flex-shrink-0';
+                timeLabel.textContent = `${padZero(h)}:00`;
+                
+                const pixelArea = document.createElement('div');
+                pixelArea.className = 'flex flex-wrap gap-1 flex-1';
+                pixelArea.id = `hour-row-${h}`;
+                
+                const hourPixels = dayPixels.filter(p => p.hour === h);
+                hourPixels.forEach(p => pixelArea.appendChild(createPixelElement(p)));
+
+                row.appendChild(timeLabel);
+                row.appendChild(pixelArea);
+                container.appendChild(row);
+            }
+        }
+
+        function updateViews() {
+            if(currentView === 'week') {
+                document.getElementById('view-week').classList.remove('hide');
+                document.getElementById('view-day').classList.add('hide');
+                
+                document.getElementById('tab-week').classList.replace('text-gray-600', 'bg-white');
+                document.getElementById('tab-week').classList.add('shadow-sm', 'text-gray-900');
+                
+                document.getElementById('tab-day').classList.replace('bg-white', 'text-gray-600');
+                document.getElementById('tab-day').classList.remove('shadow-sm', 'text-gray-900');
+                
+                renderWeekView();
+            } else {
+                document.getElementById('view-week').classList.add('hide');
+                document.getElementById('view-day').classList.remove('hide');
+                
+                document.getElementById('tab-day').classList.replace('text-gray-600', 'bg-white');
+                document.getElementById('tab-day').classList.add('shadow-sm', 'text-gray-900');
+                
+                document.getElementById('tab-week').classList.replace('bg-white', 'text-gray-600');
+                document.getElementById('tab-week').classList.remove('shadow-sm', 'text-gray-900');
+                
+                renderDayView();
+            }
+        }
+
+        // --- SETTINGS / TASK MANAGEMENT ---
+        function renderSettingsList() {
+            const container = document.getElementById('settings-task-list');
+            container.innerHTML = '';
+            
+            if (appData.tasks.length === 0) {
+                container.innerHTML = '<div class="text-gray-500 italic text-sm text-center p-4 border border-dashed rounded">No tasks yet. Create one below!</div>';
+                return;
+            }
+
+            appData.tasks.forEach(task => {
+                const taskDiv = document.createElement('div');
+                taskDiv.className = 'border rounded p-3 bg-white shadow-sm';
+                
+                let html = `<div class="flex justify-between items-center border-b pb-2 mb-2">
+                                <div class="font-bold flex items-center gap-2">
+                                    <div class="w-4 h-4 rounded bg-${task.color}-500 flex-shrink-0"></div>
+                                    <span id="task-name-${task.id}">${task.name}</span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button class="text-blue-500 hover:text-blue-700 text-xs font-semibold" onclick="renameTask('${task.id}')">Rename</button>
+                                    <button id="btn-del-task-${task.id}" class="text-red-500 hover:text-red-700 text-xs font-semibold w-12 text-right" onclick="deleteTask('${task.id}')">Delete</button>
+                                </div>
+                            </div>
+                            <div class="pl-6 space-y-1">`;
+                
+                const subs = appData.subtasks.filter(s => s.taskId === task.id);
+                if(subs.length === 0) {
+                    html += `<div class="text-xs text-gray-400 italic">No subtasks defined.</div>`;
+                } else {
+                    subs.forEach(sub => {
+                        html += `<div class="flex justify-between items-center text-sm">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-3 h-3 rounded-sm bg-${task.color}-${sub.shade} flex-shrink-0"></div>
+                                        <span id="subtask-name-${sub.id}">${sub.name}</span> <span class="text-xs text-gray-400">(${sub.shade})</span>
+                                    </div>
+                                    <div class="flex gap-2 items-center">
+                                        <button class="text-blue-400 hover:text-blue-600 text-xs" onclick="renameSubtask('${sub.id}')">Rename</button>
+                                        <button id="btn-del-sub-${sub.id}" class="text-gray-400 hover:text-red-500 text-lg leading-none w-8 text-right" title="Delete" onclick="deleteSubtask('${sub.id}')">&times;</button>
+                                    </div>
+                                 </div>`;
+                    });
+                }
+                html += `</div>`;
+                taskDiv.innerHTML = html;
+                container.appendChild(taskDiv);
+            });
+        }
+
+        window.deleteTask = function(id) {
+            const btn = document.getElementById(`btn-del-task-${id}`);
+            if (btn.innerText === "Delete") {
+                btn.innerText = "Sure?";
+                btn.classList.add("text-red-700");
+                setTimeout(() => { if(btn) { btn.innerText = "Delete"; btn.classList.remove("text-red-700"); } }, 3000);
+            } else {
+                appData.tasks = appData.tasks.filter(t => t.id !== id);
+                appData.subtasks = appData.subtasks.filter(s => s.taskId !== id);
+                saveData();
+                populateDropdowns();
+                renderSettingsList();
+                updateViews();
+            }
+        };
+
+        window.deleteSubtask = function(id) {
+            const btn = document.getElementById(`btn-del-sub-${id}`);
+            if (btn.innerText === "×") {
+                btn.innerText = "Sure?";
+                btn.classList.add("text-red-600", "text-xs");
+                btn.classList.remove("text-lg");
+                setTimeout(() => { if(btn) { btn.innerText = "×"; btn.classList.remove("text-red-600", "text-xs"); btn.classList.add("text-lg"); } }, 3000);
+            } else {
+                appData.subtasks = appData.subtasks.filter(s => s.id !== id);
+                saveData();
+                populateDropdowns();
+                renderSettingsList();
+                updateViews();
+            }
+        };
+
+        window.renameTask = function(id) {
+            const nameSpan = document.getElementById(`task-name-${id}`);
+            if(!nameSpan || nameSpan.querySelector('input')) return;
+            const currentName = nameSpan.innerText;
+            nameSpan.innerHTML = `<input type="text" id="edit-task-${id}" class="border border-blue-400 px-1 py-0 text-sm rounded text-black w-24 outline-none" value="${currentName}">
+                                  <button class="bg-blue-500 text-white px-2 py-0 rounded text-xs ml-1" onclick="saveTaskName('${id}')">Save</button>`;
+            document.getElementById(`edit-task-${id}`).focus();
+        };
+
+        window.saveTaskName = function(id) {
+            const input = document.getElementById(`edit-task-${id}`);
+            if(!input) return;
+            const newName = input.value.trim();
+            if(newName) {
+                const task = appData.tasks.find(t => t.id === id);
+                if(task) task.name = newName;
+                saveData();
+            }
+            populateDropdowns();
+            renderSettingsList();
+            renderLegend();
+            updateViews();
+        };
+
+        window.renameSubtask = function(id) {
+            const nameSpan = document.getElementById(`subtask-name-${id}`);
+            if(!nameSpan || nameSpan.querySelector('input')) return;
+            const currentName = nameSpan.innerText;
+            nameSpan.innerHTML = `<input type="text" id="edit-subtask-${id}" class="border border-blue-400 px-1 py-0 text-sm rounded text-black w-24 outline-none" value="${currentName}">
+                                  <button class="bg-blue-400 text-white px-2 py-0 rounded text-xs ml-1" onclick="saveSubtaskName('${id}')">Save</button>`;
+            document.getElementById(`edit-subtask-${id}`).focus();
+        };
+
+        window.saveSubtaskName = function(id) {
+            const input = document.getElementById(`edit-subtask-${id}`);
+            if(!input) return;
+            const newName = input.value.trim();
+            if(newName) {
+                const subtask = appData.subtasks.find(s => s.id === id);
+                if(subtask) subtask.name = newName;
+                saveData();
+            }
+            populateDropdowns();
+            renderSettingsList();
+            renderLegend();
+            updateViews();
+        };
+
+        // --- EVENT LISTENERS ---
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            populateDropdowns();
+            updateViews();
+
+            // Restore Session UI State
+            if (activeSession.isRunning) {
+                document.getElementById('btn-play').classList.add('hide');
+                document.getElementById('btn-pause').classList.remove('hide');
+                
+                // Ensure tasks still exist, otherwise kill the session
+                if (!appData.tasks.find(t => t.id === activeSession.taskId)) {
+                    stopTimer();
+                } else {
+                    document.getElementById('task-select').value = activeSession.taskId;
+                    // manually trigger subtask update
+                    document.getElementById('task-select').dispatchEvent(new Event('change')); 
+                    if (appData.subtasks.find(s => s.id === activeSession.subtaskId)) {
+                        document.getElementById('subtask-select').value = activeSession.subtaskId;
+                    }
+                    timerInterval = setInterval(tickTimer, 1000);
+                    tickTimer(); // immediately catch up
+                }
+            } else {
+                updateTimerDisplay();
+            }
+
+            // Timer Buttons
+            document.getElementById('btn-play').addEventListener('click', toggleTimer);
+            document.getElementById('btn-pause').addEventListener('click', toggleTimer);
+            document.getElementById('btn-stop').addEventListener('click', stopTimer);
+            
+            // Debug add minute
+            document.getElementById('btn-add-minute').addEventListener('click', () => {
+                triggerMinuteDrop();
+            });
+
+            // View Toggles
+            document.getElementById('tab-week').addEventListener('click', () => { currentView = 'week'; updateViews(); });
+            document.getElementById('tab-day').addEventListener('click', () => { currentView = 'day'; updateViews(); });
+
+            // Date Navigation
+            document.getElementById('btn-prev-date').addEventListener('click', () => {
+                if(currentView === 'week') currentDate.setDate(currentDate.getDate() - 7);
+                else currentDate.setDate(currentDate.getDate() - 1);
+                updateViews();
+            });
+            document.getElementById('btn-next-date').addEventListener('click', () => {
+                if(currentView === 'week') currentDate.setDate(currentDate.getDate() + 7);
+                else currentDate.setDate(currentDate.getDate() + 1);
+                updateViews();
+            });
+            document.getElementById('btn-today').addEventListener('click', () => {
+                currentDate = new Date();
+                updateViews();
+            });
+
+            // Modals Logic
+            const modalInfo = document.getElementById('modal-info');
+            const modalSettings = document.getElementById('modal-settings');
+            
+            document.getElementById('btn-info').addEventListener('click', () => modalInfo.classList.remove('hide'));
+            document.getElementById('btn-settings').addEventListener('click', () => {
+                renderSettingsList();
+                modalSettings.classList.remove('hide');
+            });
+            
+            document.querySelectorAll('.close-modal, .modal-overlay').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    if (e.target === el) { // Only close if clicking the background or close btn, not contents
+                        modalInfo.classList.add('hide');
+                        modalSettings.classList.add('hide');
+                    }
+                });
+            });
+
+            // Download Logic
+            const downloadFunc = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", "pixeltime_data.json");
+                document.body.appendChild(downloadAnchorNode); // required for firefox
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+            };
+            document.getElementById('btn-download').addEventListener('click', downloadFunc);
+            document.getElementById('link-download-data').addEventListener('click', (e) => { e.preventDefault(); downloadFunc(); });
+
+            // Settings Forms Logic
+            document.getElementById('btn-add-task').addEventListener('click', () => {
+                const name = document.getElementById('new-task-name').value.trim();
+                const color = document.getElementById('new-task-color').value;
+                if(name) {
+                    appData.tasks.push({ id: generateId(), name, color });
+                    saveData();
+                    populateDropdowns();
+                    renderSettingsList();
+                    document.getElementById('new-task-name').value = '';
+                }
+            });
+
+            document.getElementById('btn-add-subtask').addEventListener('click', () => {
+                const taskId = document.getElementById('new-subtask-parent').value;
+                const name = document.getElementById('new-subtask-name').value.trim();
+                const shade = document.getElementById('new-subtask-shade').value;
+                if(taskId && name) {
+                    appData.subtasks.push({ id: generateId(), taskId, name, shade });
+                    saveData();
+                    populateDropdowns();
+                    renderSettingsList();
+                    document.getElementById('new-subtask-name').value = '';
+                }
+            });
+            
+            document.getElementById('btn-factory-reset').addEventListener('click', (e) => {
+                const btn = e.target;
+                if (btn.innerText.includes("Danger:")) {
+                    btn.innerText = "Are you absolutely sure? Click again to wipe.";
+                    btn.classList.add("font-bold");
+                    setTimeout(() => { btn.innerText = "Danger: Clear All Data & Reset"; btn.classList.remove("font-bold"); }, 4000);
+                } else {
+                    appData = JSON.parse(JSON.stringify(DEFAULT_DATA)); // reset to default empty state
+                    saveData();
+                    window.location.reload();
+                }
+            });
+
+        });
+    </script>
+</body>
+</html>
