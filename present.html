@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SlideDeck Pro - Google Slides Clone</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <!-- External Libraries for Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+            overflow: hidden;
+        }
+
+        .slide-canvas {
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            background: white;
+            position: relative;
+            overflow: hidden;
+            transform-origin: top left;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #dadce0; border-radius: 10px; }
+
+        .active-slide {
+            border: 2px solid #1a73e8 !important;
+            background-color: #e8f0fe;
+        }
+
+        .draggable-element {
+            position: absolute;
+            user-select: none;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+            cursor: grab;
+        }
+
+        .draggable-element:active { cursor: grabbing; }
+        .draggable-element:hover { border: 1px dashed #1a73e8; }
+        .draggable-element.selected {
+            border: 1px solid #1a73e8;
+            outline: 2px solid rgba(26, 115, 232, 0.2);
+        }
+
+        /* Editing text state */
+        .draggable-element[contenteditable="true"] {
+            cursor: text;
+            border: 1px dashed #1a73e8;
+            outline: none;
+            user-select: text;
+        }
+
+        /* Resize Handles */
+        .resize-handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: white;
+            border: 2px solid #1a73e8;
+            border-radius: 50%;
+            display: none;
+            z-index: 10;
+        }
+        .selected .resize-handle { display: block; }
+        .resize-se { bottom: -5px; right: -5px; cursor: se-resize; }
+        .resize-e { top: 50%; right: -5px; transform: translateY(-50%); cursor: e-resize; }
+        .resize-s { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
+
+        #presentation-overlay:fullscreen {
+            background-color: black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .drag-over {
+            background-color: #e8f0fe !important;
+            border: 2px dashed #1a73e8 !important;
+        }
+
+        /* Dropdown Menus */
+        .dropdown-menu { display: none; }
+        .dropdown-container:hover .dropdown-menu { display: block; }
+        
+        @media (max-width: 768px) {
+            .desktop-only { display: none; }
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- Header / Toolbar -->
+    <header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between z-40 relative">
+        <div class="flex items-center gap-3">
+            <div class="bg-yellow-500 p-2 rounded">
+                <i class="fas fa-file-powerpoint text-white text-xl"></i>
+            </div>
+            <div>
+                <input type="text" id="presentation-title" value="Untitled Presentation" class="font-medium text-gray-700 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-400 px-1 rounded transition-all">
+                <div class="flex gap-2 text-xs text-gray-500 mt-0.5 desktop-only">
+                    <!-- File Menu -->
+                    <div class="relative dropdown-container">
+                        <span class="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded">File</span>
+                        <div class="dropdown-menu absolute left-0 mt-1 bg-white border border-gray-200 shadow-xl rounded w-40 py-1 z-50">
+                            <button onclick="newProject()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-file mr-2 text-gray-400"></i> New</button>
+                            <hr class="my-1 border-gray-100">
+                            <button onclick="exportPresentationJSON()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-download mr-2 text-gray-400"></i> Download JSON</button>
+                            <button onclick="exportPDF()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-file-pdf mr-2 text-red-400"></i> Export as PDF</button>
+                            <button onclick="exportPPTX()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-file-powerpoint mr-2 text-orange-400"></i> Export as PPTX</button>
+                        </div>
+                    </div>
+                    <!-- Edit Menu -->
+                    <div class="relative dropdown-container">
+                        <span class="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded">Edit</span>
+                        <div class="dropdown-menu absolute left-0 mt-1 bg-white border border-gray-200 shadow-xl rounded w-40 py-1 z-50">
+                            <button onclick="deleteSelected()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-trash mr-2 text-gray-400"></i> Delete Selected</button>
+                        </div>
+                    </div>
+                    <!-- View Menu -->
+                    <div class="relative dropdown-container">
+                        <span class="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded">View</span>
+                        <div class="dropdown-menu absolute left-0 mt-1 bg-white border border-gray-200 shadow-xl rounded w-40 py-1 z-50">
+                            <button onclick="startPresentation()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-play mr-2 text-gray-400"></i> Present</button>
+                            <hr class="my-1 border-gray-100">
+                            <button onclick="openPageSetup()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-ruler-combined mr-2 text-gray-400"></i> Page Setup</button>
+                        </div>
+                    </div>
+                    <!-- Insert Menu -->
+                    <div class="relative dropdown-container">
+                        <span class="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded">Insert</span>
+                        <div class="dropdown-menu absolute left-0 mt-1 bg-white border border-gray-200 shadow-xl rounded w-40 py-1 z-50">
+                            <button onclick="addElement('text')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-font mr-2 text-gray-400"></i> Text Box</button>
+                            <button onclick="addElement('rect')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-square mr-2 text-gray-400"></i> Shape</button>
+                            <button onclick="triggerImageUpload()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100"><i class="fas fa-image mr-2 text-gray-400"></i> Image</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <button onclick="toggleInfoModal()" class="p-2 hover:bg-gray-100 rounded-full text-gray-600" title="Information">
+                <i class="fas fa-info-circle text-lg"></i>
+            </button>
+            <button onclick="startPresentation()" class="bg-blue-600 text-white px-6 py-1.5 rounded-full text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2">
+                <i class="fas fa-play"></i> <span class="hidden sm:inline">Present</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex overflow-hidden">
+        
+        <!-- Folders & Slides Sidebar -->
+        <aside class="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex z-30">
+            <div class="p-4 border-b border-gray-100 flex gap-2">
+                <button onclick="createNewSlide()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all flex items-center justify-center gap-1 shadow-sm">
+                    <i class="fas fa-plus"></i> Slide
+                </button>
+                <button onclick="createNewFolder()" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-all flex items-center justify-center gap-1">
+                    <i class="fas fa-folder-plus"></i> Folder
+                </button>
+            </div>
+            
+            <div id="sidebar-content" class="flex-1 overflow-y-auto custom-scrollbar p-2 pb-12"
+                 ondragover="allowDrop(event)" ondrop="handleDrop(event, null)">
+                <div class="text-xs text-gray-400 mb-2 px-2 pb-2 border-b border-gray-100 flex justify-between items-center">
+                    <span>WORKSPACE (Drop to Root)</span>
+                </div>
+                <!-- Tree injected here -->
+                <div id="tree-container" class="min-h-[100px]"></div>
+            </div>
+        </aside>
+
+        <!-- Editor Workspace -->
+        <section class="flex-1 bg-[#f1f3f4] flex flex-col relative overflow-hidden">
+            <!-- Tool Ribbon -->
+            <div class="bg-white border-b border-gray-200 px-4 py-1.5 flex items-center gap-4 shadow-sm overflow-x-auto no-scrollbar z-20">
+                <button onclick="addElement('text')" class="p-2 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-2 whitespace-nowrap text-sm"><i class="fas fa-font"></i></button>
+                <button onclick="addElement('rect')" class="p-2 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-2 whitespace-nowrap text-sm"><i class="fas fa-square"></i></button>
+                <button onclick="triggerImageUpload()" class="p-2 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-2 whitespace-nowrap text-sm"><i class="fas fa-image"></i></button>
+                <div class="h-6 w-px bg-gray-200"></div>
+                
+                <input type="color" id="color-picker" onchange="updateElementColor(this.value)" class="w-8 h-8 p-0 border border-gray-200 cursor-pointer rounded overflow-hidden">
+                <input type="color" id="bg-color-picker" onchange="updateCanvasBg(this.value)" class="w-8 h-8 p-0 border border-gray-200 cursor-pointer rounded overflow-hidden" title="Slide Background">
+                
+                <select id="font-size" onchange="updateFontSize(this.value)" class="text-sm border border-gray-200 rounded px-2 py-1 outline-none">
+                    <option value="16">16px</option>
+                    <option value="24" selected>24px</option>
+                    <option value="32">32px</option>
+                    <option value="48">48px</option>
+                    <option value="64">64px</option>
+                    <option value="96">96px</option>
+                </select>
+                <div class="ml-auto flex gap-1">
+                    <button onclick="deleteSelected()" class="p-2 text-red-500 hover:bg-red-50 rounded" title="Delete selected element">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Canvas Area wrapper -->
+            <div id="canvas-wrapper" class="flex-1 overflow-auto custom-scrollbar relative p-8 flex items-center justify-center">
+                <!-- Inner Scalable Area -->
+                <div id="canvas-scaler" class="relative" style="width: 960px; height: 540px;">
+                    <div id="canvas" class="slide-canvas w-full h-full" onclick="deselectElements(event)">
+                        <!-- Slide content rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mobile Toolbar -->
+            <div class="md:hidden bg-white border-t border-gray-200 p-2 flex justify-around items-center z-20">
+                <button onclick="createNewSlide()" class="flex flex-col items-center text-blue-600">
+                    <i class="fas fa-plus-circle text-xl"></i><span class="text-[10px]">Add Slide</span>
+                </button>
+                <button onclick="toggleSidebarMobile()" class="flex flex-col items-center text-gray-600">
+                    <i class="fas fa-layer-group text-xl"></i><span class="text-[10px]">Folders</span>
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Page Setup Modal -->
+    <div id="setup-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 shadow-xl w-80">
+            <h3 class="text-lg font-bold mb-4">Page Setup</h3>
+            <div class="space-y-3 mb-6">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">Width (px)</label>
+                    <input type="number" id="setup-w" class="w-full border rounded p-2 text-sm" value="960">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">Height (px)</label>
+                    <input type="number" id="setup-h" class="w-full border rounded p-2 text-sm" value="540">
+                </div>
+                <div class="text-xs text-gray-500">
+                    Standard 16:9 = 960x540<br>Standard 4:3 = 960x720
+                </div>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button onclick="closePageSetup()" class="px-4 py-2 bg-gray-100 rounded text-sm hover:bg-gray-200">Cancel</button>
+                <button onclick="applyPageSetup()" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="info-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-xl font-bold text-gray-800">Welcome to SlideDeck Pro</h2>
+                <button onclick="toggleInfoModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scrollbar space-y-6">
+                <section>
+                    <h3 class="font-semibold text-blue-600 mb-2">Editor Controls</h3>
+                    <ul class="text-sm text-gray-600 list-disc pl-5 space-y-1">
+                        <li><strong>Drag and Drop:</strong> Drag slides into folders in the left sidebar. You can also nest folders inside other folders.</li>
+                        <li><strong>Text Editing:</strong> <u>Double-click</u> a text box to edit its contents. Single-click to select it for moving or resizing.</li>
+                        <li><strong>Resizing:</strong> Select an element and drag the blue dots on the corners/edges.</li>
+                        <li><strong>Backgrounds:</strong> Use the second color picker in the toolbar to change slide backgrounds.</li>
+                    </ul>
+                </section>
+                <section class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                    <h3 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-link text-blue-500"></i> Related Files
+                    </h3>
+                    <div class="space-y-2 text-sm">
+                        <a href="index.html" class="flex items-center gap-2 text-blue-600 hover:underline">
+                            <i class="fas fa-file-code"></i> index.html (Primary Workspace)
+                        </a>
+                    </div>
+                </section>
+            </div>
+            <div class="p-4 bg-gray-50 border-t border-gray-100 text-right">
+                <button onclick="toggleInfoModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Presentation Overlay -->
+    <div id="presentation-overlay" class="fixed inset-0 bg-black hidden z-[100] items-center justify-center">
+        <div id="present-canvas-wrapper" class="relative bg-white" style="box-shadow: 0 0 50px rgba(255,255,255,0.1);">
+            <div id="present-canvas" class="w-full h-full relative overflow-hidden"></div>
+        </div>
+        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-gray-900/80 px-6 py-3 rounded-full text-white border border-gray-700 z-[110]">
+            <button onclick="prevSlide()" class="hover:text-blue-400 p-2"><i class="fas fa-chevron-left"></i></button>
+            <span id="slide-counter" class="text-sm font-medium min-w-[60px] text-center">Slide 1 / 1</span>
+            <button onclick="nextSlide()" class="hover:text-blue-400 p-2"><i class="fas fa-chevron-right"></i></button>
+            <button onclick="exitPresentation()" class="ml-4 hover:text-red-400 p-2"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+    <input type="file" id="img-upload" class="hidden" accept="image/*">
+
+    <script>
+        // --- State Management ---
+        let state = {
+            settings: { w: 960, h: 540 },
+            folders: [
+                { id: 'f1', name: 'Intro Deck', parentId: null, collapsed: false },
+                { id: 'f2', name: 'Assets', parentId: 'f1', collapsed: false } // Nested Example
+            ],
+            slides: [
+                { id: 's1', name: 'Title Slide', parentId: 'f1', bg: '#ffffff', elements: [
+                    { id: 'e1', type: 'text', content: 'Double-Click to Edit Text', x: 280, y: 220, w: 400, h: 60, size: 48, color: '#111827' }
+                ]},
+                { id: 's2', name: 'Empty Slide', parentId: null, bg: '#ffffff', elements: [] }
+            ],
+            activeSlideId: 's1',
+            selectedElementId: null
+        };
+
+        const canvas = document.getElementById('canvas');
+        const scaler = document.getElementById('canvas-scaler');
+        const wrapper = document.getElementById('canvas-wrapper');
+        const treeContainer = document.getElementById('tree-container');
+
+        // --- Initialization ---
+        window.onload = () => {
+            applyScale();
+            window.addEventListener('resize', applyScale);
+            renderSidebar();
+            renderSlide();
+            setupInteractions();
+            
+            document.addEventListener('keydown', (e) => {
+                if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedElementId) {
+                    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.contentEditable !== 'true') {
+                        deleteSelected();
+                    }
+                }
+                if (document.getElementById('presentation-overlay').style.display === 'flex') {
+                    if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+                    if (e.key === 'ArrowLeft') prevSlide();
+                    if (e.key === 'Escape') exitPresentation();
+                }
+            });
+        };
+
+        // --- Canvas Scaling (WYSIWYG) ---
+        function applyScale() {
+            scaler.style.width = state.settings.w + 'px';
+            scaler.style.height = state.settings.h + 'px';
+            
+            const pWidth = wrapper.clientWidth - 64; // Padding
+            const pHeight = wrapper.clientHeight - 64;
+            const scaleX = pWidth / state.settings.w;
+            const scaleY = pHeight / state.settings.h;
+            const scale = Math.min(scaleX, scaleY, 1.5); // Max scale 1.5
+            
+            scaler.style.transform = `scale(${scale})`;
+        }
+
+        function openPageSetup() { document.getElementById('setup-modal').style.display = 'flex'; }
+        function closePageSetup() { document.getElementById('setup-modal').style.display = 'none'; }
+        function applyPageSetup() {
+            const w = parseInt(document.getElementById('setup-w').value);
+            const h = parseInt(document.getElementById('setup-h').value);
+            if (w && h) {
+                state.settings.w = w;
+                state.settings.h = h;
+                applyScale();
+                closePageSetup();
+            }
+        }
+
+        // --- Nested Folder Rendering (Recursive) ---
+        function renderSidebar() {
+            treeContainer.innerHTML = buildTree(null, 0);
+            
+            // Mark active slide
+            document.querySelectorAll('.tree-item').forEach(el => {
+                el.classList.remove('active-slide', 'border', 'border-blue-500');
+                if (el.dataset.type === 'slide' && el.dataset.id === state.activeSlideId) {
+                    el.classList.add('active-slide', 'border', 'border-blue-500');
+                }
+            });
+        }
+
+        function buildTree(parentId, depth) {
+            let html = '';
+            const padding = depth * 16 + 8; // Indentation
+            
+            // 1. Render Folders
+            const folders = state.folders.filter(f => f.parentId === parentId);
+            folders.forEach(f => {
+                const icon = f.collapsed ? 'fa-folder' : 'fa-folder-open';
+                html += `
+                    <div class="tree-item group flex items-center gap-2 p-1.5 hover:bg-gray-100 rounded cursor-pointer mb-1 border border-transparent"
+                         draggable="true" 
+                         ondragstart="dragStart(event, 'folder', '${f.id}')"
+                         ondragover="allowDrop(event)"
+                         ondragenter="dragEnter(event)"
+                         ondragleave="dragLeave(event)"
+                         ondrop="handleDrop(event, '${f.id}')"
+                         data-id="${f.id}" data-type="folder"
+                         style="padding-left: ${padding}px">
+                        <button onclick="toggleFolder('${f.id}')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-chevron-${f.collapsed ? 'right' : 'down'} text-[10px]"></i></button>
+                        <i class="fas ${icon} text-yellow-500"></i>
+                        <span class="text-sm font-medium text-gray-700 flex-1 truncate">${f.name}</span>
+                        <button onclick="deleteItem('folder', '${f.id}')" class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-times"></i></button>
+                    </div>
+                `;
+                if (!f.collapsed) {
+                    html += buildTree(f.id, depth + 1);
+                }
+            });
+
+            // 2. Render Slides
+            const slides = state.slides.filter(s => s.parentId === parentId);
+            slides.forEach(s => {
+                html += `
+                    <div class="tree-item group flex items-center gap-2 p-1.5 hover:bg-gray-100 rounded cursor-pointer mb-1 border border-transparent"
+                         draggable="true"
+                         ondragstart="dragStart(event, 'slide', '${s.id}')"
+                         onclick="setActiveSlide('${s.id}')"
+                         data-id="${s.id}" data-type="slide"
+                         style="padding-left: ${padding + 16}px">
+                        <div class="w-6 h-4 bg-white border border-gray-300 rounded-sm flex-shrink-0"></div>
+                        <span class="text-xs text-gray-600 flex-1 truncate">${s.name}</span>
+                        <button onclick="event.stopPropagation(); deleteItem('slide', '${s.id}')" class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-times"></i></button>
+                    </div>
+                `;
+            });
+
+            return html;
+        }
+
+        // --- Drag and Drop for Tree ---
+        let dragSrc = null;
+        function dragStart(e, type, id) {
+            dragSrc = { type, id };
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', JSON.stringify(dragSrc));
+        }
+        function allowDrop(e) {
+            e.preventDefault(); // Necessary to allow dropping
+            e.dataTransfer.dropEffect = 'move';
+        }
+        function dragEnter(e) {
+            e.currentTarget.classList.add('drag-over');
+        }
+        function dragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+        function handleDrop(e, targetFolderId) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget?.classList?.remove('drag-over');
+            
+            if (!dragSrc) return;
+            
+            // Prevent dropping a folder into itself or its children
+            if (dragSrc.type === 'folder') {
+                if (dragSrc.id === targetFolderId) return;
+                // Simple circular check: just don't allow deep tree validation for now to save space, 
+                // but at least prevent immediate self-parenting
+            }
+
+            if (dragSrc.type === 'slide') {
+                const slide = state.slides.find(s => s.id === dragSrc.id);
+                if (slide) slide.parentId = targetFolderId;
+            } else if (dragSrc.type === 'folder') {
+                const folder = state.folders.find(f => f.id === dragSrc.id);
+                if (folder) folder.parentId = targetFolderId;
+            }
+            
+            dragSrc = null;
+            renderSidebar();
+        }
+
+        // --- Rendering Canvas ---
+        function renderSlide(targetCanvas = canvas, slideId = state.activeSlideId) {
+            const activeSlide = state.slides.find(s => s.id === slideId);
+            targetCanvas.innerHTML = '';
+            
+            if (!activeSlide) return;
+            targetCanvas.style.backgroundColor = activeSlide.bg || '#ffffff';
+
+            activeSlide.elements.forEach(el => {
+                const wrapper = document.createElement('div');
+                wrapper.className = `draggable-element ${state.selectedElementId === el.id && targetCanvas === canvas ? 'selected' : ''}`;
+                wrapper.style.left = el.x + 'px';
+                wrapper.style.top = el.y + 'px';
+                if(el.w) wrapper.style.width = el.w + 'px';
+                if(el.h) wrapper.style.height = el.h + 'px';
+                wrapper.style.color = el.color;
+                wrapper.style.fontSize = el.size + 'px';
+                wrapper.dataset.id = el.id;
+
+                let innerHtml = '';
+                if (el.type === 'text') {
+                    // Actual editable area
+                    innerHtml = `<div class="content-area w-full h-full outline-none leading-tight" style="min-height:1em;">${el.content}</div>`;
+                } else if (el.type === 'rect') {
+                    wrapper.style.backgroundColor = el.color || '#3b82f6';
+                } else if (el.type === 'image') {
+                    innerHtml = `<img src="${el.content}" class="w-full h-full object-cover pointer-events-none">`;
+                }
+
+                wrapper.innerHTML = innerHtml;
+
+                if (targetCanvas === canvas) {
+                    // Interaction listeners
+                    wrapper.onmousedown = (e) => startDrag(e, el.id, wrapper);
+                    
+                    if (el.type === 'text') {
+                        const contentArea = wrapper.querySelector('.content-area');
+                        wrapper.ondblclick = (e) => {
+                            e.stopPropagation();
+                            wrapper.setAttribute('contenteditable', 'true');
+                            contentArea.focus();
+                        };
+                        wrapper.onblur = () => {
+                            wrapper.removeAttribute('contenteditable');
+                            el.content = contentArea.innerHTML;
+                        };
+                    }
+
+                    // Add resize handles if selected
+                    if (state.selectedElementId === el.id) {
+                        wrapper.innerHTML += `
+                            <div class="resize-handle resize-se" onmousedown="initResize(event, 'se', '${el.id}')"></div>
+                            <div class="resize-handle resize-e" onmousedown="initResize(event, 'e', '${el.id}')"></div>
+                            <div class="resize-handle resize-s" onmousedown="initResize(event, 's', '${el.id}')"></div>
+                        `;
+                    }
+                }
+                targetCanvas.appendChild(wrapper);
+            });
+            
+            // Sync background color picker
+            if(targetCanvas === canvas) {
+                document.getElementById('bg-color-picker').value = activeSlide.bg || '#ffffff';
+            }
+        }
+
+        // --- Move & Resize Interactions ---
+        let currentAction = null; // 'drag' or 'resize'
+        let actionData = {};
+
+        function startDrag(e, id, domEl) {
+            if (domEl.getAttribute('contenteditable') === 'true') return; // Don't drag while editing text
+            if (e.target.classList.contains('resize-handle')) return; // handled by initResize
+            
+            e.stopPropagation();
+            state.selectedElementId = id;
+            renderSlide(); // Show handles
+            
+            const elData = state.slides.find(s => s.id === state.activeSlideId).elements.find(e => e.id === id);
+            
+            // Determine scale factor for accurate dragging
+            const scale = scaler.getBoundingClientRect().width / state.settings.w;
+
+            currentAction = 'drag';
+            actionData = {
+                id,
+                startX: e.clientX,
+                startY: e.clientY,
+                origX: elData.x,
+                origY: elData.y,
+                scale
+            };
+        }
+
+        function initResize(e, dir, id) {
+            e.stopPropagation();
+            const elData = state.slides.find(s => s.id === state.activeSlideId).elements.find(e => e.id === id);
+            const scale = scaler.getBoundingClientRect().width / state.settings.w;
+            
+            currentAction = 'resize';
+            actionData = { dir, id, startX: e.clientX, startY: e.clientY, origW: elData.w || 200, origH: elData.h || 100, scale };
+        }
+
+        function setupInteractions() {
+            document.addEventListener('mousemove', (e) => {
+                if (!currentAction) return;
+                e.preventDefault();
+                
+                const slide = state.slides.find(s => s.id === state.activeSlideId);
+                const elData = slide.elements.find(el => el.id === actionData.id);
+                
+                const dx = (e.clientX - actionData.startX) / actionData.scale;
+                const dy = (e.clientY - actionData.startY) / actionData.scale;
+
+                if (currentAction === 'drag') {
+                    elData.x = actionData.origX + dx;
+                    elData.y = actionData.origY + dy;
+                } else if (currentAction === 'resize') {
+                    if (actionData.dir.includes('e')) elData.w = Math.max(20, actionData.origW + dx);
+                    if (actionData.dir.includes('s')) elData.h = Math.max(20, actionData.origH + dy);
+                }
+                
+                // Fast visual update without full render
+                const domEl = document.querySelector(`.draggable-element[data-id="${elData.id}"]`);
+                if (domEl) {
+                    domEl.style.left = elData.x + 'px';
+                    domEl.style.top = elData.y + 'px';
+                    if (elData.w) domEl.style.width = elData.w + 'px';
+                    if (elData.h) domEl.style.height = elData.h + 'px';
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (currentAction) {
+                    currentAction = null;
+                    renderSlide(); // Ensure final state saved and handles placed correctly
+                }
+            });
+        }
+
+        function deselectElements(e) {
+            if (e.target === canvas) {
+                state.selectedElementId = null;
+                renderSlide();
+            }
+        }
+
+        // --- Data Manipulation ---
+        function createNewSlide() {
+            const id = 's' + Date.now();
+            state.slides.push({ id, name: 'New Slide', parentId: null, bg: '#ffffff', elements: [] });
+            state.activeSlideId = id;
+            renderSidebar();
+            renderSlide();
+        }
+
+        function createNewFolder() {
+            const name = prompt("Enter folder name:");
+            if (name) {
+                state.folders.push({ id: 'f' + Date.now(), name, parentId: null, collapsed: false });
+                renderSidebar();
+            }
+        }
+
+        function toggleFolder(id) {
+            const f = state.folders.find(f => f.id === id);
+            if(f) f.collapsed = !f.collapsed;
+            renderSidebar();
+        }
+
+        function setActiveSlide(id) {
+            state.activeSlideId = id;
+            state.selectedElementId = null;
+            renderSidebar();
+            renderSlide();
+        }
+
+        function deleteItem(type, id) {
+            if (type === 'slide') {
+                state.slides = state.slides.filter(s => s.id !== id);
+                if (state.activeSlideId === id) state.activeSlideId = state.slides[0]?.id || null;
+            } else {
+                // Remove folder and move its children to root
+                state.slides.forEach(s => { if(s.parentId === id) s.parentId = null; });
+                state.folders.forEach(f => { if(f.parentId === id) f.parentId = null; });
+                state.folders = state.folders.filter(f => f.id !== id);
+            }
+            renderSidebar();
+            renderSlide();
+        }
+
+        function addElement(type) {
+            const activeSlide = state.slides.find(s => s.id === state.activeSlideId);
+            if (!activeSlide) return;
+
+            const newEl = {
+                id: 'e' + Date.now(), type,
+                content: type === 'text' ? 'Text' : '',
+                x: 100, y: 100, w: 200, h: type === 'text' ? 50 : 150,
+                size: 24, color: type === 'rect' ? '#3b82f6' : '#333333'
+            };
+
+            activeSlide.elements.push(newEl);
+            state.selectedElementId = newEl.id;
+            renderSlide();
+        }
+
+        function deleteSelected() {
+            const activeSlide = state.slides.find(s => s.id === state.activeSlideId);
+            if (!activeSlide || !state.selectedElementId) return;
+            activeSlide.elements = activeSlide.elements.filter(el => el.id !== state.selectedElementId);
+            state.selectedElementId = null;
+            renderSlide();
+        }
+
+        function updateElementColor(color) {
+            const activeSlide = state.slides.find(s => s.id === state.activeSlideId);
+            const el = activeSlide?.elements.find(e => e.id === state.selectedElementId);
+            if (el) { el.color = color; renderSlide(); }
+        }
+        
+        function updateCanvasBg(color) {
+            const activeSlide = state.slides.find(s => s.id === state.activeSlideId);
+            if (activeSlide) { activeSlide.bg = color; renderSlide(); }
+        }
+
+        function updateFontSize(size) {
+            const activeSlide = state.slides.find(s => s.id === state.activeSlideId);
+            const el = activeSlide?.elements.find(e => e.id === state.selectedElementId);
+            if (el && el.type === 'text') { el.size = parseInt(size); renderSlide(); }
+        }
+
+        // --- Export Functions ---
+        function exportPresentationJSON() {
+            const title = document.getElementById('presentation-title').value;
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+            const a = document.createElement('a');
+            a.href = dataStr; a.download = `${title}.json`; a.click();
+        }
+
+        function exportPDF() {
+            // PDF Export uses html2pdf against the scaler div
+            state.selectedElementId = null; // deselect to hide handles
+            renderSlide();
+            
+            const element = document.getElementById('canvas-scaler');
+            const title = document.getElementById('presentation-title').value;
+            
+            const opt = {
+                margin:       0,
+                filename:     `${title}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'px', format: [state.settings.w, state.settings.h], orientation: 'landscape' }
+            };
+
+            html2pdf().set(opt).from(element).save();
+        }
+
+        function exportPPTX() {
+            const title = document.getElementById('presentation-title').value;
+            let pres = new PptxGenJS();
+            
+            // Set custom layout based on settings (convert px to inches approx)
+            pres.defineLayout({ name:'CUSTOM', width: state.settings.w/96, height: state.settings.h/96 });
+            pres.layout = 'CUSTOM';
+            
+            state.slides.forEach(s => {
+                let slide = pres.addSlide();
+                slide.background = { color: (s.bg || '#ffffff').replace('#', '') };
+                
+                s.elements.forEach(el => {
+                    // Convert pixels to inches for PPTX (approx 96 dpi)
+                    const x = el.x / 96, y = el.y / 96;
+                    const w = (el.w || 200) / 96, h = (el.h || 50) / 96;
+                    const color = (el.color || '#000000').replace('#', '');
+                    
+                    if (el.type === 'text') {
+                        // Strip HTML tags for PPTX text
+                        const cleanText = el.content.replace(/<[^>]*>?/gm, '');
+                        slide.addText(cleanText, { x, y, w, h, fontSize: el.size * 0.75, color });
+                    } else if (el.type === 'rect') {
+                        slide.addShape(pres.ShapeType.rect, { x, y, w, h, fill: { color } });
+                    } else if (el.type === 'image') {
+                        slide.addImage({ data: el.content, x, y, w, h });
+                    }
+                });
+            });
+            pres.writeFile({ fileName: `${title}.pptx` });
+        }
+
+        // --- Image Upload ---
+        function triggerImageUpload() { document.getElementById('img-upload').click(); }
+        document.getElementById('img-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const activeSlide = state.slides.find(s => s.id === state.activeSlideId);
+                    // Use a temporary image object to get actual dimensions to scale down
+                    const img = new Image();
+                    img.onload = function() {
+                        let w = img.width; let h = img.height;
+                        if (w > 400) { h = h * (400/w); w = 400; } // Scale down if too big
+                        activeSlide.elements.push({
+                            id: 'e' + Date.now(), type: 'image', content: event.target.result,
+                            x: 100, y: 100, w: w, h: h
+                        });
+                        renderSlide();
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // --- Presentation Mode ---
+        let pIndex = 0;
+        function startPresentation() {
+            if (state.slides.length === 0) return;
+            state.selectedElementId = null; renderSlide();
+            pIndex = state.slides.findIndex(s => s.id === state.activeSlideId);
+            if (pIndex === -1) pIndex = 0;
+            
+            const overlay = document.getElementById('presentation-overlay');
+            overlay.style.display = 'flex';
+            
+            const pWrapper = document.getElementById('present-canvas-wrapper');
+            // Size presentation wrapper based on screen aspect ratio
+            const screenAspect = window.innerWidth / window.innerHeight;
+            const slideAspect = state.settings.w / state.settings.h;
+            
+            if (screenAspect > slideAspect) {
+                pWrapper.style.height = '100vh';
+                pWrapper.style.width = (100 * slideAspect) + 'vh';
+            } else {
+                pWrapper.style.width = '100vw';
+                pWrapper.style.height = (100 / slideAspect) + 'vw';
+            }
+            
+            updatePresenterView();
+            // Enter full screen if supported
+            if (document.documentElement.requestFullscreen) {
+               // document.documentElement.requestFullscreen().catch(err => {});
+            }
+        }
+
+        function updatePresenterView() {
+            const s = state.slides[pIndex];
+            const pCanvas = document.getElementById('present-canvas');
+            
+            // Set base scale for presentation mode
+            const pWrapper = document.getElementById('present-canvas-wrapper');
+            const scale = pWrapper.clientWidth / state.settings.w;
+            
+            renderSlide(pCanvas, s.id);
+            // Apply scale to children of present-canvas
+            Array.from(pCanvas.children).forEach(child => {
+                const el = s.elements.find(e => e.id === child.dataset.id);
+                child.style.transform = `scale(${scale})`;
+                child.style.transformOrigin = 'top left';
+                child.style.left = (el.x * scale) + 'px';
+                child.style.top = (el.y * scale) + 'px';
+            });
+            
+            document.getElementById('slide-counter').textContent = `Slide ${pIndex + 1} / ${state.slides.length}`;
+        }
+
+        function nextSlide() { if (pIndex < state.slides.length - 1) { pIndex++; updatePresenterView(); } }
+        function prevSlide() { if (pIndex > 0) { pIndex--; updatePresenterView(); } }
+        function exitPresentation() {
+            document.getElementById('presentation-overlay').style.display = 'none';
+            if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen();
+        }
+
+        // --- Utils ---
+        function toggleInfoModal() {
+            const modal = document.getElementById('info-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        }
+        function newProject() {
+            if(confirm('Are you sure? Unsaved changes will be lost.')){
+                state.folders = []; state.slides = [{ id: 's1', name: 'New Slide', parentId: null, elements: [] }];
+                state.activeSlideId = 's1'; renderSidebar(); renderSlide();
+            }
+        }
+    </script>
+</body>
+</html>
