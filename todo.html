@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>General Life Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+        
+        /* Show action buttons on hover */
+        .group-container .actions { opacity: 0; transition: opacity 0.2s; }
+        .group-container:hover .actions { opacity: 1; }
+        
+        .task-container .actions { opacity: 0; transition: opacity 0.2s; }
+        .task-container:hover .actions { opacity: 1; }
+
+        /* Ensure mobile devices always show actions since there's no hover */
+        @media (max-width: 768px) {
+            .group-container .actions, .task-container .actions { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans p-4 md:p-8 min-h-screen text-slate-800">
+    <div class="max-w-4xl mx-auto">
+        <!-- HEADER -->
+        <header class="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight" contenteditable="true" id="app-title" onblur="saveTitle()">
+                    My Life Tracker
+                </h1>
+                <p class="text-slate-500 mt-2">Daily habits, to-dos, and long-term goals manager. (Click title to edit)</p>
+            </div>
+            
+            <!-- INFO BUTTON -->
+            <button onclick="openModal('info')" class="flex items-center justify-center bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-100 transition-colors shadow-sm border border-blue-100 w-full md:w-auto">
+                <i data-lucide="info" class="w-4 h-4 mr-2"></i> Info & Help
+            </button>
+        </header>
+
+        <!-- CONTROL BAR -->
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+            <label class="flex items-center space-x-3 cursor-pointer group">
+                <div class="relative flex items-center">
+                    <input type="checkbox" id="hideCompletedToggle" class="peer sr-only" onchange="toggleHideCompleted()">
+                    <div class="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </div>
+                <span class="text-sm font-medium text-slate-600 group-hover:text-slate-900 transition-colors">Hide Completed</span>
+            </label>
+            
+            <div class="flex items-center space-x-2 w-full sm:w-auto">
+                <button onclick="openModal('bulk-upload')" class="flex-1 sm:flex-none flex items-center justify-center bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-100 transition-colors shadow-sm border border-emerald-100">
+                    <i data-lucide="upload" class="w-4 h-4 mr-2"></i> Bulk Upload
+                </button>
+                <button onclick="openModal('new-group')" class="flex-1 sm:flex-none flex items-center justify-center bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-100 transition-colors shadow-sm border border-indigo-100">
+                    <i data-lucide="plus" class="w-4 h-4 mr-2"></i> Add Group
+                </button>
+            </div>
+        </div>
+
+        <!-- NAVIGATION -->
+        <nav class="flex space-x-2 mb-8 bg-white p-1.5 rounded-xl shadow-sm border border-slate-200 inline-flex overflow-x-auto max-w-full" id="nav-container">
+            <!-- Nav buttons injected here by JS -->
+        </nav>
+
+        <!-- CONTENT AREA -->
+        <main id="main-content">
+            <!-- Content injected here by JS -->
+        </main>
+    </div>
+
+    <!-- MODAL OVERLAY -->
+    <div id="modal-overlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+                <h3 id="modal-title" class="text-lg font-bold text-slate-800">Modal Title</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-200">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Modal Body (Scrollable) -->
+            <div class="overflow-y-auto p-6">
+                <form id="modal-form" onsubmit="handleModalSubmit(event)" class="space-y-4">
+                    <!-- Dynamic Fields Container -->
+                    <div id="modal-fields" class="space-y-4"></div>
+
+                    <div id="modal-actions" class="pt-4 flex justify-end space-x-3 mt-4 border-t border-slate-100 pt-4">
+                        <button type="button" onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
+                        <button type="submit" id="modal-submit-btn" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors">Process & Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DEFAULT GENERIC DATA ---
+        const defaultProjectData = [
+            {
+                id: 'grp-health', title: 'Health & Fitness', category: 'Wellness', timeframe: 'Daily/Weekly',
+                subtasks: [
+                    { id: 't-h1', title: 'Morning workout or stretch' },
+                    { id: 't-h2', title: 'Drink 2 liters of water' },
+                    { id: 't-h3', title: 'Weekly meal prep', date: '2026-04-12' }
+                ]
+            },
+            {
+                id: 'grp-home', title: 'Household & Errands', category: 'Chores', timeframe: 'Weekly',
+                subtasks: [
+                    { id: 't-ho1', title: 'Deep clean the kitchen and bathrooms' },
+                    { id: 't-ho2', title: 'Grocery shopping' },
+                    { id: 't-ho3', title: 'Water all indoor plants' }
+                ]
+            },
+            {
+                id: 'grp-growth', title: 'Career & Learning', category: 'Growth', timeframe: 'Ongoing',
+                subtasks: [
+                    { id: 't-g1', title: 'Read 1 chapter of a book' },
+                    { id: 't-g2', title: 'Update resume and portfolio' },
+                    { id: 't-g3', title: 'Complete 1 module of online course' }
+                ]
+            },
+            {
+                id: 'grp-finance', title: 'Finances & Admin', category: 'Admin', timeframe: 'Monthly',
+                subtasks: [
+                    { id: 't-f1', title: 'Review monthly budget and expenses', date: '2026-04-30' },
+                    { id: 't-f2', title: 'Transfer 10% to savings' },
+                    { id: 't-f3', title: 'Pay utility bills' }
+                ]
+            }
+        ];
+
+        // --- APP STATE ---
+        let appData = [];
+        let activeTab = 'overview';
+        let completedTasks = new Set();
+        let expandedGroups = new Set();
+        let hideCompleted = false;
+        let appTitle = "My Life Tracker";
+        
+        // Modal State
+        let currentModalState = { isOpen: false, type: null, groupId: null, taskId: null };
+
+        // --- LOCAL STORAGE HELPERS ---
+        function saveState() {
+            localStorage.setItem('tracker_appData', JSON.stringify(appData));
+            localStorage.setItem('tracker_activeTab', activeTab);
+            localStorage.setItem('tracker_completedTasks', JSON.stringify([...completedTasks]));
+            localStorage.setItem('tracker_expandedGroups', JSON.stringify([...expandedGroups]));
+            localStorage.setItem('tracker_hideCompleted', hideCompleted.toString());
+            localStorage.setItem('tracker_title', appTitle);
+        }
+
+        function loadState() {
+            const savedData = localStorage.getItem('tracker_appData');
+            if (savedData) {
+                appData = JSON.parse(savedData);
+            } else {
+                appData = JSON.parse(JSON.stringify(defaultProjectData)); // deep copy default
+            }
+
+            const savedTab = localStorage.getItem('tracker_activeTab');
+            if (savedTab) activeTab = savedTab;
+
+            const savedTasks = localStorage.getItem('tracker_completedTasks');
+            if (savedTasks) completedTasks = new Set(JSON.parse(savedTasks));
+
+            const savedGroups = localStorage.getItem('tracker_expandedGroups');
+            if (savedGroups) {
+                expandedGroups = new Set(JSON.parse(savedGroups));
+            } else {
+                expandedGroups = new Set(appData.map(g => g.id)); // Default expand all
+            }
+
+            const savedHide = localStorage.getItem('tracker_hideCompleted');
+            if (savedHide) {
+                hideCompleted = savedHide === 'true';
+                document.getElementById('hideCompletedToggle').checked = hideCompleted;
+            }
+
+            const savedTitle = localStorage.getItem('tracker_title');
+            if (savedTitle) {
+                appTitle = savedTitle;
+                document.getElementById('app-title').innerText = appTitle;
+            }
+        }
+
+        function saveTitle() {
+            const titleEl = document.getElementById('app-title');
+            appTitle = titleEl.innerText.trim() || "My Life Tracker";
+            titleEl.innerText = appTitle; // restore if they cleared it completely
+            saveState();
+        }
+
+        // --- ACTIONS ---
+        function switchTab(tabId) {
+            activeTab = tabId;
+            saveState();
+            renderAll();
+        }
+
+        function toggleTask(taskId) {
+            if (completedTasks.has(taskId)) {
+                completedTasks.delete(taskId);
+            } else {
+                completedTasks.add(taskId);
+            }
+            saveState();
+            renderAll();
+        }
+
+        function toggleGroup(groupId) {
+            if (expandedGroups.has(groupId)) {
+                expandedGroups.delete(groupId);
+            } else {
+                expandedGroups.add(groupId);
+            }
+            saveState();
+            renderAll();
+        }
+
+        function toggleHideCompleted() {
+            hideCompleted = document.getElementById('hideCompletedToggle').checked;
+            saveState();
+            renderAll();
+        }
+
+        function deleteItem(type, id1, id2 = null) {
+            if (type === 'group') {
+                if (confirm('Are you sure you want to delete this entire group and all its subtasks?')) {
+                    appData = appData.filter(g => g.id !== id1);
+                    expandedGroups.delete(id1);
+                }
+            } else if (type === 'task') {
+                if (confirm('Are you sure you want to delete this task?')) {
+                    const group = appData.find(g => g.id === id1);
+                    if (group) {
+                        group.subtasks = group.subtasks.filter(t => t.id !== id2);
+                        completedTasks.delete(id2);
+                    }
+                }
+            }
+            saveState();
+            renderAll();
+        }
+
+        // --- CSV PARSING HELPER ---
+        function parseCSV(str) {
+            const result = [];
+            let row = [], inQuotes = false, val = '';
+            for (let i = 0; i < str.length; i++) {
+                let char = str[i];
+                if (inQuotes) {
+                    if (char === '"') {
+                        if (str[i+1] === '"') { val += '"'; i++; } // escaped quote
+                        else inQuotes = false;
+                    } else val += char;
+                } else {
+                    if (char === '"') inQuotes = true;
+                    else if (char === ',') { row.push(val.trim()); val = ''; }
+                    else if (char === '\n' || char === '\r') {
+                        row.push(val.trim()); val = '';
+                        if (row.some(x => x)) result.push(row);
+                        row = [];
+                        if (char === '\r' && str[i+1] === '\n') i++; // skip CRLF
+                    } else val += char;
+                }
+            }
+            row.push(val.trim());
+            if (row.some(x => x)) result.push(row);
+            return result;
+        }
+
+        // --- MODAL LOGIC ---
+        function getUniqueCategories() {
+            return [...new Set(appData.map(g => g.category).filter(Boolean))];
+        }
+
+        function getUniqueTimeframes() {
+            return [...new Set(appData.map(g => g.timeframe).filter(Boolean))];
+        }
+
+        function openModal(type, groupId = null, taskId = null) {
+            currentModalState = { isOpen: true, type, groupId, taskId };
+            const overlay = document.getElementById('modal-overlay');
+            const titleEl = document.getElementById('modal-title');
+            const fieldsEl = document.getElementById('modal-fields');
+            const actionsEl = document.getElementById('modal-actions');
+            
+            overlay.classList.remove('hidden');
+            actionsEl.style.display = 'flex'; // Reset to visible
+
+            let html = '';
+            
+            if (type === 'info') {
+                titleEl.textContent = 'Help & Related Files';
+                actionsEl.style.display = 'none'; // Hide default form actions
+                html = `
+                    <div class="space-y-5 text-sm text-slate-700">
+                        
+                        <div>
+                            <h4 class="font-bold text-slate-900 flex items-center mb-2"><i data-lucide="book-open" class="w-4 h-4 mr-2 text-indigo-600"></i> How to Use</h4>
+                            <ul class="list-disc pl-5 space-y-1.5 text-slate-600">
+                                <li><strong>Data Storage:</strong> All data is securely saved in your browser's Local Storage. No database required!</li>
+                                <li><strong>Custom Title:</strong> Click the main title at the top of the page to rename your tracker.</li>
+                                <li><strong>Add Tasks:</strong> Use the <span class="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-medium text-xs border border-indigo-100">Add Group</span> button to create broad areas of your life (e.g., Fitness, Household). Click the <i data-lucide="plus-circle" class="w-3.5 h-3.5 inline text-emerald-600"></i> icon on any group to add specific tasks.</li>
+                                <li><strong>Bulk Upload:</strong> Paste CSV (comma-separated) data to create many tasks at once.</li>
+                            </ul>
+                        </div>
+
+                        <div class="border-t border-slate-200 pt-4">
+                            <h4 class="font-bold text-slate-900 flex items-center mb-2"><i data-lucide="folder-tree" class="w-4 h-4 mr-2 text-indigo-600"></i> Related Files in Directory</h4>
+                            <p class="text-xs text-slate-500 mb-3">
+                                If you are hosting this on GitHub Pages, here is a quick-access map to other files located in the same folder. 
+                                <em>(Note: Modify these links directly in the HTML file to match your actual repository structure).</em>
+                            </p>
+                            
+                            <div class="bg-slate-50 rounded-lg border border-slate-200 p-3">
+                                <ul class="space-y-3">
+                                    <li class="flex items-start">
+                                        <i data-lucide="file-code-2" class="w-4 h-4 mt-0.5 mr-2 text-blue-500 shrink-0"></i>
+                                        <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Category (e.g., Chores, Wellness)</label>
+                        <input type="text" id="m-category" list="cat-list" value="${gCat}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                        <datalist id="cat-list">${categories.map(c => `<option value="${c}">`).join('')}</datalist>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Timeframe / Frequency</label>
+                            <input type="text" id="m-timeframe" list="time-list" value="${gTime}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                            <datalist id="time-list">${timeframes.map(t => `<option value="${t}">`).join('')}</datalist>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Overall Deadline (Optional)</label>
+                            <input type="date" id="m-date" value="${gDate}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                        </div>
+                    </div>
+                `;
+            } else if (type === 'new-task' || type === 'edit-task') {
+                titleEl.textContent = type === 'new-task' ? 'Add Subtask' : 'Edit Subtask';
+                
+                let tTitle = '', tDate = '';
+                if (type === 'edit-task' && groupId && taskId) {
+                    const g = appData.find(g => g.id === groupId);
+                    if (g) {
+                        const t = g.subtasks.find(t => t.id === taskId);
+                        if (t) { tTitle = t.title; tDate = t.date || ''; }
+                    }
+                }
+
+                html = `
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Task Description <span class="text-rose-500">*</span></label>
+                        <textarea id="m-title" required rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">${tTitle}</textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Due Date (Optional)</label>
+                        <input type="date" id="m-date" value="${tDate}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    </div>
+                `;
+            } else if (type === 'bulk-upload') {
+                titleEl.textContent = 'Bulk Upload CSV';
+                html = `
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Paste CSV Data</label>
+                        <p class="text-xs text-slate-500 mb-2">Expected columns (comma separated): <strong>Group Title, Task Title, Task Due Date (YYYY-MM-DD), Category, Timeframe</strong></p>
+                        <textarea id="m-csv-data" required rows="8" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-mono text-sm whitespace-pre" placeholder='"Household", "Vacuum living room", "2026-04-10", "Chores", "Weekly"\n"Household", "Do laundry", "", "Chores", "Weekly"'></textarea>
+                    </div>
+                    <div class="bg-indigo-50 text-indigo-800 p-3 rounded-lg text-xs mt-3 border border-indigo-100">
+                        <strong>Tip:</strong> If the Group Title already exists, your tasks will be added to it. Otherwise, a brand new group will be created automatically.
+                    </div>
+                `;
+            }
+
+            fieldsEl.innerHTML = html;
+            lucide.createIcons(); // Re-init icons inside modal
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').classList.add('hidden');
+            document.getElementById('modal-form').reset();
+            currentModalState = { isOpen: false, type: null, groupId: null, taskId: null };
+        }
+
+        function handleModalSubmit(e) {
+            e.preventDefault();
+            const { type, groupId, taskId } = currentModalState;
+
+            if (type === 'info') return; // Should not trigger submit, but just in case
+
+            if (type === 'bulk-upload') {
+                const csvText = document.getElementById('m-csv-data').value;
+                const rows = parseCSV(csvText);
+                
+                // Assume first row is header if it contains 'group' or 'title'
+                let startIndex = 0;
+                if (rows.length > 0 && rows[0].join('').toLowerCase().includes('group')) {
+                    startIndex = 1;
+                }
+
+                let addedCount = 0;
+
+                for (let i = startIndex; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (row.length < 2) continue; // Must have at least a group and task
+                    
+                    // Destructure based on the expected columns: Group, Task, Date, Category, Timeframe
+                    const gTitle = row[0];
+                    const tTitle = row[1];
+                    const tDate = row[2] || null;
+                    const gCat = row[3] || 'General';
+                    const gTime = row[4] || 'Ongoing';
+                    
+                    if (!gTitle || !tTitle) continue;
+
+                    // Find existing group (case-insensitive) or create a new one
+                    let group = appData.find(g => g.title.toLowerCase() === gTitle.toLowerCase());
+                    if (!group) {
+                        group = {
+                            id: 'grp_bulk_' + Date.now() + '_' + i,
+                            title: gTitle,
+                            category: gCat,
+                            timeframe: gTime,
+                            subtasks: []
+                        };
+                        appData.push(group);
+                    }
+                    
+                    // Push the task into the group
+                    group.subtasks.push({
+                        id: 'tsk_bulk_' + Date.now() + '_' + i,
+                        title: tTitle,
+                        date: tDate
+                    });
+                    
+                    expandedGroups.add(group.id); // Expand it so the user sees their new tasks
+                    addedCount++;
+                }
+                
+                closeModal();
+                saveState();
+                renderAll();
+                
+                setTimeout(() => alert(`Successfully added ${addedCount} tasks!`), 100);
+                return;
+            }
+            
+            // Handle normal single additions/edits
+            const mTitle = document.getElementById('m-title')?.value.trim();
+            const mDate = document.getElementById('m-date')?.value || null;
+
+            if (type === 'new-group' || type === 'edit-group') {
+                const mCat = document.getElementById('m-category')?.value.trim() || 'General';
+                const mTime = document.getElementById('m-timeframe')?.value.trim() || 'Ongoing';
+
+                if (type === 'new-group') {
+                    const newId = 'grp_' + Date.now();
+                    appData.push({
+                        id: newId, title: mTitle, category: mCat, timeframe: mTime, date: mDate, subtasks: []
+                    });
+                    expandedGroups.add(newId);
+                } else if (type === 'edit-group' && groupId) {
+                    const g = appData.find(g => g.id === groupId);
+                    if (g) {
+                        g.title = mTitle; g.category = mCat; g.timeframe = mTime;
+                        if(mDate) g.date = mDate; else delete g.date;
+                    }
+                }
+            } else if (type === 'new-task' || type === 'edit-task') {
+                const g = appData.find(g => g.id === groupId);
+                if (g) {
+                    if (type === 'new-task') {
+                        const newId = 'tsk_' + Date.now();
+                        const newTask = { id: newId, title: mTitle };
+                        if(mDate) newTask.date = mDate;
+                        g.subtasks.push(newTask);
+                        expandedGroups.add(groupId); // Ensure group is open to see new task
+                    } else if (type === 'edit-task' && taskId) {
+                        const t = g.subtasks.find(t => t.id === taskId);
+                        if (t) {
+                            t.title = mTitle;
+                            if(mDate) t.date = mDate; else delete t.date;
+                        }
+                    }
+                }
+            }
+
+            closeModal();
+            saveState();
+            renderAll();
+        }
+
+        // --- STATS CALCULATION ---
+        function getStats() {
+            let total = 0;
+            let completed = 0;
+            const byCategory = {};
+
+            appData.forEach(group => {
+                const cat = group.category || 'Uncategorized';
+                if (!byCategory[cat]) {
+                    byCategory[cat] = { total: 0, completed: 0 };
+                }
+                
+                group.subtasks.forEach(sub => {
+                    total++;
+                    byCategory[cat].total++;
+                    if (completedTasks.has(sub.id)) {
+                        completed++;
+                        byCategory[cat].completed++;
+                    }
+                });
+            });
+
+            return { total, completed, byCategory };
+        }
+
+        // --- RENDER FUNCTIONS ---
+        function renderProgressBar(value, max, label) {
+            const percentage = max === 0 ? 0 : Math.round((value / max) * 100);
+            return `
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm font-medium text-slate-700 mb-1">
+                        <span>${label}</span>
+                        <span>${percentage}%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-2.5">
+                        <div class="bg-indigo-600 h-2.5 rounded-full transition-all duration-500 ease-in-out" style="width: ${percentage}%"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderNav() {
+            const navContainer = document.getElementById('nav-container');
+            const tabs = [
+                { id: 'overview', label: 'Overview', icon: 'layout-dashboard' },
+                { id: 'timeline', label: 'Timeline & Frequency', icon: 'calendar' },
+                { id: 'category', label: 'Category View', icon: 'list-todo' }
+            ];
+
+            navContainer.innerHTML = tabs.map(tab => {
+                const isActive = activeTab === tab.id;
+                const activeClasses = isActive ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100';
+                return `
+                    <button onclick="switchTab('${tab.id}')" class="flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeClasses}">
+                        <i data-lucide="${tab.icon}" class="w-4 h-4 mr-2"></i> ${tab.label}
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderTaskGroup(group) {
+            const isExpanded = expandedGroups.has(group.id);
+            const totalTasksCount = group.subtasks.length;
+            const completedCount = group.subtasks.filter(t => completedTasks.has(t.id)).length;
+            const isAllDone = completedCount === totalTasksCount && totalTasksCount > 0;
+
+            // Sort and filter tasks
+            let visibleTasks = [...group.subtasks];
+            
+            // Prioritize by date
+            visibleTasks.sort((a, b) => {
+                if (!a.date && !b.date) return 0;
+                if (!a.date) return 1;
+                if (!b.date) return -1;
+                return new Date(a.date) - new Date(b.date);
+            });
+
+            // Hide completed if toggled
+            if (hideCompleted) {
+                visibleTasks = visibleTasks.filter(t => !completedTasks.has(t.id));
+            }
+
+            // Hide the entire group if empty because of filters, UNLESS it has absolutely 0 tasks to begin with
+            if (hideCompleted && visibleTasks.length === 0 && totalTasksCount > 0) {
+                return ''; 
+            }
+
+            let subtasksHtml = '';
+            if (isExpanded) {
+                if (visibleTasks.length === 0) {
+                    subtasksHtml = `
+                        <div class="border-t border-slate-100 bg-slate-50/50 px-5 py-4 text-center text-sm text-slate-500 italic">
+                            No tasks to show here.
+                        </div>
+                    `;
+                } else {
+                    subtasksHtml = `
+                        <div class="border-t border-slate-100 bg-slate-50/50 px-3 md:px-5 py-3">
+                            <ul class="space-y-2">
+                                ${visibleTasks.map(task => {
+                                    const isTaskDone = completedTasks.has(task.id);
+                                    const itemClasses = isTaskDone ? 'bg-white border-emerald-200 shadow-sm' : 'bg-white border-slate-200 hover:border-indigo-300';
+                                    const iconClass = isTaskDone ? 'text-emerald-500' : 'text-slate-300';
+                                    const iconName = isTaskDone ? 'check-circle-2' : 'circle';
+                                    const textClass = isTaskDone ? 'text-slate-500 line-through' : 'text-slate-700';
+                                    const dateClass = isTaskDone ? 'text-emerald-500' : 'text-rose-500';
+
+                                    return `
+                                        <li class="task-container flex flex-col sm:flex-row sm:items-center p-3 rounded-lg border transition-all cursor-pointer ${itemClasses}" onclick="toggleTask('${task.id}')">
+                                            <div class="flex items-start flex-1 w-full">
+                                                <div class="mt-0.5 mr-3 flex-shrink-0">
+                                                    <i data-lucide="${iconName}" class="w-5 h-5 ${iconClass}"></i>
+                                                </div>
+                                                <div class="flex-1 pr-2">
+                                                    <p class="text-sm ${textClass}">${task.title}</p>
+                                                    ${task.date ? `<p class="text-xs mt-1 font-medium flex items-center ${dateClass}"><i data-lucide="calendar" class="w-3 h-3 mr-1"></i> Due: ${task.date}</p>` : ''}
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Task Actions -->
+                                            <div class="actions flex items-center space-x-1 sm:pl-2 sm:border-l sm:border-slate-100 mt-3 sm:mt-0 ml-8 sm:ml-auto" onclick="event.stopPropagation()">
+                                                <button onclick="openModal('edit-task', '${group.id}', '${task.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Edit Task">
+                                                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                                                </button>
+                                                <button onclick="deleteItem('task', '${group.id}', '${task.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" title="Delete Task">
+                                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                                </button>
+                                            </div>
+                                        </li>
+                                    `;
+                                }).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+            }
+
+            return `
+                <div class="group-container bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-4 transition-all">
+                    <div class="px-4 md:px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors ${isAllDone && !hideCompleted ? 'bg-emerald-50/50' : ''}" onclick="toggleGroup('${group.id}')">
+                        
+                        <div class="flex items-start sm:items-center space-x-3 flex-1 mb-3 sm:mb-0">
+                            <i data-lucide="${isExpanded ? 'chevron-down' : 'chevron-right'}" class="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5 sm:mt-0"></i>
+                            <div>
+                                <h3 class="font-semibold ${isAllDone && !hideCompleted ? 'text-emerald-700' : 'text-slate-800'} pr-2 leading-tight">${group.title}</h3>
+                                <div class="flex flex-wrap items-center mt-1 gap-2 text-xs text-slate-500">
+                                    <span class="flex items-center bg-slate-100 px-2 py-0.5 rounded-full">${group.category}</span>
+                                    ${group.date ? `<span class="flex items-center text-rose-600 font-medium bg-rose-50 px-2 py-0.5 rounded-full"><i data-lucide="calendar" class="w-3 h-3 mr-1"></i> ${group.date}</span>` : ''}
+                                    ${group.timeframe ? `<span class="flex items-center"><i data-lucide="clock" class="w-3 h-3 mr-1"></i> ${group.timeframe}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between sm:justify-end w-full sm:w-auto space-x-4 sm:pl-2 ml-8 sm:ml-0">
+                            <!-- Group Actions -->
+                            <div class="actions flex items-center space-x-1" onclick="event.stopPropagation()">
+                                <button onclick="openModal('new-task', '${group.id}')" class="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Add Subtask">
+                                    <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="openModal('edit-group', '${group.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Edit Group">
+                                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="deleteItem('group', '${group.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" title="Delete Group">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="text-sm font-medium text-slate-500 flex-shrink-0 bg-slate-100 px-2 py-1 rounded-md">
+                                ${completedCount} / ${totalTasksCount}
+                            </div>
+                        </div>
+                    </div>
+                    ${subtasksHtml}
+                </div>
+            `;
+        }
+
+        function renderOverview() {
+            const stats = getStats();
+            
+            let categoryBars = Object.entries(stats.byCategory).map(([category, data]) => `
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                    ${renderProgressBar(data.completed, data.total, category)}
+                </div>
+            `).join('');
+
+            return `
+                <div class="space-y-6 animate-fade-in">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <h2 class="text-xl font-bold text-slate-800 mb-6">Progress Overview</h2>
+                        ${renderProgressBar(stats.completed, stats.total, `Overall Completion (${stats.completed}/${stats.total} Tasks)`)}
+                        
+                        <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            ${categoryBars}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTimeline() {
+            const timeframes = getUniqueTimeframes();
+            
+            let content = `<div class="animate-fade-in"><p class="text-slate-500 mb-6 text-sm">Tasks chronologically ordered by timeframe. Items within groups are prioritised by due date.</p>`;
+            
+            timeframes.forEach(tf => {
+                const groupsInTimeframe = appData.filter(g => g.timeframe === tf);
+                if (groupsInTimeframe.length === 0) return;
+                
+                const htmlGroups = groupsInTimeframe.map(renderTaskGroup).join('');
+                if(!htmlGroups.trim()) return; 
+
+                content += `
+                    <div class="mb-8 pl-4 border-l-2 border-indigo-200">
+                        <h2 class="text-lg font-bold text-indigo-900 mb-4 tracking-tight flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-indigo-500 -ml-[23px] mr-4 ring-4 ring-slate-50"></div>
+                            ${tf}
+                        </h2>
+                        ${htmlGroups}
+                    </div>
+                `;
+            });
+
+            content += `</div>`;
+            return content;
+        }
+
+        function renderCategoryView() {
+            const categories = getUniqueCategories();
+            
+            let content = `<div class="animate-fade-in"><p class="text-slate-500 mb-6 text-sm">Tasks grouped logically by the type of work required.</p>`;
+            
+            categories.forEach(cat => {
+                const groupsInCat = appData.filter(g => g.category === cat);
+                if (groupsInCat.length === 0) return;
+                
+                const htmlGroups = groupsInCat.map(renderTaskGroup).join('');
+                if(!htmlGroups.trim()) return;
+
+                content += `
+                    <div class="mb-8">
+                        <h2 class="text-lg font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">
+                            ${cat}
+                        </h2>
+                        ${htmlGroups}
+                    </div>
+                `;
+            });
+
+            content += `</div>`;
+            return content;
+        }
+
+        function renderAll() {
+            renderNav();
+            
+            const mainContent = document.getElementById('main-content');
+            if (activeTab === 'overview') {
+                mainContent.innerHTML = renderOverview();
+            } else if (activeTab === 'timeline') {
+                mainContent.innerHTML = renderTimeline();
+            } else if (activeTab === 'category') {
+                mainContent.innerHTML = renderCategoryView();
+            }
+
+            // Re-initialize Lucide icons after updating the DOM
+            lucide.createIcons();
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener("DOMContentLoaded", () => {
+            loadState();
+            renderAll();
+        });
+
+    </script>
+</body>
+</html>
