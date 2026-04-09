@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Split Pin Figure Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Prevent pull-to-refresh and scrolling on canvas for mobile */
+        body { overscroll-behavior: none; touch-action: none; }
+        canvas { touch-action: none; -webkit-touch-callout: none; user-select: none; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-950 text-white h-screen w-screen flex flex-col font-sans overflow-hidden">
+
+    <!-- Header / Navigation -->
+    <header class="bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center shadow-md z-10 shrink-0">
+        <div>
+            <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Split Pin Simulator</h1>
+        </div>
+        <div class="flex space-x-3 items-center">
+            <div id="statusBadge" class="bg-blue-900 text-blue-200 text-xs px-2 py-1 rounded-full uppercase tracking-wider font-semibold">
+                Upload Phase
+            </div>
+            <button onclick="toggleInfo()" class="p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition-colors" title="Information">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 relative flex flex-col w-full h-full">
+        
+        <!-- UI Overlays based on state -->
+        <div id="ui-upload" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 z-20">
+            <div class="bg-gray-900 p-8 rounded-2xl border border-gray-800 shadow-2xl text-center max-w-md w-full mx-4">
+                <svg class="mx-auto h-16 w-16 text-blue-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <h2 class="text-2xl font-bold mb-2">Upload Source Image</h2>
+                <p class="text-gray-400 mb-6 text-sm">Select an image containing the character/object you want to cut into pieces.</p>
+                <label class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-6 rounded-lg transition-colors inline-block w-full">
+                    <span>Choose Image File</span>
+                    <input type="file" id="imageInput" accept="image/png, image/jpeg, image/webp" class="hidden">
+                </label>
+            </div>
+        </div>
+
+        <!-- Floating Toolbars -->
+        <div id="toolbar-cut" class="hidden absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur border border-gray-700 p-2 rounded-xl flex space-x-2 shadow-xl z-10 w-[95%] md:w-auto overflow-x-auto">
+            <button onclick="closeCurrentPolygon()" class="flex-1 md:flex-none whitespace-nowrap bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg font-medium text-sm transition-colors">✂️ Extract Part</button>
+            <button onclick="undoLastPoint()" class="flex-1 md:flex-none whitespace-nowrap bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg font-medium text-sm transition-colors">↩️ Undo Point</button>
+            <div class="w-px bg-gray-700 mx-1"></div>
+            <button onclick="autoCutTPose('scatter')" class="flex-1 md:flex-none whitespace-nowrap bg-purple-600 hover:bg-purple-500 px-3 py-2 rounded-lg font-medium text-sm transition-colors">🪄 Auto-Cut</button>
+            <button onclick="autoCutTPose('instant')" class="flex-1 md:flex-none whitespace-nowrap bg-yellow-600 hover:bg-yellow-500 px-3 py-2 rounded-lg font-medium text-sm transition-colors text-white font-bold">⚡ Instant Rig</button>
+            <div class="w-px bg-gray-700 mx-1"></div>
+            <button onclick="finishCutting()" class="flex-1 md:flex-none whitespace-nowrap bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-medium text-sm transition-colors">✅ Done Cutting</button>
+        </div>
+
+        <div id="toolbar-assemble" class="hidden absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur border border-gray-700 p-2 rounded-xl flex space-x-2 shadow-xl z-10 w-[95%] md:w-auto overflow-x-auto">
+            <button id="btnToolDrag" onclick="setAssemblyTool('drag')" class="flex-1 md:flex-none whitespace-nowrap bg-blue-600 px-3 py-2 rounded-lg font-medium text-sm transition-colors ring-2 ring-blue-400">🖐️ Select</button>
+            <button id="btnToolPin" onclick="setAssemblyTool('pin')" class="flex-1 md:flex-none whitespace-nowrap bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg font-medium text-sm transition-colors">📍 Pin</button>
+            <div class="w-px bg-gray-700 mx-1"></div>
+            <button onclick="bringForward()" class="flex-1 md:flex-none whitespace-nowrap bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg font-medium text-sm transition-colors" title="Bring Forward">⬆️ Forward</button>
+            <button onclick="sendBackward()" class="flex-1 md:flex-none whitespace-nowrap bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg font-medium text-sm transition-colors" title="Send Backward">⬇️ Back</button>
+            <button onclick="clearPins()" class="flex-1 md:flex-none whitespace-nowrap bg-red-900 hover:bg-red-800 px-3 py-2 rounded-lg font-medium text-sm transition-colors">🗑️ Clear Pins</button>
+            <div class="w-px bg-gray-700 mx-1"></div>
+            <button onclick="startPlaying()" class="flex-1 md:flex-none whitespace-nowrap bg-green-600 hover:bg-green-500 px-3 py-2 rounded-lg font-medium text-sm transition-colors">▶️ Test Figure</button>
+        </div>
+
+        <div id="toolbar-play" class="hidden absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur border border-gray-700 p-2 rounded-xl flex space-x-2 shadow-xl z-10 w-[95%] md:w-auto overflow-x-auto">
+            <button id="btnPlayRotate" onclick="setPlayTool('rotate')" class="flex-1 md:flex-none whitespace-nowrap bg-blue-600 px-4 py-2 rounded-lg font-medium text-sm transition-colors ring-2 ring-blue-400">🔄 Rotate Joints</button>
+            <button id="btnPlayMove" onclick="setPlayTool('move')" class="flex-1 md:flex-none whitespace-nowrap bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg font-medium text-sm transition-colors">🖐️ Move Body</button>
+            <div class="w-px bg-gray-700 mx-2"></div>
+            <button onclick="backToAssembly()" class="flex-1 md:flex-none whitespace-nowrap bg-yellow-600 hover:bg-yellow-500 px-4 py-2 rounded-lg font-medium text-sm transition-colors text-white">⚙️ Edit Assembly</button>
+        </div>
+
+        <!-- Instructional Toast -->
+        <div id="toast" class="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 text-sm px-6 py-3 rounded-full shadow-lg opacity-0 transition-opacity duration-300 pointer-events-none z-20 text-center w-[90%] md:w-auto">
+            Instructions go here
+        </div>
+
+        <!-- Main Canvas -->
+        <canvas id="appCanvas" class="w-full h-full block bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9IiMxYTFjMjMiLz4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0iIzMzMyIvPgo8L3N2Zz4=')]"></canvas>
+    </main>
+
+    <!-- Info Modal -->
+    <div id="infoModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl">
+            <div class="p-6 border-b border-gray-800 flex justify-between items-center sticky top-0 bg-gray-900">
+                <h2 class="text-2xl font-bold">Simulator Guide</h2>
+                <button onclick="toggleInfo()" class="text-gray-400 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="p-6 space-y-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-blue-400 mb-2">How to use</h3>
+                    <ol class="list-decimal list-inside space-y-2 text-gray-300">
+                        <li><strong>Upload:</strong> Select an image containing the figure you want to rig.</li>
+                        <li><strong>Cut:</strong> Tap around a body part to draw a shape. Click "Extract Part" to cut it out. Repeat for all parts. OR click <strong>"⚡ Instant Rig"</strong> to automatically slice and rig a humanoid character in one click!</li>
+                        <li><strong>Assemble:</strong> Drag the extracted pieces to assemble them. 
+                            <br><span class="ml-5 text-sm text-gray-400">Select "Pin", then click where two parts overlap to join them.</span>
+                        </li>
+                        <li><strong>Play:</strong> Drag the parts. Child parts will rotate around their pins, while root parts will move the whole connected figure.</li>
+                    </ol>
+                </div>
+
+                <div class="bg-gray-800 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold text-purple-400 mb-2">Related Files</h3>
+                    <p class="text-xs text-gray-400 mb-3">These are the logical files mapping to this project folder. Note: To ensure maximum compatibility for GitHub Pages, all logic is compiled into a single file.</p>
+                    <ul class="space-y-2 text-sm">
+                        <li class="flex items-center space-x-2">
+                            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                            <a href="#" class="text-blue-300 hover:underline">index.html</a> <span class="text-gray-500">- Main entry point</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <a href="#" class="text-blue-300 hover:underline">/assets/</a> <span class="text-gray-500">- Directory for your uploaded images</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <a href="#" class="text-blue-300 hover:underline">readme.md</a> <span class="text-gray-500">- Documentation</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="p-6 border-t border-gray-800 bg-gray-900/50">
+                <button onclick="toggleInfo()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors">Close Guide</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Core State & Variables ---
+        const canvas = document.getElementById('appCanvas');
+        const ctx = canvas.getContext('2d');
+        let state = 'upload'; // upload, cut, assemble, play
+        
+        // Unified Coordinate System variables
+        let width, height;
+        let baseImage = null;
+        let globalScale = 1;
+        let globalOffsetX = 0;
+        let globalOffsetY = 0;
+        
+        // Data Structures
+        let parts = []; 
+        let pins = []; // Graph of undirected connections
+        let rootParts = []; // Implicit roots calculated for kinematics
+        let currentPolygon = [];
+        let extractedPolygons = []; // Polygons that stay on the base image
+        
+        // Interaction State
+        let pointerPos = { mx: 0, my: 0 }; // Image coordinates
+        let isDragging = false;
+        let draggedPart = null;
+        let dragOffset = { x: 0, y: 0 };
+        let grabAngle = 0;
+        let initialLocalRot = 0;
+        let selectedPartId = null;
+        
+        // Assembly & Play state
+        let assemblyTool = 'drag'; // drag, pin
+        let playTool = 'rotate'; // rotate, move
+
+        // --- Initialization ---
+        function resize() {
+            width = canvas.width = canvas.clientWidth;
+            height = canvas.height = canvas.clientHeight;
+            if (baseImage) calculateImageTransform();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- DOM Event Listeners ---
+        document.getElementById('imageInput').addEventListener('change', handleImageUpload);
+        canvas.addEventListener('pointerdown', handlePointerDown);
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp);
+
+        // --- UI Flow & Helpers ---
+        function toggleInfo() { document.getElementById('infoModal').classList.toggle('hidden'); }
+        function showToast(msg, duration = 3000) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.style.opacity = 1;
+            clearTimeout(toast.timeout);
+            toast.timeout = setTimeout(() => { toast.style.opacity = 0; }, duration);
+        }
+        function setStatus(text) { document.getElementById('statusBadge').textContent = text; }
+
+        function switchState(newState) {
+            state = newState;
+            ['ui-upload', 'toolbar-cut', 'toolbar-assemble', 'toolbar-play'].forEach(id => 
+                document.getElementById(id).classList.add('hidden')
+            );
+            
+            if (state === 'cut') {
+                setStatus('Cutting Phase');
+                document.getElementById('toolbar-cut').classList.remove('hidden');
+                showToast("Draw around parts or use 'Auto T-Pose' for humanoids.");
+            } else if (state === 'assemble') {
+                setStatus('Assembly Phase');
+                document.getElementById('toolbar-assemble').classList.remove('hidden');
+                setAssemblyTool('drag');
+                rebuildTree();
+                showToast("Drag parts to arrange. Switch to 'Add Pin' to link overlapping areas.");
+            } else if (state === 'play') {
+                setStatus('Play Phase');
+                document.getElementById('toolbar-play').classList.remove('hidden');
+                rebuildTree();
+                showToast("Drag main body to move. Drag connected limbs to rotate them!");
+            }
+        }
+
+        function setAssemblyTool(tool) {
+            assemblyTool = tool;
+            const btnDrag = document.getElementById('btnToolDrag');
+            const btnPin = document.getElementById('btnToolPin');
+            
+            btnDrag.classList.remove('bg-blue-600', 'bg-gray-700', 'ring-2', 'ring-blue-400');
+            btnPin.classList.remove('bg-blue-600', 'bg-gray-700', 'ring-2', 'ring-blue-400');
+            
+            if (tool === 'drag') {
+                btnDrag.classList.add('bg-blue-600', 'ring-2', 'ring-blue-400');
+                btnPin.classList.add('bg-gray-700');
+            } else {
+                btnPin.classList.add('bg-blue-600', 'ring-2', 'ring-blue-400');
+                btnDrag.classList.add('bg-gray-700');
+                selectedPartId = null; // deselect when pinning
+            }
+        }
+
+        function setPlayTool(tool) {
+            playTool = tool;
+            const btnRot = document.getElementById('btnPlayRotate');
+            const btnMov = document.getElementById('btnPlayMove');
+            
+            btnRot.classList.remove('bg-blue-600', 'bg-gray-700', 'ring-2', 'ring-blue-400');
+            btnMov.classList.remove('bg-blue-600', 'bg-gray-700', 'ring-2', 'ring-blue-400');
+            
+            if (tool === 'rotate') {
+                btnRot.classList.add('bg-blue-600', 'ring-2', 'ring-blue-400');
+                btnMov.classList.add('bg-gray-700');
+            } else {
+                btnMov.classList.add('bg-blue-600', 'ring-2', 'ring-blue-400');
+                btnRot.classList.add('bg-gray-700');
+            }
+        }
+
+        // --- Z-Index Layering ---
+        function bringForward() {
+            if (!selectedPartId) { showToast("Select a part first!"); return; }
+            let p = parts.find(x => x.id === selectedPartId);
+            let higher = parts.filter(x => x.zIndex > p.zIndex).sort((a,b) => a.zIndex - b.zIndex)[0];
+            if (higher) {
+                let temp = p.zIndex; p.zIndex = higher.zIndex; higher.zIndex = temp;
+                showToast("Brought forward");
+            } else { showToast("Already at the front"); }
+        }
+
+        function sendBackward() {
+            if (!selectedPartId) { showToast("Select a part first!"); return; }
+            let p = parts.find(x => x.id === selectedPartId);
+            let lower = parts.filter(x => x.zIndex < p.zIndex).sort((a,b) => b.zIndex - a.zIndex)[0];
+            if (lower) {
+                let temp = p.zIndex; p.zIndex = lower.zIndex; lower.zIndex = temp;
+                showToast("Sent backward");
+            } else { showToast("Already at the back"); }
+        }
+
+        // --- Phase 1: Upload ---
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    baseImage = img;
+                    calculateImageTransform();
+                    switchState('cut');
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function calculateImageTransform() {
+            globalScale = Math.min((width * 0.9) / baseImage.width, (height * 0.8) / baseImage.height);
+            globalOffsetX = (width - baseImage.width * globalScale) / 2;
+            globalOffsetY = (height - baseImage.height * globalScale) / 2 - 40; 
+        }
+
+        function getImgCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                mx: (e.clientX - rect.left - globalOffsetX) / globalScale,
+                my: (e.clientY - rect.top - globalOffsetY) / globalScale
+            };
+        }
+
+        // --- Phase 2: Cutting Logic ---
+        function undoLastPoint() { currentPolygon.pop(); }
+
+        function closeCurrentPolygon() {
+            if (currentPolygon.length < 3) {
+                showToast("Need at least 3 points to cut a part!");
+                return;
+            }
+            extractPart();
+            extractedPolygons.push([...currentPolygon]); // Keep outline visible
+            currentPolygon = [];
+            showToast("Part extracted! Cut another or click 'Done'.");
+        }
+
+        function extractPart(partName = null) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            currentPolygon.forEach(p => {
+                minX = Math.min(minX, p.mx); minY = Math.min(minY, p.my);
+                maxX = Math.max(maxX, p.mx); maxY = Math.max(maxY, p.my);
+            });
+
+            const pWidth = maxX - minX;
+            const pHeight = maxY - minY;
+            const cx = minX + pWidth / 2;
+            const cy = minY + pHeight / 2;
+
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = pWidth;
+            offCanvas.height = pHeight;
+            const oCtx = offCanvas.getContext('2d');
+
+            oCtx.beginPath();
+            currentPolygon.forEach((p, i) => {
+                if (i === 0) oCtx.moveTo(p.mx - minX, p.my - minY);
+                else oCtx.lineTo(p.mx - minX, p.my - minY);
+            });
+            oCtx.closePath();
+            oCtx.clip();
+            oCtx.drawImage(baseImage, -minX, -minY);
+
+            // Store polygon relative to the center of the part for precise hit testing
+            let localPolygon = currentPolygon.map(p => ({ x: p.mx - cx, y: p.my - cy }));
+
+            parts.push({
+                id: Date.now() + Math.random(),
+                name: partName || `Part ${parts.length + 1}`,
+                canvas: offCanvas,
+                w: pWidth,
+                h: pHeight,
+                x: cx,
+                y: cy,
+                rotation: 0,
+                localRotation: 0, 
+                localPolygon: localPolygon,
+                parent: null,
+                children: [],
+                pinParentLocal: {x: 0, y: 0},
+                pinChildLocal: {x: 0, y: 0},
+                absoluteMatrix: new DOMMatrix(),
+                zIndex: parts.length
+            });
+        }
+
+        function finishCutting() {
+            if (parts.length === 0) { showToast("You haven't extracted any parts yet!"); return; }
+            switchState('assemble');
+        }
+
+        function getFigureBounds(img) {
+            let tempCanvas = document.createElement('canvas');
+            tempCanvas.width = img.width;
+            tempCanvas.height = img.height;
+            let tCtx = tempCanvas.getContext('2d');
+            tCtx.drawImage(img, 0, 0);
+            let data = tCtx.getImageData(0, 0, img.width, img.height).data;
+            let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
+
+            let bgR = data[0], bgG = data[1], bgB = data[2];
+            let hasAlpha = false;
+            for(let i=3; i<data.length; i+=4) {
+                if(data[i] < 255) { hasAlpha = true; break; }
+            }
+
+            let found = false;
+            for (let y = 0; y < img.height; y++) {
+                for (let x = 0; x < img.width; x++) {
+                    let i = (y * img.width + x) * 4;
+                    let isFig = false;
+                    // Detect character bounds via transparency or contrasting background
+                    if (hasAlpha) {
+                        isFig = data[i+3] > 10;
+                    } else {
+                        let dr = data[i]-bgR, dg = data[i+1]-bgG, db = data[i+2]-bgB;
+                        isFig = (dr*dr + dg*dg + db*db) > 1500; 
+                    }
+
+                    if (isFig) {
+                        found = true;
+                        if (x < minX) minX = x;
+                        if (y < minY) minY = y;
+                        if (x > maxX) maxX = x;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+            if(!found || minX >= maxX) return {x: 0, y: 0, w: img.width, h: img.height};
+            return {x: minX, y: minY, w: maxX - minX, h: maxY - minY};
+        }
+
+        function autoCutTPose(mode = 'scatter') {
+            if (!baseImage) return;
+            let bounds = getFigureBounds(baseImage);
+            let bx = bounds.x, by = bounds.y, bw = bounds.w, bh = bounds.h;
+
+            // Mathematical proportions for a 10-piece articulated T-Pose character
+            // Array order determines rendering Z-Index (Torso at bottom, head at top)
+            const tPoseParts = [
+                { name: 'Torso', poly: [{x:0.38, y:0.14}, {x:0.62, y:0.14}, {x:0.58, y:0.52}, {x:0.42, y:0.52}] },
+                { name: 'L-UpperArm', poly: [{x:0.18, y:0.14}, {x:0.40, y:0.14}, {x:0.40, y:0.24}, {x:0.18, y:0.24}] },
+                { name: 'R-UpperArm', poly: [{x:0.60, y:0.14}, {x:0.82, y:0.14}, {x:0.82, y:0.24}, {x:0.60, y:0.24}] },
+                { name: 'L-UpperLeg', poly: [{x:0.40, y:0.48}, {x:0.50, y:0.48}, {x:0.50, y:0.75}, {x:0.40, y:0.75}] },
+                { name: 'R-UpperLeg', poly: [{x:0.50, y:0.48}, {x:0.60, y:0.48}, {x:0.60, y:0.75}, {x:0.50, y:0.75}] },
+                { name: 'L-LowerArm', poly: [{x:0.00, y:0.14}, {x:0.20, y:0.14}, {x:0.20, y:0.24}, {x:0.00, y:0.24}] },
+                { name: 'R-LowerArm', poly: [{x:0.80, y:0.14}, {x:1.00, y:0.14}, {x:1.00, y:0.24}, {x:0.80, y:0.24}] },
+                { name: 'L-LowerLeg', poly: [{x:0.40, y:0.73}, {x:0.50, y:0.73}, {x:0.50, y:1.00}, {x:0.40, y:1.00}] },
+                { name: 'R-LowerLeg', poly: [{x:0.50, y:0.73}, {x:0.60, y:0.73}, {x:0.60, y:1.00}, {x:0.50, y:1.00}] },
+                { name: 'Head', poly: [{x:0.42, y:0.00}, {x:0.58, y:0.00}, {x:0.58, y:0.16}, {x:0.42, y:0.16}] }
+            ];
+
+            const tPoseJoints = [
+                { a: 'Head', b: 'Torso', x: 0.50, y: 0.15 },
+                { a: 'L-UpperArm', b: 'Torso', x: 0.39, y: 0.19 },
+                { a: 'R-UpperArm', b: 'Torso', x: 0.61, y: 0.19 },
+                { a: 'L-LowerArm', b: 'L-UpperArm', x: 0.19, y: 0.19 },
+                { a: 'R-LowerArm', b: 'R-UpperArm', x: 0.81, y: 0.19 },
+                { a: 'L-UpperLeg', b: 'Torso', x: 0.45, y: 0.50 },
+                { a: 'R-UpperLeg', b: 'Torso', x: 0.55, y: 0.50 },
+                { a: 'L-LowerLeg', b: 'L-UpperLeg', x: 0.45, y: 0.74 },
+                { a: 'R-LowerLeg', b: 'R-UpperLeg', x: 0.55, y: 0.74 }
+            ];
+
+            currentPolygon = []; 
+            
+            tPoseParts.forEach(shape => {
+                currentPolygon = shape.poly.map(p => ({
+                    mx: bx + p.x * bw,
+                    my: by + p.y * bh
+                }));
+                extractPart(shape.name);
+                extractedPolygons.push([...currentPolygon]);
+            });
+            
+            currentPolygon = [];
+            
+            if (mode === 'scatter') {
+                showToast("Auto-cut complete! Assembling parts...");
+                parts.forEach(p => { p.x += (Math.random() - 0.5) * 40; p.y += (Math.random() - 0.5) * 40; });
+                setTimeout(() => switchState('assemble'), 1000);
+            } 
+            else if (mode === 'instant') {
+                showToast("Instant Rig complete! You are now in Play mode.");
+                
+                // Programmatically inject pins at the geometric joint intersections
+                tPoseJoints.forEach(j => {
+                    let pA = parts.find(p => p.name === j.a);
+                    let pB = parts.find(p => p.name === j.b);
+                    if (pA && pB) {
+                        let mx = bx + j.x * bw;
+                        let my = by + j.y * bh;
+                        // Since parts haven't moved yet (rotation=0), local offset is just distance from center
+                        pins.push({
+                            id: Date.now() + Math.random(),
+                            partA: pA.id, localA: {x: mx - pA.x, y: my - pA.y},
+                            partB: pB.id, localB: {x: mx - pB.x, y: my - pB.y}
+                        });
+                    }
+                });
+
+                setTimeout(() => {
+                    setPlayTool('rotate');
+                    rebuildTree();
+                    switchState('play');
+                }, 500);
+            }
+        }
+
+        // --- Kinematics & Auto-Rooting Graph Logic ---
+        function clearPins() {
+            pins = [];
+            rebuildTree();
+            showToast("All pins removed.");
+        }
+
+        // Converts user's simple undirected graph of pins into a robust kinematic tree
+        function rebuildTree(forcedRootId = null) {
+            parts.forEach(p => { p.parent = null; p.children = []; p.localRotation = 0; });
+            
+            let adj = new Map();
+            parts.forEach(p => adj.set(p.id, []));
+            pins.forEach(pin => {
+                adj.get(pin.partA).push({ to: pin.partB, pin: pin });
+                adj.get(pin.partB).push({ to: pin.partA, pin: pin });
+            });
+
+            let visited = new Set();
+            rootParts = [];
+
+            parts.forEach(startPart => {
+                if (visited.has(startPart.id)) return;
+
+                // Find connected component
+                let comp = [];
+                let q = [startPart.id];
+                let cVisited = new Set([startPart.id]);
+                while(q.length > 0) {
+                    let currId = q.shift();
+                    comp.push(parts.find(p=>p.id === currId));
+                    adj.get(currId).forEach(edge => {
+                        if(!cVisited.has(edge.to)) { cVisited.add(edge.to); q.push(edge.to); }
+                    });
+                }
+
+                // Pick the implicit root (the anchor for physics)
+                let root;
+                if (forcedRootId && comp.find(p => p.id === forcedRootId)) {
+                    root = comp.find(p => p.id === forcedRootId);
+                } else {
+                    root = comp.reduce((max, p) => (p.w * p.h > max.w * max.h) ? p : max, comp[0]);
+                }
+                
+                rootParts.push(root);
+
+                // Build directed hierarchy from the root downwards
+                let bfsQ = [{ part: root, parent: null, edge: null }];
+                visited.add(root.id);
+
+                while(bfsQ.length > 0) {
+                    let curr = bfsQ.shift();
+
+                    if (curr.parent) {
+                        curr.part.parent = curr.parent;
+                        curr.parent.children.push(curr.part);
+
+                        let pin = curr.edge.pin;
+                        if (pin.partA === curr.parent.id) {
+                            curr.part.pinParentLocal = pin.localA; curr.part.pinChildLocal = pin.localB;
+                        } else {
+                            curr.part.pinParentLocal = pin.localB; curr.part.pinChildLocal = pin.localA;
+                        }
+
+                        // Maintain absolute visual orientation
+                        let pRot = Math.atan2(curr.parent.absoluteMatrix.b, curr.parent.absoluteMatrix.a);
+                        let cRot = Math.atan2(curr.part.absoluteMatrix.b, curr.part.absoluteMatrix.a);
+                        curr.part.localRotation = (cRot - pRot) * 180 / Math.PI;
+                    }
+
+                    adj.get(curr.part.id).forEach(edge => {
+                        if (!visited.has(edge.to)) {
+                            visited.add(edge.to);
+                            bfsQ.push({ part: parts.find(p=>p.id===edge.to), parent: curr.part, edge: edge });
+                        }
+                    });
+                }
+            });
+
+            // Refresh matrices immediately
+            rootParts.forEach(rp => updateMatrices(rp, new DOMMatrix()));
+        }
+
+        function updateMatrices(part, parentMatrix) {
+            let m = new DOMMatrix(parentMatrix);
+            if (part.parent) {
+                m.translateSelf(part.pinParentLocal.x, part.pinParentLocal.y);
+                m.rotateSelf(part.localRotation);
+                m.translateSelf(-part.pinChildLocal.x, -part.pinChildLocal.y);
+            } else {
+                m.translateSelf(part.x, part.y);
+                m.rotateSelf(part.rotation * 180 / Math.PI); 
+            }
+            part.absoluteMatrix = m;
+            part.children.forEach(c => updateMatrices(c, m));
+        }
+
+        function getRootOf(part) {
+            let curr = part;
+            while(curr.parent) curr = curr.parent;
+            return curr;
+        }
+
+        function startPlaying() { 
+            setPlayTool('rotate');
+            selectedPartId = null; 
+            rebuildTree(); 
+            switchState('play'); 
+        }
+        function backToAssembly() { switchState('assemble'); }
+
+        // --- Interaction Logic ---
+        function addPinAtGlobal(mx, my) {
+            let hitParts = parts.filter(p => hitTestPart(p, mx, my));
+            hitParts.sort((a,b) => b.zIndex - a.zIndex);
+
+            if (hitParts.length >= 2) {
+                let pTop = hitParts[0];
+                let pBottom = hitParts[1];
+
+                // Prevent duplicates
+                if (pins.some(p => (p.partA === pTop.id && p.partB === pBottom.id) || (p.partA === pBottom.id && p.partB === pTop.id))) {
+                    showToast("Already pinned here!"); return;
+                }
+
+                let localTop = pTop.absoluteMatrix.inverse().transformPoint(new DOMPoint(mx, my));
+                let localBot = pBottom.absoluteMatrix.inverse().transformPoint(new DOMPoint(mx, my));
+
+                pins.push({
+                    id: Date.now(), partA: pTop.id, localA: {x: localTop.x, y: localTop.y},
+                    partB: pBottom.id, localB: {x: localBot.x, y: localBot.y}
+                });
+
+                pTop.zIndex = pBottom.zIndex + 1;
+                rebuildTree();
+                showToast("Pin added!");
+            } else {
+                showToast("Click on a glowing green highlighted area to place a pin.");
+            }
+        }
+
+        function handlePointerDown(e) {
+            pointerPos = getImgCoords(e);
+            let {mx, my} = pointerPos;
+            
+            if (state === 'cut') {
+                currentPolygon.push({mx, my});
+            } 
+            else if (state === 'assemble' || state === 'play') {
+                if (state === 'assemble' && assemblyTool === 'pin') {
+                    addPinAtGlobal(mx, my);
+                    return;
+                }
+
+                // Check highest z-index part hit
+                let hitParts = parts.filter(p => hitTestPart(p, mx, my)).sort((a,b) => b.zIndex - a.zIndex);
+                
+                if (hitParts.length > 0) {
+                    isDragging = true;
+                    draggedPart = hitParts[0];
+                    selectedPartId = draggedPart.id;
+                    
+                    if (state === 'assemble') {
+                        // In assembly, drag moves the whole connected cluster naturally
+                        let root = getRootOf(draggedPart);
+                        dragOffset = { x: mx - root.x, y: my - root.y };
+                    } else if (state === 'play') {
+                        if (playTool === 'move') {
+                            // Move entire connected body
+                            let root = getRootOf(draggedPart);
+                            dragOffset = { x: mx - root.x, y: my - root.y };
+                        } else if (playTool === 'rotate') {
+                            // Find if this part is connected to anything
+                            let connectedPins = pins.filter(p => p.partA === draggedPart.id || p.partB === draggedPart.id);
+                            
+                            if (connectedPins.length > 0) {
+                                // Dynamic Re-Rooting: Make the adjacent part the fixed root, so we can pivot around it!
+                                let closestPin = null;
+                                let minDist = Infinity;
+                                connectedPins.forEach(pin => {
+                                    let localOffset = (pin.partA === draggedPart.id) ? pin.localA : pin.localB;
+                                    let pinAbs = draggedPart.absoluteMatrix.transformPoint(new DOMPoint(localOffset.x, localOffset.y));
+                                    let dist = Math.hypot(mx - pinAbs.x, my - pinAbs.y);
+                                    if (dist < minDist) { minDist = dist; closestPin = pin; }
+                                });
+
+                                let anchorPartId = (closestPin.partA === draggedPart.id) ? closestPin.partB : closestPin.partA;
+                                rebuildTree(anchorPartId); 
+
+                                // Now the dragged part is a child and will rotate
+                                let pinGlobal = draggedPart.parent.absoluteMatrix.transformPoint(draggedPart.pinParentLocal);
+                                grabAngle = Math.atan2(my - pinGlobal.y, mx - pinGlobal.x);
+                                initialLocalRot = draggedPart.localRotation;
+                            } else {
+                                // Unpinned free part
+                                dragOffset = { x: mx - draggedPart.x, y: my - draggedPart.y };
+                            }
+                        }
+                    }
+                } else {
+                    selectedPartId = null; // deselect if clicked empty space
+                }
+            }
+        }
+
+        function handlePointerMove(e) {
+            if (!isDragging || !draggedPart) return;
+            let {mx, my} = getImgCoords(e);
+            
+            if (state === 'assemble') {
+                let root = getRootOf(draggedPart);
+                root.x = mx - dragOffset.x;
+                root.y = my - dragOffset.y;
+                updateMatrices(root, new DOMMatrix());
+            } 
+            else if (state === 'play') {
+                if (playTool === 'move' || !draggedPart.parent) {
+                    let root = getRootOf(draggedPart);
+                    root.x = mx - dragOffset.x;
+                    root.y = my - dragOffset.y;
+                    updateMatrices(root, new DOMMatrix());
+                } else {
+                    let pinGlobal = draggedPart.parent.absoluteMatrix.transformPoint(draggedPart.pinParentLocal);
+                    let currentAngle = Math.atan2(my - pinGlobal.y, mx - pinGlobal.x);
+                    let deltaAngle = (currentAngle - grabAngle) * 180 / Math.PI;
+                    draggedPart.localRotation = initialLocalRot + deltaAngle;
+                    updateMatrices(getRootOf(draggedPart), new DOMMatrix());
+                }
+            }
+        }
+
+        function handlePointerUp(e) { isDragging = false; draggedPart = null; }
+
+        // --- Hit Testing & Rendering Math ---
+        function isPointInPolygon(pt, poly) {
+            let inside = false;
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                let xi = poly[i].x, yi = poly[i].y;
+                let xj = poly[j].x, yj = poly[j].y;
+                let intersect = ((yi > pt.y) !== (yj > pt.y)) && 
+                                (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function hitTestPart(part, mx, my) {
+            if (!part.absoluteMatrix) return false;
+            let inv = part.absoluteMatrix.inverse();
+            let local = inv.transformPoint(new DOMPoint(mx, my));
+            
+            // Fast bounding box reject (added slight padding for safety)
+            if (Math.abs(local.x) > part.w/2 + 2 || Math.abs(local.y) > part.h/2 + 2) return false;
+            
+            // Perfect precision mathematical raycast test (bypasses canvas quirks)
+            return isPointInPolygon(local, part.localPolygon);
+        }
+
+        function getAABB(part) {
+            let m = part.absoluteMatrix, hw = part.w/2, hh = part.h/2;
+            let corners = [ m.transformPoint(new DOMPoint(-hw, -hh)), m.transformPoint(new DOMPoint(hw, -hh)), m.transformPoint(new DOMPoint(-hw, hh)), m.transformPoint(new DOMPoint(hw, hh)) ];
+            return {
+                minX: Math.min(...corners.map(c=>c.x)), maxX: Math.max(...corners.map(c=>c.x)),
+                minY: Math.min(...corners.map(c=>c.y)), maxY: Math.max(...corners.map(c=>c.y))
+            };
+        }
+
+        function tracePartPath(part) {
+            let m = part.absoluteMatrix;
+            ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+            ctx.moveTo(part.localPolygon[0].x, part.localPolygon[0].y);
+            for(let i=1; i<part.localPolygon.length; i++) ctx.lineTo(part.localPolygon[i].x, part.localPolygon[i].y);
+            ctx.closePath();
+        }
+
+        // --- Rendering Loop ---
+        function render() {
+            requestAnimationFrame(render);
+            ctx.clearRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.translate(globalOffsetX, globalOffsetY);
+            ctx.scale(globalScale, globalScale);
+
+            if (state === 'cut' && baseImage) {
+                ctx.globalAlpha = 0.4;
+                ctx.drawImage(baseImage, 0, 0);
+                ctx.globalAlpha = 1.0;
+                
+                // Draw previously extracted footprints
+                extractedPolygons.forEach(poly => {
+                    ctx.beginPath(); ctx.moveTo(poly[0].mx, poly[0].my);
+                    for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].mx, poly[i].my);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fill();
+                    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2 / globalScale; ctx.stroke();
+                });
+                
+                // Draw active cut
+                if (currentPolygon.length > 0) {
+                    ctx.beginPath(); ctx.moveTo(currentPolygon[0].mx, currentPolygon[0].my);
+                    for (let i = 1; i < currentPolygon.length; i++) ctx.lineTo(currentPolygon[i].mx, currentPolygon[i].my);
+                    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 4 / globalScale; ctx.stroke();
+                    if (currentPolygon.length > 2) { ctx.fillStyle = 'rgba(59, 130, 246, 0.4)'; ctx.fill(); }
+                    ctx.fillStyle = '#fff';
+                    currentPolygon.forEach(p => {
+                        ctx.beginPath(); ctx.arc(p.mx, p.my, 5 / globalScale, 0, Math.PI * 2); ctx.fill();
+                    });
+                }
+            } 
+            else if (state === 'assemble' || state === 'play') {
+                rootParts.forEach(rp => updateMatrices(rp, new DOMMatrix()));
+
+                // Draw parts via Z-Index
+                let drawOrder = [...parts].sort((a,b) => a.zIndex - b.zIndex);
+                drawOrder.forEach(p => {
+                    ctx.save();
+                    let m = p.absoluteMatrix;
+                    ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+                    ctx.drawImage(p.canvas, -p.w/2, -p.h/2, p.w, p.h);
+                    
+                    // Highlight selected part in Assembly Mode
+                    if (state === 'assemble' && p.id === selectedPartId && assemblyTool === 'drag') {
+                        ctx.strokeStyle = '#3b82f6'; // Blue highlight
+                        ctx.lineWidth = 4 / globalScale;
+                        ctx.strokeRect(-p.w/2, -p.h/2, p.w, p.h);
+                    }
+                    
+                    ctx.restore();
+                });
+
+                // --- Overlap Highlighter & Pin Visuals ---
+                if (state === 'assemble') {
+                    if (assemblyTool === 'pin') {
+                        // Pairwise exact overlap highlighting using geometric clipping
+                        for(let i=0; i<parts.length; i++) {
+                            for(let j=i+1; j<parts.length; j++) {
+                                let b1 = getAABB(parts[i]), b2 = getAABB(parts[j]);
+                                if (!(b2.minX > b1.maxX || b2.maxX < b1.minX || b2.minY > b1.maxY || b2.maxY < b1.minY)) {
+                                    ctx.save();
+                                    ctx.beginPath(); ctx.save(); tracePartPath(parts[i]); ctx.restore(); ctx.clip();
+                                    ctx.beginPath(); ctx.save(); tracePartPath(parts[j]); ctx.restore();
+                                    ctx.fillStyle = 'rgba(0, 255, 100, 0.6)'; ctx.fill();
+                                    ctx.lineWidth = 3 / globalScale; ctx.setLineDash([8 / globalScale, 8 / globalScale]);
+                                    ctx.strokeStyle = '#00ff66'; ctx.stroke();
+                                    ctx.restore();
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Draw Pins
+                    pins.forEach(pin => {
+                        let part = parts.find(p => p.id === pin.partA);
+                        if(part) {
+                            let pinAbs = part.absoluteMatrix.transformPoint(new DOMPoint(pin.localA.x, pin.localA.y));
+                            ctx.beginPath(); ctx.arc(pinAbs.x, pinAbs.y, 8 / globalScale, 0, Math.PI*2);
+                            ctx.fillStyle = '#fbbf24'; ctx.fill();
+                            ctx.lineWidth = 2 / globalScale; ctx.strokeStyle = '#92400e'; ctx.stroke();
+                            ctx.beginPath(); ctx.arc(pinAbs.x, pinAbs.y, 2 / globalScale, 0, Math.PI*2);
+                            ctx.fillStyle = '#000'; ctx.fill();
+                        }
+                    });
+                }
+            }
+            ctx.restore();
+        }
+
+        render();
+    </script>
+</body>
+</html>
