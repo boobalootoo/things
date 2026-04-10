@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Early Years Studio Creator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800;900&display=swap');
+        
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #171717; /* Neutral 900 */
+            color: #d4d4d8; /* Neutral 300 */
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Custom Scrollbar for dark theme */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #262626; }
+        ::-webkit-scrollbar-thumb { background: #52525b; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #71717a; }
+
+        /* Timeline Specifics */
+        .timeline-container {
+            background-image: linear-gradient(90deg, #3f3f46 1px, transparent 1px);
+            background-size: 50px 100%; /* 50px = 1 second */
+        }
+        
+        .track-lane {
+            border-bottom: 1px solid #3f3f46;
+            position: relative;
+            height: 80px;
+        }
+
+        .region-block {
+            position: absolute;
+            top: 10px;
+            height: 60px;
+            border-radius: 8px;
+            cursor: grab;
+            user-select: none;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            border: 2px solid rgba(255,255,255,0.2);
+            transition: border-color 0.2s;
+        }
+        .region-block:active { cursor: grabbing; border-color: rgba(255,255,255,0.8); z-index: 10; }
+        
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background-color: #ef4444; /* red-500 */
+            z-index: 50;
+            pointer-events: none;
+            box-shadow: 0 0 10px #ef4444;
+        }
+        .playhead::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -6px;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-top: 10px solid #ef4444;
+        }
+
+        /* Waveform pattern */
+        .waveform-bg {
+            background-image: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 2px,
+                rgba(255,255,255,0.4) 2px,
+                rgba(255,255,255,0.4) 4px
+            );
+            mask-image: linear-gradient(to bottom, transparent 10%, black 50%, transparent 90%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 10%, black 50%, transparent 90%);
+        }
+
+        /* Beat Sequencer specific */
+        .beat-btn { transition: all 0.1s; }
+        .beat-btn.active { transform: scale(0.95); box-shadow: inset 0 4px 6px rgba(0,0,0,0.5); }
+        .playing-step { border: 3px solid #fff; filter: brightness(1.3); }
+
+    </style>
+</head>
+<body class="flex flex-col h-screen">
+
+    <!-- Header / Top Control Bar -->
+    <header class="bg-neutral-800 border-b border-neutral-700 p-3 flex justify-between items-center z-20 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-500 p-2 rounded-lg text-white">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            </div>
+            <h1 class="text-xl font-black tracking-wide text-white">Early Years Studio</h1>
+        </div>
+
+        <div class="flex items-center gap-4 bg-neutral-900 px-6 py-2 rounded-xl border border-neutral-700">
+            <div class="text-2xl font-mono text-emerald-400 font-bold w-20 text-center" id="time-display">00:00</div>
+            <button onclick="togglePlayback()" id="play-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white p-3 rounded-full transition shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button onclick="stopPlayback()" class="bg-neutral-700 hover:bg-neutral-600 text-white p-3 rounded-full transition">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            </button>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button onclick="toggleRecording()" id="record-btn" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition flex items-center gap-2">
+                <span class="w-3 h-3 bg-white rounded-full animate-pulse" id="rec-dot"></span>
+                <span>Export Video</span>
+            </button>
+            <button onclick="toggleInfoModal()" class="bg-neutral-700 hover:bg-neutral-600 p-2 rounded-lg transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area: Split Vertically -->
+    <main class="flex-1 flex flex-col overflow-hidden relative">
+        
+        <!-- Top Half: Canvas Preview -->
+        <div class="h-[35vh] bg-black relative flex items-center justify-center shrink-0 border-b border-neutral-700">
+            <canvas id="main-canvas" width="800" height="450" class="h-full object-contain shadow-2xl"></canvas>
+            <div id="preview-overlay" class="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded backdrop-blur-sm">Video Sync Preview</div>
+        </div>
+
+        <!-- Bottom Half: DAW Timeline Layout -->
+        <div class="flex-1 flex overflow-hidden bg-neutral-900 relative">
+            
+            <!-- Left Sidebar: Track Headers -->
+            <div class="w-64 bg-neutral-800 border-r border-neutral-700 flex flex-col shrink-0 z-10 overflow-y-hidden pt-8" id="track-headers">
+                
+                <!-- Track 1: Visuals -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-yellow-400 flex items-center gap-2">🖼️ Visuals</span>
+                        <label class="cursor-pointer bg-neutral-700 hover:bg-neutral-600 text-xs px-2 py-1 rounded text-white font-bold">
+                            + Add
+                            <input type="file" accept="image/*" class="hidden" onchange="addVisualRegion(this)">
+                        </label>
+                    </div>
+                    <span class="text-[10px] text-neutral-500">Photos & Slides</span>
+                </div>
+
+                <!-- Track 2: Vocals -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-purple-400 flex items-center gap-2">🎤 Vocals</span>
+                        <label class="cursor-pointer bg-neutral-700 hover:bg-neutral-600 text-xs px-2 py-1 rounded text-white font-bold">
+                            + Audio
+                            <input type="file" accept="audio/*" class="hidden" onchange="addAudioRegion(this, 'vocals')">
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between mt-1">
+                        <span class="text-[10px] text-neutral-500">Waveform</span>
+                        <label class="flex items-center gap-1 cursor-pointer" title="Robot / Autotune Effect">
+                            <input type="checkbox" id="fx-toggle" class="rounded accent-purple-500 w-3 h-3" onchange="toggleFX(this.checked)">
+                            <span class="text-[10px] font-bold text-purple-300">FX</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Track 3: Lyrics -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-blue-400 flex items-center gap-2">📝 Lyrics</span>
+                        <button onclick="addLyricRegion()" class="bg-neutral-700 hover:bg-neutral-600 text-xs px-2 py-1 rounded text-white font-bold">+ Text</button>
+                    </div>
+                    <span class="text-[10px] text-neutral-500">Synced to vocals</span>
+                </div>
+
+                <!-- Track 4: Layers of Sound (Music) -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-cyan-400 flex items-center gap-2">🎶 Sound Layers</span>
+                        <label class="cursor-pointer bg-neutral-700 hover:bg-neutral-600 text-xs px-2 py-1 rounded text-white font-bold">
+                            + Audio
+                            <input type="file" accept="audio/*" class="hidden" onchange="addAudioRegion(this, 'music')">
+                        </label>
+                    </div>
+                    <span class="text-[10px] text-neutral-500">Backing tracks</span>
+                </div>
+
+                <!-- Track 5: BeatMaker -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-pink-400 flex items-center gap-2">🥁 Timeline Beat</span>
+                        <button onclick="toggleBeatModal()" class="bg-pink-600 hover:bg-pink-500 text-xs px-2 py-1 rounded text-white font-bold shadow">Edit Grid</button>
+                    </div>
+                    <span class="text-[10px] text-neutral-500" id="beat-status-text">Loops continuously</span>
+                </div>
+
+            </div>
+
+            <!-- Right Area: Timeline Grid -->
+            <div class="flex-1 overflow-auto relative timeline-container" id="timeline-scroll-area">
+                
+                <!-- Time Ruler -->
+                <div class="h-8 bg-neutral-800/90 border-b border-neutral-700 sticky top-0 z-20 flex text-[10px] text-neutral-400" id="time-ruler">
+                    <!-- Populated by JS -->
+                </div>
+
+                <!-- Playhead Line -->
+                <div class="playhead" id="playhead" style="left: 0px;"></div>
+
+                <!-- Track Lanes (Must match header heights) -->
+                <div class="track-lane" id="lane-visuals"></div>
+                <div class="track-lane" id="lane-vocals"></div>
+                <div class="track-lane" id="lane-lyrics"></div>
+                <div class="track-lane" id="lane-music"></div>
+                
+                <!-- Beat lane is a visual representation, not draggable -->
+                <div class="track-lane opacity-50 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,#3f3f46_10px,#3f3f46_20px)] flex items-center px-4" id="lane-beat">
+                    <span class="text-xs font-bold text-neutral-500 uppercase tracking-widest">Drum Sequencer Active Layer</span>
+                </div>
+
+                <!-- Spacer for scrolling -->
+                <div class="h-10"></div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Beat Maker Modal -->
+    <div id="beat-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-neutral-800 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden border border-neutral-700">
+            <div class="bg-neutral-900 p-4 flex justify-between items-center border-b border-neutral-700">
+                <h2 class="text-xl font-black text-pink-400">Drum Sequencer</h2>
+                <button onclick="toggleBeatModal()" class="text-neutral-400 hover:text-white transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6">
+                <div class="flex items-center gap-4 mb-6 bg-neutral-900 p-4 rounded-xl border border-neutral-700">
+                    <div class="flex-1">
+                        <label class="font-bold text-neutral-300 flex justify-between">
+                            Master BPM <span id="bpm-display" class="text-pink-400">120</span>
+                        </label>
+                        <input type="range" id="bpm-slider" min="60" max="180" value="120" class="w-full accent-pink-500 mt-2" oninput="updateBPM(this.value)">
+                    </div>
+                </div>
+                <div class="overflow-x-auto pb-2">
+                    <div class="min-w-[500px]" id="sequencer-grid">
+                        <!-- JS Grid -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="info-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-neutral-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-neutral-700 flex flex-col max-h-[90vh]">
+            <div class="bg-neutral-900 p-4 flex justify-between items-center border-b border-neutral-700">
+                <h2 class="text-xl font-black text-white">How to use the DAW</h2>
+                <button onclick="toggleInfoModal()" class="text-neutral-400 hover:text-white transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto text-neutral-300 space-y-4">
+                <p>Welcome to the Early Years timeline creator. This works just like professional audio software!</p>
+                <ul class="list-disc pl-5 space-y-2">
+                    <li><strong>Adding Content:</strong> Click the <b>+ Add</b> buttons on the left tracks to insert Images, Vocals, Lyrics, or Music onto the timeline.</li>
+                    <li><strong>Syncing:</strong> Click and drag the colored blocks horizontally to adjust when they appear/play.</li>
+                    <li><strong>Lyrics:</strong> When you add a lyric block, type your text directly into the box. It will show on the video when the red playhead crosses it.</li>
+                    <li><strong>Editing Blocks:</strong> You can resize Image and Lyric blocks by dragging their right edges to make them longer.</li>
+                    <li><strong>Export:</strong> Click "Export Video" to record a `.webm` file of your canvas and all synced audio tracks!</li>
+                </ul>
+                <div class="bg-neutral-900 border border-neutral-700 rounded-xl p-4 mt-4">
+                    <h3 class="font-bold text-white mb-2">Related Files</h3>
+                    <ul class="text-sm space-y-1 font-mono text-indigo-400">
+                        <li>📄 ./index.html (This file)</li>
+                        <li>📁 ./assets/ (Suggested for media)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- System & State ---
+        let audioCtx;
+        const PX_PER_SEC = 50; 
+        const TIMELINE_DURATION = 120; // 2 minutes max for UI
+        
+        let isPlaying = false;
+        let playStartTime = 0;
+        let animationFrameId;
+
+        let canvas, ctx;
+        let studioDestNode; // For recording
+        
+        // Regions Data Store
+        // Type: { id, type: 'visual'|'vocal'|'lyric'|'music', start: timeInSec, duration: timeInSec, el: HTMLElement, data: any }
+        let regions = [];
+        let draggingRegion = null;
+        let resizingRegion = null;
+        let dragStartX = 0;
+        let dragStartOffset = 0;
+
+        // Active Audio Sources (to stop them)
+        let activeSources = [];
+
+        // --- Init ---
+        window.onload = () => {
+            canvas = document.getElementById('main-canvas');
+            ctx = canvas.getContext('2d');
+            buildTimeRuler();
+            buildSequencer();
+            drawCanvasPlaceholder("Add blocks to timeline & Press Play");
+            setupDragAndDrop();
+        };
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        // --- Modals ---
+        function toggleInfoModal() { document.getElementById('info-modal').classList.toggle('hidden'); }
+        function toggleBeatModal() { document.getElementById('beat-modal').classList.toggle('hidden'); }
+
+        // --- Timeline UI Building ---
+        function buildTimeRuler() {
+            const ruler = document.getElementById('time-ruler');
+            const totalWidth = TIMELINE_DURATION * PX_PER_SEC;
+            ruler.style.width = `${totalWidth}px`;
+            
+            for(let i=0; i<=TIMELINE_DURATION; i+=5) { // Marker every 5 seconds
+                const marker = document.createElement('div');
+                marker.style.position = 'absolute';
+                marker.style.left = `${i * PX_PER_SEC}px`;
+                marker.style.borderLeft = '1px solid #52525b';
+                marker.style.paddingLeft = '4px';
+                marker.style.height = '100%';
+                marker.innerText = `0:${i.toString().padStart(2, '0')}`;
+                if(i%10 === 0) { marker.style.fontWeight = 'bold'; marker.style.color = '#a1a1aa'; }
+                ruler.appendChild(marker);
+            }
+            // Expand track lanes
+            document.querySelectorAll('.track-lane').forEach(lane => lane.style.width = `${totalWidth}px`);
+        }
+
+        // --- Region Management (Adding blocks) ---
+        function createRegionElement(type, startSec, durationSec, trackId, bgColorClass, contentHtml) {
+            const lane = document.getElementById(`lane-${trackId}`);
+            const el = document.createElement('div');
+            const id = 'reg_' + Date.now() + Math.floor(Math.random()*1000);
+            
+            el.className = `region-block ${bgColorClass}`;
+            el.id = id;
+            el.style.left = `${startSec * PX_PER_SEC}px`;
+            el.style.width = `${durationSec * PX_PER_SEC}px`;
+            el.innerHTML = contentHtml;
+
+            // Resize handle for visuals and lyrics
+            if(type === 'visual' || type === 'lyric') {
+                const handle = document.createElement('div');
+                handle.className = 'absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize bg-black/20 hover:bg-black/40';
+                handle.onmousedown = (e) => {
+                    e.stopPropagation();
+                    resizingRegion = getRegionById(id);
+                    dragStartX = e.pageX;
+                    dragStartOffset = parseFloat(el.style.width);
+                };
+                el.appendChild(handle);
+            }
+
+            lane.appendChild(el);
+            
+            const regionObj = { id, type, start: startSec, duration: durationSec, el, data: null };
+            regions.push(regionObj);
+            return regionObj;
+        }
+
+        function getRegionById(id) {
+            return regions.find(r => r.id === id);
+        }
+
+        // Add Visual (Image)
+        function addVisualRegion(input) {
+            if(!input.files[0]) return;
+            const url = URL.createObjectURL(input.files[0]);
+            const img = new Image();
+            img.onload = () => {
+                // Find empty space near start
+                const start = 0; 
+                const duration = 5; // default 5 sec
+                const html = `<img src="${url}" class="h-full w-full object-cover opacity-80 pointer-events-none">`;
+                const reg = createRegionElement('visual', start, duration, 'visuals', 'bg-yellow-600', html);
+                reg.data = { img };
+            };
+            img.src = url;
+            input.value = ''; // reset
+        }
+
+        // Add Audio (Vocals or Music)
+        async function addAudioRegion(input, trackType) {
+            if(!input.files[0]) return;
+            initAudio();
+            const file = input.files[0];
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+            
+            const duration = buffer.duration;
+            const bgColor = trackType === 'vocals' ? 'bg-purple-600' : 'bg-cyan-600';
+            const icon = trackType === 'vocals' ? '🎤' : '🎶';
+            
+            const html = `<div class="w-full h-full waveform-bg opacity-50 absolute inset-0 pointer-events-none"></div>
+                          <span class="relative z-10 px-2 text-xs font-bold text-white truncate drop-shadow-md">${icon} ${file.name}</span>
+                          <button class="absolute top-1 right-1 text-xs bg-black/50 hover:bg-red-500 rounded px-1 z-20" onclick="deleteRegion(event, '${trackType}')">×</button>`;
+            
+            const reg = createRegionElement(trackType === 'vocals' ? 'vocal' : 'music', 0, duration, trackType, bgColor, html);
+            reg.data = { buffer };
+            input.value = ''; // reset
+            
+            // Adjust timeline width if audio is longer than 120s
+            const timelineScroll = document.getElementById('timeline-scroll-area');
+            if(duration * PX_PER_SEC > timelineScroll.scrollWidth) {
+                // simple hack, not full dynamic resize in this iteration
+            }
+        }
+
+        // Add Lyrics
+        function addLyricRegion() {
+            const html = `
+                <input type="text" placeholder="Type lyrics..." class="bg-transparent border-none outline-none text-white font-bold w-full h-full px-2 placeholder-blue-300" 
+                onmousedown="event.stopPropagation()" oninput="updateLyricData(this)">
+                <button class="absolute top-1 right-3 text-xs bg-black/50 hover:bg-red-500 text-white rounded px-1 z-20" onclick="deleteRegion(event, 'lyric')">×</button>
+            `;
+            const reg = createRegionElement('lyric', 0, 4, 'lyrics', 'bg-blue-600', html);
+            reg.data = { text: '' };
+        }
+
+        function updateLyricData(inputEl) {
+            const regionBlock = inputEl.closest('.region-block');
+            const reg = getRegionById(regionBlock.id);
+            if(reg) reg.data.text = inputEl.value;
+        }
+
+        function deleteRegion(event, typeMarker) {
+            event.stopPropagation();
+            const el = event.target.closest('.region-block');
+            if(el) {
+                regions = regions.filter(r => r.id !== el.id);
+                el.remove();
+            }
+        }
+
+        // --- Drag & Drop Syncing Logic ---
+        function setupDragAndDrop() {
+            const scrollArea = document.getElementById('timeline-scroll-area');
+            
+            scrollArea.addEventListener('mousedown', (e) => {
+                if(e.target.closest('.region-block') && !resizingRegion) {
+                    draggingRegion = getRegionById(e.target.closest('.region-block').id);
+                    dragStartX = e.pageX;
+                    dragStartOffset = parseFloat(draggingRegion.el.style.left);
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if(draggingRegion) {
+                    const dx = e.pageX - dragStartX;
+                    let newLeft = Math.max(0, dragStartOffset + dx);
+                    draggingRegion.el.style.left = `${newLeft}px`;
+                    draggingRegion.start = newLeft / PX_PER_SEC;
+                }
+                if(resizingRegion) {
+                    const dx = e.pageX - dragStartX;
+                    let newWidth = Math.max(20, dragStartOffset + dx); // min width 20px
+                    resizingRegion.el.style.width = `${newWidth}px`;
+                    resizingRegion.duration = newWidth / PX_PER_SEC;
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                draggingRegion = null;
+                resizingRegion = null;
+            });
+        }
+
+        // --- Audio FX (Vocals) ---
+        let fxEnabled = false;
+        function toggleFX(checked) { fxEnabled = checked; }
+
+        // --- Beat Sequencer Logic (Integrated track) ---
+        const beatSteps = 8;
+        const beatInstruments = [
+            { name: 'Kick', color: 'bg-red-500', note: 'kick' },
+            { name: 'Snare', color: 'bg-orange-500', note: 'snare' },
+            { name: 'Hi-Hat', color: 'bg-cyan-500', note: 'hihat' }
+        ];
+        const gridState = beatInstruments.map(() => Array(beatSteps).fill(false));
+        let bpm = 120;
+
+        function buildSequencer() {
+            const container = document.getElementById('sequencer-grid');
+            container.innerHTML = '';
+            beatInstruments.forEach((inst, rIdx) => {
+                const row = document.createElement('div');
+                row.className = 'flex gap-2 mb-2';
+                const label = document.createElement('div');
+                label.className = `w-20 text-xs font-bold text-white ${inst.color} py-3 text-center rounded`;
+                label.innerText = inst.name;
+                row.appendChild(label);
+                
+                for(let cIdx=0; cIdx<beatSteps; cIdx++) {
+                    const btn = document.createElement('button');
+                    btn.className = `beat-btn w-12 h-12 rounded border border-neutral-600 bg-neutral-800 hover:bg-neutral-700`;
+                    btn.onclick = () => {
+                        gridState[rIdx][cIdx] = !gridState[rIdx][cIdx];
+                        if(gridState[rIdx][cIdx]) {
+                            btn.classList.add(inst.color, 'border-transparent', 'active');
+                            btn.classList.remove('bg-neutral-800');
+                            initAudio(); playDrumSound(inst.note, audioCtx.currentTime);
+                        } else {
+                            btn.classList.remove(inst.color, 'border-transparent', 'active');
+                            btn.classList.add('bg-neutral-800');
+                        }
+                    };
+                    row.appendChild(btn);
+                }
+                container.appendChild(row);
+            });
+        }
+        function updateBPM(val) { bpm = val; document.getElementById('bpm-display').innerText = val; }
+
+        function playDrumSound(type, time) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(studioDestNode || audioCtx.destination);
+            if(studioDestNode) gain.connect(audioCtx.destination); // monitor
+
+            if(type === 'kick') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(150, time);
+                osc.frequency.exponentialRampToValueAtTime(0.001, time+0.5);
+                gain.gain.setValueAtTime(1, time); gain.gain.exponentialRampToValueAtTime(0.001, time+0.5);
+                osc.start(time); osc.stop(time+0.5);
+            } else if(type === 'snare') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(250, time);
+                gain.gain.setValueAtTime(1, time); gain.gain.exponentialRampToValueAtTime(0.01, time+0.2);
+                osc.start(time); osc.stop(time+0.2);
+                const nOsc = audioCtx.createOscillator(); const nGain = audioCtx.createGain();
+                nOsc.type = 'square'; nOsc.frequency.setValueAtTime(10000, time);
+                nGain.gain.setValueAtTime(0.3, time); nGain.gain.exponentialRampToValueAtTime(0.01, time+0.2);
+                nOsc.connect(nGain); nGain.connect(studioDestNode || audioCtx.destination);
+                if(studioDestNode) nGain.connect(audioCtx.destination);
+                nOsc.start(time); nOsc.stop(time+0.2);
+            } else if(type === 'hihat') {
+                osc.type = 'square'; osc.frequency.setValueAtTime(8000, time);
+                gain.gain.setValueAtTime(0.2, time); gain.gain.exponentialRampToValueAtTime(0.01, time+0.1);
+                osc.start(time); osc.stop(time+0.1);
+            }
+        }
+
+        // --- Playback Engine (The DAW Core) ---
+        function togglePlayback() {
+            if(isPlaying) stopPlayback();
+            else startPlayback();
+        }
+
+        function startPlayback() {
+            initAudio();
+            isPlaying = true;
+            document.getElementById('play-btn').innerHTML = '<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+            document.getElementById('play-btn').classList.replace('bg-emerald-600', 'bg-amber-500');
+            
+            studioDestNode = audioCtx.createMediaStreamDestination();
+            playStartTime = audioCtx.currentTime;
+
+            // Schedule Audio Regions
+            activeSources = [];
+            regions.forEach(reg => {
+                if(reg.type === 'vocal' || reg.type === 'music') {
+                    if(reg.data && reg.data.buffer) {
+                        const src = audioCtx.createBufferSource();
+                        src.buffer = reg.data.buffer;
+                        
+                        // FX for vocals
+                        if(reg.type === 'vocal' && fxEnabled) {
+                            src.playbackRate.value = 1.2; // slight speedup/pitch up for "robot/chipmunk" effect demo
+                            // A true autotune requires a PitchShift node which is complex for a single file,
+                            // playbackRate gives a noticeable effect.
+                        }
+
+                        src.connect(audioCtx.destination);
+                        src.connect(studioDestNode);
+                        
+                        // Start playing at (current time + region start time)
+                        src.start(playStartTime + reg.start);
+                        activeSources.push(src);
+                    }
+                }
+            });
+
+            // Start Canvas/Playhead Loop
+            animationFrameId = requestAnimationFrame(renderLoop);
+            
+            // Start Beat loop internally
+            beatNextNoteTime = audioCtx.currentTime + 0.05;
+            beatCurrentStep = 0;
+            beatScheduler();
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+            document.getElementById('play-btn').innerHTML = '<svg class="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+            document.getElementById('play-btn').classList.replace('bg-amber-500', 'bg-emerald-600');
+            
+            // Stop audio
+            activeSources.forEach(src => { try{ src.stop(); }catch(e){} });
+            activeSources = [];
+            clearTimeout(beatTimerID);
+            
+            // Stop recording if active
+            if(isRecording) toggleRecording();
+
+            // Reset playhead
+            document.getElementById('playhead').style.left = '0px';
+            document.getElementById('time-display').innerText = '00:00';
+            drawCanvasPlaceholder("Show Stopped. Press Play to start again.");
+            cancelAnimationFrame(animationFrameId);
+        }
+
+        // Beat Scheduler
+        let beatNextNoteTime = 0.0;
+        let beatCurrentStep = 0;
+        let beatTimerID;
+        function beatScheduler() {
+            if(!isPlaying) return;
+            while (beatNextNoteTime < audioCtx.currentTime + 0.1) {
+                // Play step
+                for(let r=0; r<beatInstruments.length; r++) {
+                    if(gridState[r][beatCurrentStep]) playDrumSound(beatInstruments[r].note, beatNextNoteTime);
+                }
+                // Advance
+                const secPerBeat = 60.0 / bpm;
+                beatNextNoteTime += 0.5 * secPerBeat; // 8th notes
+                beatCurrentStep = (beatCurrentStep + 1) % beatSteps;
+            }
+            beatTimerID = setTimeout(beatScheduler, 25.0);
+        }
+
+        // Render Loop (Canvas + Playhead)
+        function renderLoop() {
+            if(!isPlaying) return;
+            const elapsed = audioCtx.currentTime - playStartTime;
+            
+            // Update Playhead
+            const pxPos = elapsed * PX_PER_SEC;
+            document.getElementById('playhead').style.left = `${pxPos}px`;
+            
+            // Update Time Display
+            const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+            const secs = Math.floor(elapsed % 60).toString().padStart(2, '0');
+            document.getElementById('time-display').innerText = `${mins}:${secs}`;
+
+            // Auto-scroll timeline
+            const scrollArea = document.getElementById('timeline-scroll-area');
+            if(pxPos > scrollArea.scrollLeft + scrollArea.clientWidth - 100) {
+                scrollArea.scrollLeft = pxPos - scrollArea.clientWidth / 2;
+            }
+
+            // Draw Canvas
+            ctx.fillStyle = '#09090b'; // bg-neutral-950
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            let activeVisual = null;
+            let activeLyric = null;
+
+            regions.forEach(reg => {
+                if(elapsed >= reg.start && elapsed <= (reg.start + reg.duration)) {
+                    if(reg.type === 'visual') activeVisual = reg;
+                    if(reg.type === 'lyric') activeLyric = reg;
+                }
+            });
+
+            // 1. Draw Visuals
+            if(activeVisual && activeVisual.data.img) {
+                const img = activeVisual.data.img;
+                const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+                const x = (canvas.width / 2) - (img.width / 2) * scale;
+                const y = (canvas.height / 2) - (img.height / 2) * scale;
+                ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+            } else {
+                drawVisualizer(elapsed); // Fallback visual
+            }
+
+            // 2. Draw Lyrics over visuals
+            if(activeLyric && activeLyric.data.text) {
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+                ctx.fillStyle = '#60a5fa'; // blue-400
+                ctx.font = 'bold 36px Nunito';
+                ctx.textAlign = 'center';
+                ctx.fillText(activeLyric.data.text, canvas.width/2, canvas.height - 30);
+            }
+
+            // End of timeline check
+            if(elapsed >= TIMELINE_DURATION) {
+                stopPlayback();
+                return;
+            }
+
+            animationFrameId = requestAnimationFrame(renderLoop);
+        }
+
+        function drawVisualizer(time) {
+            const numBars = 16;
+            const barWidth = canvas.width / numBars;
+            for(let i=0; i<numBars; i++) {
+                const h = 20 + Math.abs(Math.sin((time * 3) + i) * 150);
+                ctx.fillStyle = `hsla(${(time*40 + i*20)%360}, 70%, 50%, 0.5)`;
+                ctx.fillRect(i * barWidth + 5, canvas.height - h, barWidth - 10, h);
+            }
+        }
+
+        function drawCanvasPlaceholder(text) {
+            ctx.fillStyle = '#09090b'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#52525b'; ctx.font = '24px Nunito'; ctx.textAlign = 'center';
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+            ctx.fillStyle = '#3f3f46';
+            ctx.beginPath(); ctx.arc(100, 100, 40, 0, Math.PI*2); ctx.fill();
+            ctx.fillRect(canvas.width - 150, canvas.height - 150, 60, 60);
+        }
+
+        // --- Recording / Export ---
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+
+        function toggleRecording() {
+            const btn = document.getElementById('record-btn');
+            const dot = document.getElementById('rec-dot');
+            
+            if (!isRecording) {
+                if(!isPlaying) { alert("Please start playback first to record the timeline!"); return; }
+                
+                try {
+                    const canvasStream = canvas.captureStream(30);
+                    const combinedStream = new MediaStream([
+                        ...canvasStream.getVideoTracks(),
+                        ...studioDestNode.stream.getAudioTracks()
+                    ]);
+
+                    mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+                    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+                    mediaRecorder.onstop = saveRecording;
+                    mediaRecorder.start();
+                    
+                    isRecording = true;
+                    btn.classList.replace('bg-red-600', 'bg-neutral-800');
+                    btn.classList.add('border', 'border-red-500', 'text-red-500');
+                    dot.classList.replace('bg-white', 'bg-red-500');
+                    btn.querySelector('span:last-child').innerText = 'Stop Recording';
+                } catch (e) {
+                    console.error("Recording failed:", e);
+                    alert("Recording not supported in this environment.");
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                btn.classList.replace('bg-neutral-800', 'bg-red-600');
+                btn.classList.remove('border', 'border-red-500', 'text-red-500');
+                dot.classList.replace('bg-red-500', 'bg-white');
+                btn.querySelector('span:last-child').innerText = 'Export Video';
+            }
+        }
+
+        function saveRecording() {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            recordedChunks = [];
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            document.body.appendChild(a);
+            a.style = 'display: none';
+            a.href = url;
+            a.download = `Studio-Export-${Date.now()}.webm`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+    </script>
+</body>
+</html>
