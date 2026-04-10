@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Early Years Studio Creator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #f0fdfa; /* Light teal background */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .beat-btn {
+            transition: all 0.1s;
+        }
+        .beat-btn.active {
+            transform: scale(0.95);
+            box-shadow: inset 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .playing-step {
+            border: 4px solid #fff;
+            filter: brightness(1.2);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center z-10">
+        <div class="flex items-center gap-2">
+            <svg class="w-8 h-8 text-yellow-300" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            <h1 class="text-2xl font-black tracking-wide">Early Years Studio</h1>
+        </div>
+        <button onclick="toggleInfoModal()" class="bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors flex items-center gap-2 px-4 font-bold">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span class="hidden sm:inline">Info & Help</span>
+        </button>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        
+        <!-- Navigation Sidebar / Topbar on Mobile -->
+        <nav class="bg-indigo-100 w-full md:w-64 p-4 flex md:flex-col gap-2 overflow-x-auto shrink-0 shadow-inner">
+            <button onclick="switchTab('beatmaker')" id="tab-beatmaker" class="tab-btn active bg-indigo-500 text-white py-3 px-4 rounded-xl font-bold shadow hover:bg-indigo-600 transition flex-shrink-0 text-left">🥁 1. Beat Maker</button>
+            <button onclick="switchTab('audio')" id="tab-audio" class="tab-btn bg-white text-indigo-700 py-3 px-4 rounded-xl font-bold shadow hover:bg-indigo-50 transition flex-shrink-0 text-left">🎤 2. Audio & Vocals</button>
+            <button onclick="switchTab('slides')" id="tab-slides" class="tab-btn bg-white text-indigo-700 py-3 px-4 rounded-xl font-bold shadow hover:bg-indigo-50 transition flex-shrink-0 text-left">🖼️ 3. Slides & Sync</button>
+            <button onclick="switchTab('preview')" id="tab-preview" class="tab-btn bg-white text-indigo-700 py-3 px-4 rounded-xl font-bold shadow hover:bg-indigo-50 transition flex-shrink-0 text-left">🎬 4. Studio & Export</button>
+        </nav>
+
+        <!-- Content Area -->
+        <div class="flex-1 p-4 md:p-6 overflow-y-auto bg-slate-50">
+            
+            <!-- Tab 1: Beat Maker -->
+            <div id="content-beatmaker" class="tab-content active max-w-4xl mx-auto">
+                <div class="bg-white p-6 rounded-3xl shadow-xl border-4 border-pink-200">
+                    <h2 class="text-3xl font-black text-pink-500 mb-2">Drum Sequencer</h2>
+                    <p class="text-slate-500 mb-6 font-bold">Tap the colorful squares to make your own backing beat!</p>
+                    
+                    <div class="flex items-center gap-4 mb-6 bg-pink-50 p-4 rounded-2xl">
+                        <button onclick="toggleBeatPlayback()" id="beat-play-btn" class="bg-pink-500 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-pink-600 hover:scale-105 transition">
+                            <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        </button>
+                        <div class="flex-1">
+                            <label class="font-bold text-slate-700 flex justify-between">
+                                Speed (BPM) <span id="bpm-display" class="text-pink-600">120</span>
+                            </label>
+                            <input type="range" id="bpm-slider" min="60" max="180" value="120" class="w-full accent-pink-500 mt-2" oninput="updateBPM(this.value)">
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto pb-4">
+                        <div class="min-w-[500px]" id="sequencer-grid">
+                            <!-- JS will populate grid here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Audio & Vocals -->
+            <div id="content-audio" class="tab-content max-w-4xl mx-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Backing Track -->
+                    <div class="bg-white p-6 rounded-3xl shadow-xl border-4 border-blue-200">
+                        <h2 class="text-2xl font-black text-blue-500 mb-2">🎶 Backing Music</h2>
+                        <p class="text-sm text-slate-500 mb-4 font-bold">Upload a song or melody.</p>
+                        <input type="file" id="music-upload" accept="audio/*" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer mb-4">
+                        <div id="music-status" class="text-sm font-bold text-green-500 hidden">✅ Ready to play</div>
+                    </div>
+
+                    <!-- Vocals & Autotune -->
+                    <div class="bg-white p-6 rounded-3xl shadow-xl border-4 border-purple-200">
+                        <h2 class="text-2xl font-black text-purple-500 mb-2">🎤 Voice Track</h2>
+                        <p class="text-sm text-slate-500 mb-4 font-bold">Upload your singing or narration.</p>
+                        <input type="file" id="vocal-upload" accept="audio/*" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer mb-4">
+                        
+                        <div class="bg-purple-50 p-4 rounded-xl mt-4">
+                            <h3 class="font-bold text-purple-800 mb-2">Magic Effects (Autotune Style)</h3>
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-sm font-bold text-slate-600">Robot / Pitch FX</label>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                  <input type="checkbox" id="fx-toggle" class="sr-only peer" onchange="toggleFX(this.checked)">
+                                  <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                                </label>
+                            </div>
+                            <input type="range" id="fx-slider" min="0.5" max="2" step="0.1" value="1" class="w-full accent-purple-600" disabled>
+                            <p class="text-xs text-slate-500 mt-1">Changes voice speed & pitch when FX is on.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Slides -->
+            <div id="content-slides" class="tab-content max-w-4xl mx-auto">
+                <div class="bg-white p-6 rounded-3xl shadow-xl border-4 border-yellow-200">
+                    <h2 class="text-3xl font-black text-yellow-500 mb-2">🖼️ Picture Slides</h2>
+                    <p class="text-slate-500 mb-6 font-bold">Upload photos or drawings to show while your music plays.</p>
+                    
+                    <input type="file" id="slide-upload" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-full file:border-0 file:text-base file:font-black file:bg-yellow-100 file:text-yellow-700 hover:file:bg-yellow-200 cursor-pointer mb-6">
+
+                    <div id="slides-container" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <!-- Slides will appear here -->
+                    </div>
+                    <p id="no-slides-msg" class="text-center text-slate-400 font-bold p-8 border-2 border-dashed border-slate-200 rounded-xl">No slides uploaded yet.</p>
+                </div>
+            </div>
+
+            <!-- Tab 4: Preview & Studio -->
+            <div id="content-preview" class="tab-content max-w-5xl mx-auto">
+                <div class="bg-slate-900 rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row border-4 border-slate-800">
+                    
+                    <!-- Main Canvas/Video Area -->
+                    <div class="flex-1 bg-black relative flex items-center justify-center min-h-[300px] md:min-h-[500px]">
+                        <canvas id="main-canvas" width="800" height="600" class="w-full h-full object-contain max-h-[60vh]"></canvas>
+                        
+                        <!-- Play Overlay -->
+                        <div id="play-overlay" class="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm z-10">
+                            <button onclick="startStudioPlayback()" class="bg-green-500 hover:bg-green-400 text-white rounded-full p-6 shadow-[0_0_30px_rgba(34,197,94,0.5)] transform hover:scale-110 transition flex flex-col items-center">
+                                <svg class="w-16 h-16 ml-2 mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                <span class="font-black text-xl tracking-wider">START SHOW</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Controls Sidebar -->
+                    <div class="w-full md:w-80 bg-slate-800 p-6 text-white flex flex-col justify-between">
+                        <div>
+                            <h2 class="text-2xl font-black text-white mb-6 flex items-center gap-2">
+                                <span class="text-red-500">●</span> Master Control
+                            </h2>
+                            
+                            <div class="space-y-4">
+                                <div class="bg-slate-700 p-4 rounded-xl">
+                                    <p class="text-xs text-slate-400 uppercase font-bold tracking-wider mb-2">Status</p>
+                                    <div id="status-indicator" class="font-bold text-yellow-400 flex items-center gap-2">
+                                        ⏸️ Ready
+                                    </div>
+                                    <div class="mt-2 text-3xl font-mono" id="time-display">00:00</div>
+                                </div>
+                                
+                                <button onclick="stopStudioPlayback()" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-3 rounded-xl transition flex justify-center items-center gap-2">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg> Stop All
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mt-8 pt-6 border-t border-slate-700">
+                            <h3 class="text-sm font-bold text-slate-400 uppercase mb-4">Export</h3>
+                            <button onclick="toggleRecording()" id="record-btn" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2">
+                                <span>⏺️ Record Video (.webm)</span>
+                            </button>
+                            <p class="text-xs text-slate-400 mt-2 text-center">Records the canvas and your audio.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Info & Help Modal -->
+    <div id="info-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-indigo-600 text-white p-6 flex justify-between items-center">
+                <h2 class="text-2xl font-black">ℹ️ How to use the Creator</h2>
+                <button onclick="toggleInfoModal()" class="bg-white/20 hover:bg-white/30 rounded-full p-2 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto">
+                <h3 class="font-bold text-lg text-slate-800 mb-2">Welcome to Early Years Studio!</h3>
+                <p class="text-slate-600 mb-4">This tool lets you build simple songs and video syncs entirely in your browser. Perfect for creating fun, engaging content for early years.</p>
+                
+                <ul class="space-y-4 mb-8">
+                    <li class="flex gap-3">
+                        <div class="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold shrink-0">1</div>
+                        <div>
+                            <strong class="text-slate-800">Beat Maker:</strong> Tap the squares to build a drum loop. Press play to hear it loop. Change the BPM to make it faster or slower.
+                        </div>
+                    </li>
+                    <li class="flex gap-3">
+                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0">2</div>
+                        <div>
+                            <strong class="text-slate-800">Audio & Vocals:</strong> Upload pre-recorded music and voice tracks. Use the Magic FX toggle on the voice track to speed it up or pitch it for a "robot/autotune" style effect.
+                        </div>
+                    </li>
+                    <li class="flex gap-3">
+                        <div class="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 font-bold shrink-0">3</div>
+                        <div>
+                            <strong class="text-slate-800">Slides & Sync:</strong> Upload pictures. For each picture, set how many seconds it should stay on screen during the video.
+                        </div>
+                    </li>
+                    <li class="flex gap-3">
+                        <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold shrink-0">4</div>
+                        <div>
+                            <strong class="text-slate-800">Studio & Export:</strong> Go to the final tab and click "Start Show". It will play your beats, music, voice, and show your slides in order! Click "Record" to save it as a video file.
+                        </div>
+                    </li>
+                </ul>
+
+                <!-- Related Files Section as requested -->
+                <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                    <h3 class="font-bold text-indigo-900 mb-2 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                        Related Files (Local Folder Structure)
+                    </h3>
+                    <p class="text-xs text-indigo-700 mb-3">If hosted on GitHub Pages, ensure these files are structured accordingly in your repository:</p>
+                    <ul class="text-sm space-y-2">
+                        <li><a href="./index.html" class="text-indigo-600 hover:underline font-semibold font-mono flex items-center gap-2">📄 ./index.html <span class="text-xs font-normal text-slate-500">(This App)</span></a></li>
+                        <li><a href="./README.md" class="text-indigo-600 hover:underline font-semibold font-mono flex items-center gap-2">📄 ./README.md <span class="text-xs font-normal text-slate-500">(GitHub Repo Instructions)</span></a></li>
+                        <li><a href="./assets/" class="text-indigo-600 hover:underline font-semibold font-mono flex items-center gap-2">📁 ./assets/ <span class="text-xs font-normal text-slate-500">(Folder for your custom images/audio)</span></a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        // --- 1. State & Context Management ---
+        let audioCtx;
+        
+        // Sequencer State
+        const steps = 8;
+        const instruments = [
+            { name: 'Kick', color: 'bg-red-400', active: 'bg-red-500', note: 'kick' },
+            { name: 'Snare', color: 'bg-orange-400', active: 'bg-orange-500', note: 'snare' },
+            { name: 'Clap', color: 'bg-green-400', active: 'bg-green-500', note: 'clap' },
+            { name: 'Hi-Hat', color: 'bg-cyan-400', active: 'bg-cyan-500', note: 'hihat' }
+        ];
+        // Create 2D array [instrument][step] = boolean
+        const gridState = instruments.map(() => Array(steps).fill(false));
+        let isBeatPlaying = false;
+        let currentStep = 0;
+        let bpm = 120;
+        let nextNoteTime = 0.0;
+        let timerID;
+
+        // Audio Track State
+        let musicBuffer = null;
+        let vocalBuffer = null;
+        let musicSource = null;
+        let vocalSource = null;
+        let vocalFXEnabled = false;
+        let vocalFXValue = 1.0;
+
+        // Slides State
+        let slides = []; // { img: ImageObject, duration: seconds, fileUrl: string }
+        
+        // Studio Playback State
+        let isStudioPlaying = false;
+        let studioStartTime = 0;
+        let studioTimerId = null;
+        let canvas, ctx;
+        
+        // Recording State
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+
+        // --- 2. Initialization ---
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        window.onload = () => {
+            buildSequencer();
+            canvas = document.getElementById('main-canvas');
+            ctx = canvas.getContext('2d');
+            drawCanvasPlaceholder("Studio Ready. Add Media & Press Start.");
+        };
+
+        // --- 3. UI Interactions ---
+        function toggleInfoModal() {
+            const modal = document.getElementById('info-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        function switchTab(tabId) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('bg-indigo-500', 'text-white');
+                el.classList.add('bg-white', 'text-indigo-700');
+            });
+            
+            // Show selected
+            document.getElementById(`content-${tabId}`).classList.add('active');
+            const activeBtn = document.getElementById(`tab-${tabId}`);
+            activeBtn.classList.remove('bg-white', 'text-indigo-700');
+            activeBtn.classList.add('bg-indigo-500', 'text-white');
+            
+            // Stop studio if leaving preview tab
+            if(tabId !== 'preview' && isStudioPlaying) {
+                stopStudioPlayback();
+            }
+        }
+
+        // --- 4. Beat Maker Logic ---
+        function buildSequencer() {
+            const container = document.getElementById('sequencer-grid');
+            container.innerHTML = '';
+            
+            instruments.forEach((inst, rowIdx) => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-2 mb-2';
+                
+                const label = document.createElement('div');
+                label.className = `w-20 font-bold text-sm text-white ${inst.color} py-3 px-2 rounded-xl text-center shadow-sm`;
+                label.innerText = inst.name;
+                row.appendChild(label);
+
+                for (let colIdx = 0; colIdx < steps; colIdx++) {
+                    const btn = document.createElement('button');
+                    btn.className = `beat-btn w-12 h-12 rounded-xl border-b-4 border-slate-200 bg-slate-100 hover:bg-slate-200 transition-colors`;
+                    btn.id = `step-${rowIdx}-${colIdx}`;
+                    btn.onclick = () => toggleStep(rowIdx, colIdx, btn, inst);
+                    row.appendChild(btn);
+                }
+                container.appendChild(row);
+            });
+        }
+
+        function toggleStep(r, c, btn, inst) {
+            gridState[r][c] = !gridState[r][c];
+            if (gridState[r][c]) {
+                btn.classList.remove('bg-slate-100', 'border-slate-200');
+                btn.classList.add(inst.active, 'border-transparent', 'shadow-inner');
+                // Preview sound on click
+                initAudio();
+                playDrumSound(inst.note, audioCtx.currentTime);
+            } else {
+                btn.classList.add('bg-slate-100', 'border-slate-200');
+                btn.classList.remove(inst.active, 'border-transparent', 'shadow-inner');
+            }
+        }
+
+        function updateBPM(val) {
+            bpm = val;
+            document.getElementById('bpm-display').innerText = val;
+        }
+
+        function toggleBeatPlayback() {
+            initAudio();
+            isBeatPlaying = !isBeatPlaying;
+            const btn = document.getElementById('beat-play-btn');
+            
+            if (isBeatPlaying) {
+                btn.innerHTML = '<svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'; // Pause icon
+                btn.classList.replace('bg-pink-500', 'bg-slate-700');
+                currentStep = 0;
+                nextNoteTime = audioCtx.currentTime + 0.05;
+                scheduler();
+            } else {
+                btn.innerHTML = '<svg class="w-8 h-8 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'; // Play icon
+                btn.classList.replace('bg-slate-700', 'bg-pink-500');
+                clearTimeout(timerID);
+                clearStepHighlights();
+            }
+        }
+
+        function scheduler() {
+            while (nextNoteTime < audioCtx.currentTime + 0.1) {
+                scheduleNote(currentStep, nextNoteTime);
+                nextNote();
+            }
+            timerID = setTimeout(scheduler, 25.0);
+        }
+
+        function nextNote() {
+            const secondsPerBeat = 60.0 / bpm;
+            // 8th notes
+            nextNoteTime += 0.5 * secondsPerBeat;
+            currentStep++;
+            if (currentStep === steps) {
+                currentStep = 0;
+            }
+        }
+
+        function scheduleNote(stepNumber, time) {
+            // Visual highlight (use requestAnimationFrame to sync with display)
+            requestAnimationFrame(() => {
+                clearStepHighlights();
+                for (let r = 0; r < instruments.length; r++) {
+                    const el = document.getElementById(`step-${r}-${stepNumber}`);
+                    if(el) el.classList.add('playing-step');
+                }
+            });
+
+            // Play sounds
+            for (let r = 0; r < instruments.length; r++) {
+                if (gridState[r][stepNumber]) {
+                    playDrumSound(instruments[r].note, time);
+                }
+            }
+        }
+
+        function clearStepHighlights() {
+            document.querySelectorAll('.beat-btn').forEach(el => el.classList.remove('playing-step'));
+        }
+
+        // --- Synthesis for Drum Sounds ---
+        function playDrumSound(type, time) {
+            // We use simple synthesis to avoid needing external audio files for the drums
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc.connect(gainNode);
+            // Route to master output (if recording, handle later)
+            gainNode.connect(studioDestNode ? studioDestNode : audioCtx.destination);
+            if(studioDestNode) gainNode.connect(audioCtx.destination); // Also hear it locally
+
+            if (type === 'kick') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, time);
+                osc.frequency.exponentialRampToValueAtTime(0.001, time + 0.5);
+                gainNode.gain.setValueAtTime(1, time);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
+                osc.start(time);
+                osc.stop(time + 0.5);
+            } else if (type === 'snare') {
+                // Snare is complex (noise + tone), let's do a noisy triangle
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(250, time);
+                gainNode.gain.setValueAtTime(1, time);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+                osc.start(time);
+                osc.stop(time + 0.2);
+                // Pseudo noise via high freq osc
+                const noiseOsc = audioCtx.createOscillator();
+                const noiseGain = audioCtx.createGain();
+                noiseOsc.type = 'square';
+                noiseOsc.frequency.setValueAtTime(10000, time);
+                noiseGain.gain.setValueAtTime(0.5, time);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+                noiseOsc.connect(noiseGain);
+                noiseGain.connect(studioDestNode ? studioDestNode : audioCtx.destination);
+                if(studioDestNode) noiseGain.connect(audioCtx.destination);
+                noiseOsc.start(time);
+                noiseOsc.stop(time + 0.2);
+            } else if (type === 'hihat') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(8000, time);
+                gainNode.gain.setValueAtTime(0.3, time);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+                osc.start(time);
+                osc.stop(time + 0.1);
+            } else if (type === 'clap') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(800, time);
+                gainNode.gain.setValueAtTime(0.5, time);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+                osc.start(time);
+                osc.stop(time + 0.15);
+            }
+        }
+
+        // --- 5. Audio Uploads & FX Logic ---
+        async function handleAudioUpload(file, isMusic) {
+            initAudio();
+            const arrayBuffer = await file.arrayBuffer();
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            if (isMusic) {
+                musicBuffer = audioBuffer;
+                document.getElementById('music-status').classList.remove('hidden');
+            } else {
+                vocalBuffer = audioBuffer;
+                document.getElementById('fx-slider').disabled = false;
+            }
+        }
+
+        document.getElementById('music-upload').addEventListener('change', (e) => {
+            if(e.target.files[0]) handleAudioUpload(e.target.files[0], true);
+        });
+        document.getElementById('vocal-upload').addEventListener('change', (e) => {
+            if(e.target.files[0]) handleAudioUpload(e.target.files[0], false);
+        });
+
+        function toggleFX(checked) {
+            vocalFXEnabled = checked;
+            const slider = document.getElementById('fx-slider');
+            if(checked && vocalBuffer) {
+                // If checking FX and we have vocals, enable slider
+            }
+        }
+        
+        document.getElementById('fx-slider').addEventListener('input', (e) => {
+            vocalFXValue = parseFloat(e.target.value);
+            // If playing in studio, update rate live
+            if(vocalSource && vocalFXEnabled) {
+                vocalSource.playbackRate.value = vocalFXValue;
+            }
+        });
+
+        // --- 6. Slides Logic ---
+        document.getElementById('slide-upload').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            document.getElementById('no-slides-msg').style.display = 'none';
+            
+            files.forEach(file => {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    slides.push({
+                        id: Date.now() + Math.random(),
+                        fileUrl: url,
+                        img: img,
+                        duration: 3 // Default 3 seconds
+                    });
+                    renderSlides();
+                }
+                img.src = url;
+            });
+        });
+
+        function renderSlides() {
+            const container = document.getElementById('slides-container');
+            container.innerHTML = '';
+            slides.forEach((slide, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-100 rounded-xl p-2 shadow flex flex-col gap-2 relative group';
+                card.innerHTML = `
+                    <div class="absolute top-0 right-0 bg-black/50 text-white text-xs px-2 py-1 rounded-bl-lg rounded-tr-lg font-bold">#${index+1}</div>
+                    <img src="${slide.fileUrl}" class="w-full h-24 object-cover rounded-lg border border-slate-200">
+                    <div class="flex items-center gap-2">
+                        <input type="number" value="${slide.duration}" min="0.5" step="0.5" class="w-full p-1 rounded border text-sm text-center font-bold" onchange="updateSlideDuration('${slide.id}', this.value)">
+                        <span class="text-xs text-slate-500 font-bold">Sec</span>
+                    </div>
+                    <button onclick="removeSlide('${slide.id}')" class="text-xs text-red-500 hover:text-red-700 font-bold">Remove</button>
+                `;
+                container.appendChild(card);
+            });
+            if(slides.length === 0) {
+                 document.getElementById('no-slides-msg').style.display = 'block';
+            }
+        }
+
+        function updateSlideDuration(id, val) {
+            const slide = slides.find(s => s.id == id);
+            if(slide) slide.duration = parseFloat(val);
+        }
+        function removeSlide(id) {
+            slides = slides.filter(s => s.id != id);
+            renderSlides();
+        }
+
+        // --- 7. Studio Playback & Rendering ---
+        let studioDestNode; // For recording audio
+
+        function startStudioPlayback() {
+            initAudio();
+            document.getElementById('play-overlay').style.display = 'none';
+            document.getElementById('status-indicator').innerHTML = '<span class="text-green-500 animate-pulse">▶️ LIVE SHOW</span>';
+            
+            isStudioPlaying = true;
+            studioStartTime = audioCtx.currentTime;
+
+            // Setup audio destination for recording
+            studioDestNode = audioCtx.createMediaStreamDestination();
+
+            // 1. Start Backing Track
+            if (musicBuffer) {
+                musicSource = audioCtx.createBufferSource();
+                musicSource.buffer = musicBuffer;
+                musicSource.connect(audioCtx.destination);
+                musicSource.connect(studioDestNode);
+                musicSource.start(studioStartTime);
+            }
+
+            // 2. Start Vocals
+            if (vocalBuffer) {
+                vocalSource = audioCtx.createBufferSource();
+                vocalSource.buffer = vocalBuffer;
+                
+                // Apply simple FX (Pitch/Speed shift)
+                if(vocalFXEnabled) {
+                    vocalSource.playbackRate.value = vocalFXValue;
+                }
+
+                vocalSource.connect(audioCtx.destination);
+                vocalSource.connect(studioDestNode);
+                vocalSource.start(studioStartTime);
+            }
+
+            // 3. Start Beat Sequencer internally synced
+            if(document.getElementById('beat-play-btn').classList.contains('bg-pink-500')) {
+                // If it was paused, let's start it for the show
+                toggleBeatPlayback();
+            }
+
+            // Start Visuals & Timer Loop
+            requestAnimationFrame(studioLoop);
+        }
+
+        function stopStudioPlayback() {
+            isStudioPlaying = false;
+            document.getElementById('play-overlay').style.display = 'flex';
+            document.getElementById('status-indicator').innerHTML = '⏸️ Stopped';
+            document.getElementById('time-display').innerText = '00:00';
+            
+            if (musicSource) { musicSource.stop(); musicSource = null; }
+            if (vocalSource) { vocalSource.stop(); vocalSource = null; }
+            if (isBeatPlaying) { toggleBeatPlayback(); } // Stop beat
+            
+            if(isRecording) toggleRecording(); // Stop recording safely
+            
+            drawCanvasPlaceholder("Show Finished. Press Start to play again.");
+        }
+
+        function studioLoop() {
+            if (!isStudioPlaying) return;
+
+            const elapsedTime = audioCtx.currentTime - studioStartTime;
+            
+            // Format Time
+            const mins = Math.floor(elapsedTime / 60).toString().padStart(2, '0');
+            const secs = Math.floor(elapsedTime % 60).toString().padStart(2, '0');
+            document.getElementById('time-display').innerText = `${mins}:${secs}`;
+
+            // Draw Slides
+            if (slides.length > 0) {
+                // Calculate which slide should be showing based on cumulative duration
+                let cumulativeTime = 0;
+                let activeSlide = null;
+                
+                for (let i = 0; i < slides.length; i++) {
+                    cumulativeTime += slides[i].duration;
+                    if (elapsedTime < cumulativeTime) {
+                        activeSlide = slides[i];
+                        break;
+                    }
+                }
+
+                // Loop slides if we run out
+                if (!activeSlide && slides.length > 0) {
+                     // For simplicity, stop show when slides end, or loop. Let's just hold last slide.
+                     activeSlide = slides[slides.length - 1];
+                     // Or uncomment to stop automatically:
+                     // stopStudioPlayback(); return;
+                }
+
+                if (activeSlide) {
+                    drawSlide(activeSlide.img);
+                }
+            } else {
+                // Draw cool visualizer if no slides
+                drawCanvasVisualizer(elapsedTime);
+            }
+
+            requestAnimationFrame(studioLoop);
+        }
+
+        function drawSlide(img) {
+            // clear canvas
+            ctx.fillStyle = '#0f172a'; // slate-900
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // maintain aspect ratio
+            const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+            const x = (canvas.width / 2) - (img.width / 2) * scale;
+            const y = (canvas.height / 2) - (img.height / 2) * scale;
+            
+            ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+        }
+
+        function drawCanvasPlaceholder(text) {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#475569';
+            ctx.font = '24px Nunito, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+            
+            // Draw some decorative shapes
+            ctx.fillStyle = '#ec4899'; // pink
+            ctx.beginPath(); ctx.arc(100, 100, 30, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#eab308'; // yellow
+            ctx.fillRect(canvas.width - 150, 100, 50, 50);
+            ctx.fillStyle = '#3b82f6'; // blue
+            ctx.beginPath(); ctx.moveTo(100, canvas.height-100); ctx.lineTo(150, canvas.height-50); ctx.lineTo(50, canvas.height-50); ctx.fill();
+        }
+
+        function drawCanvasVisualizer(time) {
+            // Simple generic moving visualizer
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const numBars = 20;
+            const barWidth = canvas.width / numBars;
+            for(let i=0; i<numBars; i++) {
+                // Generate fake wave height based on time and index
+                const height = 50 + Math.abs(Math.sin((time * 5) + i) * 200);
+                const hue = (time * 50 + i * 15) % 360;
+                ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
+                ctx.fillRect(i * barWidth + 2, canvas.height - height, barWidth - 4, height);
+            }
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 32px Nunito';
+            ctx.textAlign = 'center';
+            ctx.fillText("Audio Visualizer Playing", canvas.width/2, canvas.height/2);
+        }
+
+        // --- 8. Recording Logic ---
+        function toggleRecording() {
+            const btn = document.getElementById('record-btn');
+            
+            if (!isRecording) {
+                // START RECORDING
+                if(!isStudioPlaying) {
+                    alert("Please start the show first before recording!");
+                    return;
+                }
+                
+                try {
+                    // Capture Canvas Stream (Video)
+                    const canvasStream = canvas.captureStream(30); // 30 fps
+                    
+                    // Mix Canvas Stream with Audio Context Stream
+                    const combinedStream = new MediaStream([
+                        ...canvasStream.getVideoTracks(),
+                        ...studioDestNode.stream.getAudioTracks()
+                    ]);
+
+                    mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm; codecs=vp9,opus' });
+                    
+                    mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) recordedChunks.push(e.data);
+                    };
+                    
+                    mediaRecorder.onstop = saveRecording;
+                    mediaRecorder.start();
+                    
+                    isRecording = true;
+                    btn.classList.replace('bg-red-600', 'bg-red-800');
+                    btn.classList.add('animate-pulse');
+                    btn.innerHTML = '<span>🛑 Stop Recording & Save</span>';
+
+                } catch (e) {
+                    console.error("Recording failed:", e);
+                    alert("Recording is not fully supported in this browser context.");
+                }
+
+            } else {
+                // STOP RECORDING
+                mediaRecorder.stop();
+                isRecording = false;
+                btn.classList.replace('bg-red-800', 'bg-red-600');
+                btn.classList.remove('animate-pulse');
+                btn.innerHTML = '<span>⏺️ Record Video (.webm)</span>';
+            }
+        }
+
+        function saveRecording() {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            recordedChunks = [];
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            document.body.appendChild(a);
+            a.style = 'display: none';
+            a.href = url;
+            a.download = `EarlyYears-Show-${new Date().getTime()}.webm`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            // Show alert box (using DOM instead of window.alert per system constraints)
+            showCustomAlert("Success! Video downloaded to your device.");
+        }
+
+        function showCustomAlert(msg) {
+            const alertBox = document.createElement('div');
+            alertBox.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-xl shadow-2xl font-bold z-50 animate-bounce';
+            alertBox.innerText = msg;
+            document.body.appendChild(alertBox);
+            setTimeout(() => alertBox.remove(), 4000);
+        }
+
+    </script>
+</body>
+</html>
