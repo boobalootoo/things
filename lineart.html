@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LineArt Studio Pro</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f1f5f9; --card: #ffffff; --text: #0f172a; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        
+        .app-container { max-width: 1000px; width: 100%; display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+        @media (max-width: 768px) { .app-container { grid-template-columns: 1fr; } }
+
+        .sidebar { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); height: fit-content; }
+        .canvas-area { background: var(--card); padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; min-height: 400px; overflow: hidden; }
+        
+        canvas { max-width: 100%; height: auto; border-radius: 4px; }
+        
+        .control-group { margin-bottom: 20px; }
+        label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        
+        .btn-main { width: 100%; padding: 12px; border: none; border-radius: 6px; background: var(--primary); color: white; font-weight: bold; cursor: pointer; margin-bottom: 10px; transition: opacity 0.2s; }
+        .btn-info { background: #64748b; }
+        .btn-main:hover { opacity: 0.9; }
+
+        /* Modal Styles */
+        #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; padding: 20px; overflow-y: auto; }
+        .modal-content { background: white; max-width: 500px; margin: 40px auto; padding: 30px; border-radius: 15px; position: relative; }
+        .close { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="sidebar">
+        <h2 style="margin-top:0">Settings</h2>
+        
+        <input type="file" id="upload" accept="image/*" hidden>
+        <button class="btn-main" onclick="document.getElementById('upload').click()">Load Image</button>
+        
+        <div class="control-group">
+            <label>Definition (Sensitivity)</label>
+            <input type="range" id="threshold" min="10" max="150" value="40">
+        </div>
+
+        <div class="control-group">
+            <label>Line Weight</label>
+            <input type="range" id="weight" min="1" max="5" value="1" step="0.5">
+        </div>
+
+        <div class="control-group">
+            <label>Softness (Reduce Noise)</label>
+            <input type="range" id="blur" min="0" max="4" value="0" step="0.5">
+        </div>
+
+        <div class="control-group">
+            <label><input type="checkbox" id="invert"> Invert (Dark Mode)</label>
+        </div>
+
+        <button class="btn-main btn-info" onclick="toggleModal(true)">How to use & Files</button>
+        <button class="btn-main" style="background:#10b981" onclick="downloadImage()">Download PNG</button>
+    </div>
+
+    <div class="canvas-area">
+        <canvas id="canvas"></canvas>
+    </div>
+</div>
+
+<div id="modal">
+    <div class="modal-content">
+        <span class="close" onclick="toggleModal(false)">&times;</span>
+        <h2>User Guide</h2>
+        <p>This tool converts photos to line art using <b>Sobel Edge Detection</b>. No data leaves your computer.</p>
+        <ul>
+            <li><b>Definition:</b> Lower values catch tiny details; higher values keep only bold outlines.</li>
+            <li><b>Softness:</b> Use this for "noisy" or grainy photos to prevent messy dots.</li>
+            <li><b>Line Weight:</b> Thickens the stroke for a marker-pen effect.</li>
+        </ul>
+        <hr>
+        <h3>Related Files</h3>
+        <ul id="file-links">
+            <li><a href="index.html">index.html (Main Editor)</a></li>
+            <li><a href="gallery.html">gallery.html (Template)</a></li>
+            <li><a href="about.html">about.html (Project Info)</a></li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let originalImg = null;
+
+    // UI Listeners
+    const inputs = ['threshold', 'weight', 'blur', 'invert'];
+    inputs.forEach(id => document.getElementById(id).addEventListener('input', processImage));
+
+    document.getElementById('upload').addEventListener('change', (e) => {
+        const reader = new FileReader();
+        reader.onload = (f) => {
+            originalImg = new Image();
+            originalImg.onload = () => {
+                const maxDim = 1200; // Cap resolution for performance
+                let w = originalImg.width;
+                let h = originalImg.height;
+                if(w > maxDim || h > maxDim) {
+                    const ratio = Math.min(maxDim/w, maxDim/h);
+                    w *= ratio; h *= ratio;
+                }
+                canvas.width = w; canvas.height = h;
+                processImage();
+            };
+            originalImg.src = f.target.result;
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    });
+
+    function processImage() {
+        if (!originalImg) return;
+
+        // 1. Draw original with optional blur
+        const blurVal = document.getElementById('blur').value;
+        ctx.filter = `blur(${blurVal}px) grayscale(100%)`;
+        ctx.drawImage(originalImg, 0, 0, canvas.width, canvas.height);
+        ctx.filter = 'none';
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const pixels = imageData.data;
+        const width = canvas.width;
+        const height = canvas.height;
+        const output = ctx.createImageData(width, height);
+        
+        const thresh = document.getElementById('threshold').value;
+        const weight = document.getElementById('weight').value;
+        const isInverted = document.getElementById('invert').checked;
+
+        // 2. Sobel Operator
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const idx = (y * width + x) * 4;
+                
+                // Simplified Sobel (Checking neighboring pixel intensity)
+                const h = 
+                    -1 * pixels[((y-1)*width + (x-1))*4] + 1 * pixels[((y-1)*width + (x+1))*4] +
+                    -2 * pixels[(y*width + (x-1))*4]     + 2 * pixels[(y*width + (x+1))*4] +
+                    -1 * pixels[((y+1)*width + (x-1))*4] + 1 * pixels[((y+1)*width + (x+1))*4];
+
+                const v = 
+                    -1 * pixels[((y-1)*width + (x-1))*4] + -2 * pixels[((y-1)*width + x)*4] + -1 * pixels[((y-1)*width + (x+1))*4] +
+                     1 * pixels[((y+1)*width + (x-1))*4] +  2 * pixels[((y+1)*width + x)*4] +  1 * pixels[((y+1)*width + (x+1))*4];
+
+                const mag = Math.sqrt(h*h + v*v);
+                
+                // Apply Threshold and Line Weight
+                let color = mag > (thresh / weight) ? 0 : 255;
+                if (isInverted) color = 255 - color;
+
+                output.data[idx] = output.data[idx+1] = output.data[idx+2] = color;
+                output.data[idx+3] = 255;
+            }
+        }
+        ctx.putImageData(output, 0, 0);
+    }
+
+    function toggleModal(show) {
+        document.getElementById('modal').style.display = show ? 'block' : 'none';
+    }
+
+    function downloadImage() {
+        const link = document.createElement('a');
+        link.download = 'line-drawing.png';
+        link.href = canvas.toDataURL();
+        link.click();
+    }
+</script>
+</body>
+</html>
