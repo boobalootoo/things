@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Paint Mixer - Studio Palette</title>
+  <style>
+    :root {
+      --bg: #1a1a1a;
+      --panel: #2d2d2d;
+      --text: #ffffff;
+      --accent: #4a90e2;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Mobile Responsive Container */
+    .main-container {
+      position: relative;
+      width: 90vw;
+      max-width: 500px;
+      aspect-ratio: 1/1;
+      margin-top: 20px;
+      /* Prevents page scroll when dragging on touch devices */
+      touch-action: none; 
+    }
+
+    #circleCanvas {
+      background: #333;
+      border-radius: 50%;
+      border: 4px solid #444;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .tab {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      cursor: grab;
+      z-index: 10;
+      border: 2px solid white;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+      /* Centers the div exactly on the calculated coordinates */
+      transform: translate(-50%, -50%);
+    }
+
+    .tab:active {
+      cursor: grabbing;
+      transform: translate(-50%, -50%) scale(1.2);
+    }
+
+    /* Info Button & Modal */
+    #infoBtn {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      z-index: 100;
+    }
+
+    #modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background: var(--panel);
+      padding: 30px;
+      border-radius: 15px;
+      max-width: 85%;
+      max-height: 85%;
+      overflow-y: auto;
+    }
+
+    /* Color Display Area */
+    .output-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 20px 0;
+      padding: 20px;
+      background: var(--panel);
+      border-radius: 15px;
+      width: 80%;
+      max-width: 460px;
+    }
+
+    .color-preview {
+      width: 100px;
+      height: 100px;
+      border-radius: 10px;
+      border: 3px solid #555;
+      margin-bottom: 15px;
+      transition: background-color 0.1s ease;
+    }
+
+    .values-text {
+      text-align: center;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .related-files {
+      margin-top: 20px;
+      border-top: 1px solid #555;
+      padding-top: 10px;
+    }
+
+    .related-files a {
+      color: var(--accent);
+      text-decoration: none;
+      display: block;
+      margin: 8px 0;
+    }
+
+    @media (max-width: 600px) {
+      .main-container { width: 95vw; }
+      .values-text { font-size: 0.85rem; }
+      .tab { width: 35px; height: 35px; } /* Slightly larger touch targets for mobile */
+    }
+  </style>
+</head>
+<body>
+
+  <button id="infoBtn" onclick="toggleModal(true)">?</button>
+
+  <div id="modal" onclick="toggleModal(false)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <h2>How to Use</h2>
+      <p>1. Drag the colored paint blobs from the center onto the outer ring to adjust their mix ratio (0% to 100%).</p>
+      <p>2. The bottom preview box will show the resulting paint color based on your mix.</p>
+      <p>3. Colors left in the center ring are at 0% and do not affect the mix.</p>
+      
+      <div class="related-files">
+        <h3>Related Files</h3>
+        <a href="index.html">Main Mixer</a>
+        <a href="palette-info.html">Color Theory Guide</a>
+        <a href="inventory.html">Paint Inventory</a>
+      </div>
+      <br>
+      <button onclick="toggleModal(false)" style="padding: 10px 20px; background: var(--accent); color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+    </div>
+  </div>
+
+  <div class="main-container" id="interactionArea">
+    <canvas id="circleCanvas" width="600" height="600"></canvas>
+    
+    <div class="tab" id="tab-titaniumWhite" style="background: #FFFFFF;" data-color="titaniumWhite" title="Titanium White"></div>
+    <div class="tab" id="tab-yellowOchre" style="background: #DFAF2C;" data-color="yellowOchre" title="Yellow Ochre"></div>
+    <div class="tab" id="tab-lampBlack" style="background: #141414;" data-color="lampBlack" title="Lamp Black"></div>
+    <div class="tab" id="tab-royalBlue" style="background: #4169E1;" data-color="royalBlue" title="Royal Blue"></div>
+    <div class="tab" id="tab-burntUmber" style="background: #4A3028;" data-color="burntUmber" title="Burnt Umber"></div>
+    <div class="tab" id="tab-emeraldGreen" style="background: #50C878;" data-color="emeraldGreen" title="Emerald Green"></div>
+    <div class="tab" id="tab-atlasBlue" style="background: #007FFF;" data-color="atlasBlue" title="Atlas Blue"></div>
+    <div class="tab" id="tab-violet" style="background: #7F00FF;" data-color="violet" title="Violet"></div>
+    <div class="tab" id="tab-crimsonRed" style="background: #DC143C;" data-color="crimsonRed" title="Crimson Red"></div>
+    <div class="tab" id="tab-lemonYellow" style="background: #FFF44F;" data-color="lemonYellow" title="Lemon Yellow"></div>
+  </div>
+
+  <div class="output-container">
+    <div class="color-preview" id="colorPreview"></div>
+    <div class="values-text" id="valuesDisplay">
+      Drag colors to the outer ring to start mixing
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("circleCanvas");
+    const ctx = canvas.getContext("2d");
+    const container = document.getElementById("interactionArea");
+    const preview = document.getElementById("colorPreview");
+    const display = document.getElementById("valuesDisplay");
+    
+    // Internal Canvas Dimensions
+    const canvasSize = 600;
+    const centerX = canvasSize / 2;
+    const centerY = canvasSize / 2;
+    const mixRadius = 240; // The outer ring where mixing happens
+    const paletteRadius = 80; // Inner circle where unmixed colors wait
+
+    // Expanded 10-Color Library
+    const paintLibrary = {
+      titaniumWhite: { r: 255, g: 255, b: 255 },
+      yellowOchre: { r: 223, g: 175, b: 44 },
+      lampBlack: { r: 20, g: 20, b: 20 },
+      royalBlue: { r: 65, g: 105, b: 225 },
+      burntUmber: { r: 74, g: 48, b: 40 },
+      emeraldGreen: { r: 80, g: 200, b: 120 },
+      atlasBlue: { r: 0, g: 127, b: 255 },
+      violet: { r: 127, g: 0, b: 255 },
+      crimsonRed: { r: 220, g: 20, b: 60 },
+      lemonYellow: { r: 255, g: 244, b: 79 }
+    };
+
+    // Keep track of percentages for all 10 colors
+    let mixState = { 
+      titaniumWhite: 0, yellowOchre: 0, lampBlack: 0, royalBlue: 0, 
+      burntUmber: 0, emeraldGreen: 0, atlasBlue: 0, violet: 0, 
+      crimsonRed: 0, lemonYellow: 0 
+    };
+
+    let isDragging = false;
+    let activeTab = null;
+
+    function toggleModal(show) {
+      document.getElementById('modal').style.display = show ? 'flex' : 'none';
+    }
+
+    // Draw the static UI on the canvas
+    function drawUI() {
+      ctx.clearRect(0, 0, canvasSize, canvasSize);
+      
+      // Draw Mix Gauge Ring (Outer)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, mixRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 25;
+      ctx.stroke();
+
+      // Draw Palette Ring (Inner)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, paletteRadius + 15, 0, Math.PI * 2);
+      ctx.fillStyle = "#222";
+      ctx.fill();
+      ctx.strokeStyle = "#444";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Draw Percentage Labels around outer ring
+      ctx.fillStyle = "#ccc";
+      ctx.font = "bold 16px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for(let i = 0; i <= 10; i++) {
+        let angle = (i/10) * Math.PI * 1.5 + Math.PI * 0.75;
+        let x = centerX + (mixRadius + 35) * Math.cos(angle);
+        let y = centerY + (mixRadius + 35) * Math.sin(angle);
+        ctx.fillText(i*10 + "%", x, y);
+      }
+    }
+
+    // Calculate the final color based on percentages
+    function mixPaints() {
+      let total = Object.values(mixState).reduce((a, b) => a + b, 0);
+      
+      if (total === 0) {
+        preview.style.backgroundColor = '#333';
+        display.innerText = "Drag colors to the outer ring to start mixing";
+        return;
+      }
+
+      let r = 0, g = 0, b = 0;
+      for (let key in mixState) {
+        let weight = mixState[key] / total;
+        r += paintLibrary[key].r * weight;
+        g += paintLibrary[key].g * weight;
+        b += paintLibrary[key].b * weight;
+      }
+
+      const finalColor = `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+      preview.style.backgroundColor = finalColor;
+      
+      // Format text summary
+      let summary = Object.entries(mixState)
+        .filter(([_, val]) => val > 0)
+        .map(([key, val]) => {
+          let readableName = key.replace(/([A-Z])/g, ' $1').trim();
+          readableName = readableName.charAt(0).toUpperCase() + readableName.slice(1);
+          return `<strong>${val}%</strong> ${readableName}`;
+        })
+        .join("<br>");
+        
+      display.innerHTML = summary;
+    }
+
+    // Handles mouse and touch dragging
+    function handleMove(e) {
+      if (!isDragging || !activeTab) return;
+      e.preventDefault(); // Prevent scrolling while mixing
+      
+      const rect = container.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      
+      const dx = clientX - (rect.left + rect.width / 2);
+      const dy = clientY - (rect.top + rect.height / 2);
+      
+      let distance = Math.sqrt(dx*dx + dy*dy);
+      let angle = Math.atan2(dy, dx);
+      let colorKey = activeTab.dataset.color;
+
+      let targetX, targetY;
+
+      // If dragged out to the outer ring, map it to a percentage
+      if (distance > (rect.width/2) * 0.5) {
+        // Offset the angle to match the visual UI, which starts at 135 degrees (0.75 * PI)
+        let shiftedAngle = angle - (Math.PI * 0.75);
+        if (shiftedAngle < 0) shiftedAngle += Math.PI * 2;
+        
+        // Calculate percentage based on the drawn 1.5 * PI arc length
+        let percent = Math.round((shiftedAngle / (Math.PI * 1.5)) * 100);
+        
+        // If dragged into the empty bottom gap, snap to 0% or 100%
+        if (percent > 100) {
+          if (shiftedAngle < Math.PI * 1.75) {
+            percent = 100;
+            angle = Math.PI * 2.25; // Snap visually to 100% mark
+          } else {
+            percent = 0;
+            angle = Math.PI * 0.75; // Snap visually to 0% mark
+          }
+        }
+        
+        mixState[colorKey] = percent;
+        targetX = centerX + mixRadius * Math.cos(angle);
+        targetY = centerY + mixRadius * Math.sin(angle);
+      } 
+      // If pulled back to center, reset it to 0%
+      else {
+        mixState[colorKey] = 0;
+        // Keep it clustered in the inner palette area
+        targetX = centerX + paletteRadius * Math.cos(angle);
+        targetY = centerY + paletteRadius * Math.sin(angle);
+      }
+
+      // Convert the 600x600 canvas coordinate to a CSS percentage for flawless mobile scaling
+      activeTab.style.left = ((targetX / canvasSize) * 100) + '%';
+      activeTab.style.top = ((targetY / canvasSize) * 100) + '%';
+
+      mixPaints();
+    }
+
+    // Setup initial positions for all 10 tabs
+    function initTabs() {
+      const tabs = document.querySelectorAll('.tab');
+      const totalTabs = tabs.length;
+      
+      tabs.forEach((tab, i) => {
+        // Distribute them evenly in the inner palette circle
+        const angle = (i / totalTabs) * Math.PI * 2;
+        const x = centerX + paletteRadius * Math.cos(angle);
+        const y = centerY + paletteRadius * Math.sin(angle);
+        
+        // Position using percentages so it remains responsive
+        tab.style.left = ((x / canvasSize) * 100) + '%';
+        tab.style.top = ((y / canvasSize) * 100) + '%';
+
+        const startDrag = (e) => {
+          isDragging = true;
+          activeTab = tab;
+        };
+
+        // Attach listeners directly to tabs
+        tab.addEventListener('mousedown', startDrag);
+        tab.addEventListener('touchstart', startDrag, { passive: false });
+      });
+    }
+
+    // Global drag event listeners
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('touchmove', handleMove, { passive: false });
+    
+    const endDrag = () => { isDragging = false; activeTab = null; };
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchend', endDrag);
+
+    // Run initialization
+    drawUI();
+    initTabs();
+    mixPaints();
+  </script>
+</body>
+</html>
