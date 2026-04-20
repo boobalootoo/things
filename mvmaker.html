@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Early Years Studio Creator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF.js for parsing PDF uploads -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800;900&display=swap');
+        
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #171717; /* Neutral 900 */
+            color: #d4d4d8; /* Neutral 300 */
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Custom Scrollbar for dark theme */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #262626; }
+        ::-webkit-scrollbar-thumb { background: #52525b; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #71717a; }
+
+        /* Timeline Specifics */
+        .timeline-container {
+            background-image: linear-gradient(90deg, #3f3f46 1px, transparent 1px);
+            background-size: 50px 100%; /* 50px = 1 second */
+        }
+        
+        .track-lane {
+            border-bottom: 1px solid #3f3f46;
+            position: relative;
+            height: 80px;
+        }
+
+        .region-block {
+            position: absolute;
+            top: 10px;
+            height: 60px;
+            border-radius: 8px;
+            cursor: grab;
+            user-select: none;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            border: 2px solid rgba(255,255,255,0.2);
+            transition: border-color 0.1s, box-shadow 0.1s;
+        }
+        .region-block:active { cursor: grabbing; border-color: rgba(255,255,255,0.8); z-index: 10; }
+        
+        /* Selected State for Copy/Paste/Delete */
+        .region-block.selected {
+            border-color: #fff;
+            box-shadow: 0 0 15px rgba(255,255,255,0.4);
+            z-index: 20;
+        }
+
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background-color: #ef4444; /* red-500 */
+            z-index: 50;
+            pointer-events: none;
+            box-shadow: 0 0 10px #ef4444;
+            transition: left 0.05s linear;
+        }
+        .playhead::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -6px;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-top: 10px solid #ef4444;
+        }
+
+        .waveform-bg {
+            background-image: repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.4) 2px, rgba(255,255,255,0.4) 4px);
+            mask-image: linear-gradient(to bottom, transparent 10%, black 50%, transparent 90%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 10%, black 50%, transparent 90%);
+        }
+
+        .beat-btn { transition: all 0.1s; }
+        .beat-btn.active { transform: scale(0.95); box-shadow: inset 0 4px 6px rgba(0,0,0,0.5); }
+        .playing-step { border: 3px solid #fff !important; filter: brightness(1.5); }
+
+        /* Range sliders */
+        input[type="range"].micro-slider {
+            height: 4px;
+            -webkit-appearance: none;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+        }
+        input[type="range"].micro-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 10px; height: 10px;
+            background: white; border-radius: 50%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen" tabindex="0">
+
+    <!-- Header / Top Control Bar -->
+    <header class="bg-neutral-800 border-b border-neutral-700 p-3 flex justify-between items-center z-20 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-500 p-2 rounded-lg text-white">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            </div>
+            <h1 class="text-xl font-black tracking-wide text-white hidden sm:block">Early Years Studio</h1>
+        </div>
+
+        <div class="flex items-center gap-4 bg-neutral-900 px-6 py-2 rounded-xl border border-neutral-700">
+            <div class="text-2xl font-mono text-emerald-400 font-bold w-20 text-center" id="time-display">00:00</div>
+            <button onclick="togglePlayback()" id="play-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white p-3 rounded-full transition shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button onclick="stopPlayback()" class="bg-neutral-700 hover:bg-neutral-600 text-white p-3 rounded-full transition">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            </button>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button onclick="toggleRecording()" id="record-btn" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition flex items-center gap-2 text-sm sm:text-base">
+                <span class="w-3 h-3 bg-white rounded-full animate-pulse" id="rec-dot"></span>
+                <span class="hidden sm:inline">Export Video</span>
+            </button>
+            <button onclick="toggleInfoModal()" class="bg-neutral-700 hover:bg-neutral-600 p-2 rounded-lg transition" title="Help & Info">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col overflow-hidden relative" id="main-area">
+        
+        <!-- Top Half: Canvas Preview -->
+        <div class="h-[30vh] sm:h-[35vh] bg-black relative flex items-center justify-center shrink-0 border-b border-neutral-700">
+            <canvas id="main-canvas" width="800" height="450" class="h-full object-contain shadow-2xl"></canvas>
+            <div class="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded backdrop-blur-sm flex gap-2 items-center">
+                <span>Preview</span>
+                <span id="loading-indicator" class="text-yellow-400 font-bold hidden animate-pulse">Processing Files...</span>
+            </div>
+            
+            <!-- Global Track Volumes -->
+            <div class="absolute right-2 top-2 bg-black/60 p-2 rounded text-xs text-neutral-300 flex flex-col gap-2 backdrop-blur">
+                <div class="font-bold border-b border-neutral-600 pb-1 mb-1">Master Track Volumes</div>
+                <label class="flex justify-between items-center gap-2">Vocals <input type="range" class="micro-slider w-16" min="0" max="2" step="0.1" value="1" id="vol-vocals" oninput="updateTrackVol('vocals', this.value)"></label>
+                <label class="flex justify-between items-center gap-2">Music <input type="range" class="micro-slider w-16" min="0" max="2" step="0.1" value="1" id="vol-music" oninput="updateTrackVol('music', this.value)"></label>
+            </div>
+        </div>
+
+        <!-- Bottom Half: DAW Timeline -->
+        <div class="flex-1 flex overflow-hidden bg-neutral-900 relative">
+            
+            <!-- Left Sidebar: Track Headers -->
+            <div class="w-64 bg-neutral-800 border-r border-neutral-700 flex flex-col shrink-0 z-10 overflow-y-hidden pt-8" id="track-headers">
+                
+                <!-- Track 1: Visuals -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-yellow-400 flex items-center gap-2">🖼️ Visuals</span>
+                        <label class="cursor-pointer bg-neutral-700 hover:bg-neutral-600 text-xs px-2 py-1 rounded text-white font-bold" title="Images or PDF">
+                            + Add
+                            <input type="file" accept="image/*,.pdf,.pptx" multiple class="hidden" onchange="handleVisualUpload(this)">
+                        </label>
+                    </div>
+                    <span class="text-[10px] text-neutral-500">Supports multiple Images / PDFs</span>
+                </div>
+
+                <!-- Track 2: Vocals -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-purple-400 flex items-center gap-2">🎤 Vocals</span>
+                        <label class="cursor-pointer bg-neutral-700 hover:bg-neutral-600 text-xs px-2 py-1 rounded text-white font-bold">
+                            + Audio
+                            <input type="file" accept="audio/*" class="hidden" onchange="addAudioRegion(this, 'vocals')">
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between mt-1">
+                        <span class="text-[10px] text-neutral-500">Waveform & Blocks</span>
+                        <label class="flex items-center gap-1 cursor-pointer" title="Robot / Autotune Effect">
+                            <input type="checkbox" id="fx-toggle" class="rounded accent-purple-500 w-3 h-3" onchange="toggleFX(this.checked)">
+                            <span class="text-[10px] font-bold text-purple-300">FX</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Track 3: Lyrics -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-blue-400 flex items-center gap-2">📝 Lyrics</span>
+                        <div class="flex gap-1">
+                            <button onclick="startAutoDetectLyrics()" class="bg-blue-600 hover:bg-blue-500 text-[10px] px-2 py-1 rounded text-white font-bold" title="Voice Typing / Auto Detect">🎙️ Auto</button>
+                            <button onclick="addLyricRegion()" class="bg-neutral-700 hover:bg-neutral-600 text-[10px] px-2 py-1 rounded text-white font-bold">+ Text</button>
+                        </div>
+                    </div>
+                    <span class="text-[10px] text-neutral-500" id="mic-status">Editable text</span>
+                </div>
+
+                <!-- Track 4: Layers of Sound -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-cyan-400 flex items-center gap-2">🎶 Sound Layers</span>
+                        <label class="cursor-pointer bg-neutral-700 hover:bg-neutral-600 text-xs px-2 py-1 rounded text-white font-bold">
+                            + Audio
+                            <input type="file" accept="audio/*" class="hidden" onchange="addAudioRegion(this, 'music')">
+                        </label>
+                    </div>
+                    <span class="text-[10px] text-neutral-500">Backing tracks</span>
+                </div>
+
+                <!-- Track 5: Melodic BeatMaker -->
+                <div class="h-[80px] border-b border-neutral-700 p-3 flex flex-col justify-center bg-neutral-800/80">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-pink-400 flex items-center gap-2">🎹 Melodic Beat</span>
+                        <button onclick="toggleBeatModal()" class="bg-pink-600 hover:bg-pink-500 text-[10px] px-2 py-1 rounded text-white font-bold shadow">Edit Grid</button>
+                    </div>
+                    <span class="text-[10px] text-neutral-500" id="beat-status-text">Loops continuously</span>
+                </div>
+
+            </div>
+
+            <!-- Right Area: Timeline Grid -->
+            <div class="flex-1 overflow-auto relative timeline-container" id="timeline-scroll-area">
+                <div class="h-8 bg-neutral-800/90 border-b border-neutral-700 sticky top-0 z-20 flex text-[10px] text-neutral-400" id="time-ruler"></div>
+                <div class="playhead" id="playhead" style="left: 0px;"></div>
+                
+                <div class="track-lane" id="lane-visuals" onclick="deselectAll()"></div>
+                <div class="track-lane" id="lane-vocals" onclick="deselectAll()"></div>
+                <div class="track-lane" id="lane-lyrics" onclick="deselectAll()"></div>
+                <div class="track-lane" id="lane-music" onclick="deselectAll()"></div>
+                
+                <div class="track-lane opacity-50 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,#3f3f46_10px,#3f3f46_20px)] flex items-center px-4" id="lane-beat" onclick="deselectAll()">
+                    <span class="text-xs font-bold text-neutral-500 uppercase tracking-widest">Melodic Sequencer Active Layer</span>
+                </div>
+                <div class="h-20" onclick="deselectAll()"></div> <!-- spacer -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Melodic Sequencer Modal -->
+    <div id="beat-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-neutral-800 w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-neutral-700">
+            <div class="bg-neutral-900 p-4 flex justify-between items-center border-b border-neutral-700">
+                <h2 class="text-xl font-black text-pink-400 flex items-center gap-2">🎹 Melodic Sequencer</h2>
+                <button onclick="toggleBeatModal()" class="text-neutral-400 hover:text-white transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-4 sm:p-6">
+                <!-- Controls -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 bg-neutral-900 p-4 rounded-xl border border-neutral-700 text-sm">
+                    <div>
+                        <label class="font-bold text-neutral-300 block mb-1">Master BPM: <span id="bpm-display" class="text-pink-400">120</span></label>
+                        <input type="range" id="bpm-slider" min="60" max="180" value="120" class="w-full accent-pink-500" oninput="updateBPM(this.value)">
+                    </div>
+                    <div>
+                        <label class="font-bold text-neutral-300 block mb-1">Instrument Type</label>
+                        <select id="synth-type" class="w-full bg-neutral-800 border border-neutral-600 rounded p-1 text-white">
+                            <option value="sine">Soft (Sine)</option>
+                            <option value="triangle">Pluck (Triangle)</option>
+                            <option value="square">Retro (Square)</option>
+                            <option value="sawtooth">Synth (Sawtooth)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="font-bold text-neutral-300 block mb-1">Note Length</label>
+                        <input type="range" id="note-length" min="0.1" max="1" step="0.1" value="0.3" class="w-full accent-blue-500">
+                    </div>
+                    <div>
+                        <label class="font-bold text-neutral-300 block mb-1">Beat Volume</label>
+                        <input type="range" id="beat-volume" min="0" max="1" step="0.1" value="0.7" class="w-full accent-green-500">
+                    </div>
+                </div>
+                
+                <!-- Grid -->
+                <div class="overflow-x-auto pb-2">
+                    <div class="min-w-[600px] flex flex-col gap-1" id="melodic-grid">
+                        <!-- JS Grid -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="info-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-neutral-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-neutral-700 flex flex-col max-h-[90vh]">
+            <div class="bg-neutral-900 p-4 flex justify-between items-center border-b border-neutral-700">
+                <h2 class="text-xl font-black text-white">How to use the Studio</h2>
+                <button onclick="toggleInfoModal()" class="text-neutral-400 hover:text-white transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto text-neutral-300 space-y-4 text-sm">
+                <ul class="list-disc pl-5 space-y-3">
+                    <li><strong>Uploads:</strong> Upload multiple images at once, or upload a `.pdf` file to auto-extract slides. <em>(Note: For PPTX, please export to PDF first and upload the PDF!)</em></li>
+                    <li><strong>Arranging:</strong> Drag blocks left/right. Drag the right edge of images/lyrics to resize them.</li>
+                    <li><strong>Selecting & Editing:</strong> Click a block to select it. Press <b>Delete/Backspace</b> to remove it. Use <b>Ctrl+C</b> to copy and <b>Ctrl+V</b> to paste it at the red playhead line.</li>
+                    <li><strong>Voice Typing (Lyrics):</strong> Click the <b>🎙️ Auto</b> button in the Lyrics track, say your lyrics into the mic, and they will be pasted directly onto the timeline!</li>
+                    <li><strong>Volume Automation:</strong> Change track volumes via the top right sliders on the video. You can also adjust the volume of <em>individual audio blocks</em> using the tiny slider directly on the block itself!</li>
+                    <li><strong>Melodic Beats:</strong> The beatmaker now supports musical notes (Do-Re-Mi). Change instruments and note length for custom background melodies.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- System & State ---
+        let audioCtx;
+        const PX_PER_SEC = 50; 
+        const TIMELINE_DURATION = 240; // 4 minutes max
+        
+        let isPlaying = false;
+        let playStartTime = 0;
+        let pausedAt = 0;
+        let animationFrameId;
+
+        let canvas, ctx;
+        let studioDestNode;
+        
+        // Track Volumes
+        const trackVolumes = { vocals: 1.0, music: 1.0, beat: 0.7 };
+        let liveGainNodes = { vocals: null, music: null, beat: null };
+
+        // Regions Data Store
+        let regions = [];
+        let selectedRegionId = null;
+        let clipboardRegion = null;
+        
+        // Dragging state
+        let draggingRegion = null;
+        let resizingRegion = null;
+        let dragStartX = 0;
+        let dragStartOffset = 0;
+
+        // Active Audio Sources
+        let activeSources = [];
+
+        // --- Init ---
+        window.onload = () => {
+            canvas = document.getElementById('main-canvas');
+            ctx = canvas.getContext('2d');
+            buildTimeRuler();
+            buildMelodicSequencer();
+            drawCanvasPlaceholder("Add blocks to timeline & Press Play");
+            setupDragAndDrop();
+            setupKeyboardShortcuts();
+        };
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        // --- Modals & UI ---
+        function toggleInfoModal() { document.getElementById('info-modal').classList.toggle('hidden'); }
+        function toggleBeatModal() { document.getElementById('beat-modal').classList.toggle('hidden'); }
+        function showLoading(show) { document.getElementById('loading-indicator').style.display = show ? 'inline' : 'none'; }
+
+        function buildTimeRuler() {
+            const ruler = document.getElementById('time-ruler');
+            const totalWidth = TIMELINE_DURATION * PX_PER_SEC;
+            ruler.style.width = `${totalWidth}px`;
+            
+            for(let i=0; i<=TIMELINE_DURATION; i+=5) {
+                const marker = document.createElement('div');
+                marker.style.position = 'absolute';
+                marker.style.left = `${i * PX_PER_SEC}px`;
+                marker.style.borderLeft = '1px solid #52525b';
+                marker.style.paddingLeft = '4px';
+                marker.style.height = '100%';
+                marker.innerText = `0:${i.toString().padStart(2, '0')}`;
+                if(i%10 === 0) { marker.style.fontWeight = 'bold'; marker.style.color = '#a1a1aa'; }
+                ruler.appendChild(marker);
+            }
+            document.querySelectorAll('.track-lane').forEach(lane => lane.style.width = `${totalWidth}px`);
+        }
+
+        // --- Region Creation & Management ---
+        function createRegionElement(type, startSec, durationSec, trackId, bgColorClass, contentHtml) {
+            const lane = document.getElementById(`lane-${trackId}`);
+            const el = document.createElement('div');
+            const id = 'reg_' + Date.now() + Math.floor(Math.random()*1000);
+            
+            el.className = `region-block ${bgColorClass}`;
+            el.id = id;
+            el.style.left = `${startSec * PX_PER_SEC}px`;
+            el.style.width = `${durationSec * PX_PER_SEC}px`;
+            el.innerHTML = contentHtml;
+
+            // Selection Logic
+            el.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                selectRegion(id);
+            });
+
+            // Resize handle
+            if(type === 'visual' || type === 'lyric') {
+                const handle = document.createElement('div');
+                handle.className = 'absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize bg-black/20 hover:bg-black/40 z-30';
+                handle.onmousedown = (e) => {
+                    e.stopPropagation(); selectRegion(id);
+                    resizingRegion = getRegionById(id);
+                    dragStartX = e.pageX;
+                    dragStartOffset = parseFloat(el.style.width);
+                };
+                el.appendChild(handle);
+            }
+
+            lane.appendChild(el);
+            const regionObj = { id, type, trackId, bgColorClass, start: startSec, duration: durationSec, el, data: { volume: 1.0 } };
+            regions.push(regionObj);
+            return regionObj;
+        }
+
+        function getRegionById(id) { return regions.find(r => r.id === id); }
+        
+        function selectRegion(id) {
+            deselectAll();
+            selectedRegionId = id;
+            const reg = getRegionById(id);
+            if(reg) reg.el.classList.add('selected');
+        }
+
+        function deselectAll() {
+            selectedRegionId = null;
+            document.querySelectorAll('.region-block').forEach(el => el.classList.remove('selected'));
+        }
+
+        function deleteRegionById(id) {
+            const reg = getRegionById(id);
+            if(reg) {
+                reg.el.remove();
+                regions = regions.filter(r => r.id !== id);
+            }
+        }
+
+        // --- PDF & Image Upload Logic ---
+        async function handleVisualUpload(input) {
+            if(!input.files || input.files.length === 0) return;
+            showLoading(true);
+            
+            const files = Array.from(input.files);
+            let currentPlayheadTime = parseFloat(document.getElementById('playhead').style.left || 0) / PX_PER_SEC;
+            
+            for(let file of files) {
+                if(file.name.endsWith('.pptx') || file.name.endsWith('.ppt')) {
+                    alert(`Cannot natively parse ${file.name}. Please open it in PowerPoint/Keynote and export to PDF or Images, then upload those!`);
+                    continue;
+                }
+                
+                if(file.type === 'application/pdf') {
+                    // PDF.js processing
+                    try {
+                        const arrayBuffer = await file.arrayBuffer();
+                        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                        for(let i=1; i<=pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const viewport = page.getViewport({scale: 1.0}); // lower scale for memory
+                            const tempCanvas = document.createElement('canvas');
+                            const tempCtx = tempCanvas.getContext('2d');
+                            tempCanvas.height = viewport.height;
+                            tempCanvas.width = viewport.width;
+                            await page.render({canvasContext: tempCtx, viewport: viewport}).promise;
+                            
+                            const imgUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+                            const img = new Image();
+                            img.src = imgUrl;
+                            addSingleVisualRegion(img, currentPlayheadTime);
+                            currentPlayheadTime += 5; // offset next slide by 5 sec
+                        }
+                    } catch(e) { console.error("PDF Error", e); alert("Error parsing PDF."); }
+                } else if(file.type.startsWith('image/')) {
+                    // Standard Image
+                    const url = URL.createObjectURL(file);
+                    const img = new Image();
+                    img.onload = () => { addSingleVisualRegion(img, currentPlayheadTime); currentPlayheadTime += 5; };
+                    img.src = url;
+                }
+            }
+            input.value = '';
+            showLoading(false);
+        }
+
+        function addSingleVisualRegion(imgObj, startSec) {
+            const html = `<img src="${imgObj.src}" class="h-full w-full object-cover opacity-80 pointer-events-none">`;
+            const reg = createRegionElement('visual', startSec, 5, 'visuals', 'bg-yellow-600', html);
+            reg.data.img = imgObj;
+        }
+
+        // --- Audio Uploads & Volume Automation ---
+        async function addAudioRegion(input, trackType) {
+            if(!input.files[0]) return;
+            initAudio(); showLoading(true);
+            const file = input.files[0];
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+            
+            const duration = buffer.duration;
+            const bgColor = trackType === 'vocals' ? 'bg-purple-600' : 'bg-cyan-600';
+            const icon = trackType === 'vocals' ? '🎤' : '🎶';
+            
+            // Add miniature volume slider inside the block
+            const html = `
+                <div class="w-full h-full waveform-bg opacity-40 absolute inset-0 pointer-events-none"></div>
+                <div class="relative z-10 px-2 w-full flex flex-col justify-center gap-1">
+                    <span class="text-xs font-bold text-white truncate drop-shadow-md">${icon} ${file.name}</span>
+                    <input type="range" class="micro-slider w-full pointer-events-auto" min="0" max="1.5" step="0.1" value="1" title="Block Volume" 
+                           onmousedown="event.stopPropagation()" oninput="updateBlockVol(this, '${trackType}')">
+                </div>
+            `;
+            
+            const currentPlayheadTime = parseFloat(document.getElementById('playhead').style.left || 0) / PX_PER_SEC;
+            const reg = createRegionElement(trackType === 'vocals' ? 'vocal' : 'music', currentPlayheadTime, duration, trackType, bgColor, html);
+            reg.data.buffer = buffer;
+            reg.data.volume = 1.0;
+            reg.data.liveBlockGain = null; // Stored when playing
+            
+            input.value = ''; showLoading(false);
+        }
+
+        function updateBlockVol(slider, trackType) {
+            const regionBlock = slider.closest('.region-block');
+            const reg = getRegionById(regionBlock.id);
+            if(reg) {
+                reg.data.volume = parseFloat(slider.value);
+                // Apply immediately if playing
+                if(reg.data.liveBlockGain && isPlaying) {
+                    // Combine block volume with track master volume
+                    reg.data.liveBlockGain.gain.setTargetAtTime(reg.data.volume * trackVolumes[trackType], audioCtx.currentTime, 0.05);
+                }
+            }
+        }
+
+        function updateTrackVol(trackType, val) {
+            trackVolumes[trackType] = parseFloat(val);
+            // Apply to master gain node immediately if playing
+            if(liveGainNodes[trackType]) {
+                liveGainNodes[trackType].gain.setTargetAtTime(trackVolumes[trackType], audioCtx.currentTime, 0.05);
+            }
+        }
+
+        // --- Lyrics & Speech-to-Text ---
+        function addLyricRegion(text = '') {
+            const currentPlayheadTime = parseFloat(document.getElementById('playhead').style.left || 0) / PX_PER_SEC;
+            const html = `
+                <input type="text" placeholder="Type lyrics..." value="${text}" class="bg-transparent border-none outline-none text-white font-bold w-full h-full px-2 placeholder-blue-300" 
+                onmousedown="event.stopPropagation()" oninput="updateLyricData(this)">
+            `;
+            const reg = createRegionElement('lyric', currentPlayheadTime, 4, 'lyrics', 'bg-blue-600', html);
+            reg.data.text = text;
+        }
+
+        function updateLyricData(inputEl) {
+            const reg = getRegionById(inputEl.closest('.region-block').id);
+            if(reg) reg.data.text = inputEl.value;
+        }
+
+        let recognition;
+        function startAutoDetectLyrics() {
+            if (!('webkitSpeechRecognition' in window)) {
+                alert("Voice typing is not supported in your browser. Please use Chrome/Edge."); return;
+            }
+            const status = document.getElementById('mic-status');
+            
+            if(recognition && recognition.isStarted) {
+                recognition.stop(); return;
+            }
+            
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            
+            recognition.onstart = () => {
+                recognition.isStarted = true;
+                status.innerText = "🔴 Listening... Speak now";
+                status.classList.add('text-red-400', 'font-bold');
+            };
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                addLyricRegion(transcript);
+            };
+            
+            recognition.onerror = (e) => { console.error(e); status.innerText = "Microphone error"; };
+            recognition.onend = () => {
+                recognition.isStarted = false;
+                status.innerText = "Editable text";
+                status.classList.remove('text-red-400', 'font-bold');
+            };
+            
+            recognition.start();
+        }
+
+        // --- Interaction: Drag, Drop, Copy, Paste ---
+        function setupDragAndDrop() {
+            const scrollArea = document.getElementById('timeline-scroll-area');
+            
+            scrollArea.addEventListener('mousedown', (e) => {
+                // If clicking background (not a region), move playhead
+                if(!e.target.closest('.region-block') && e.target.classList.contains('track-lane')) {
+                    const rect = scrollArea.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left + scrollArea.scrollLeft;
+                    document.getElementById('playhead').style.left = `${clickX}px`;
+                }
+
+                if(e.target.closest('.region-block') && !resizingRegion) {
+                    draggingRegion = getRegionById(e.target.closest('.region-block').id);
+                    dragStartX = e.pageX;
+                    dragStartOffset = parseFloat(draggingRegion.el.style.left);
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if(draggingRegion) {
+                    const dx = e.pageX - dragStartX;
+                    let newLeft = Math.max(0, dragStartOffset + dx);
+                    draggingRegion.el.style.left = `${newLeft}px`;
+                    draggingRegion.start = newLeft / PX_PER_SEC;
+                }
+                if(resizingRegion) {
+                    const dx = e.pageX - dragStartX;
+                    let newWidth = Math.max(20, dragStartOffset + dx);
+                    resizingRegion.el.style.width = `${newWidth}px`;
+                    resizingRegion.duration = newWidth / PX_PER_SEC;
+                }
+            });
+
+            window.addEventListener('mouseup', () => { draggingRegion = null; resizingRegion = null; });
+        }
+
+        function setupKeyboardShortcuts() {
+            window.addEventListener('keydown', (e) => {
+                // Don't trigger if typing in input
+                if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+                // Delete
+                if(e.key === 'Delete' || e.key === 'Backspace') {
+                    if(selectedRegionId) deleteRegionById(selectedRegionId);
+                }
+                
+                // Copy
+                if((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                    if(selectedRegionId) {
+                        const reg = getRegionById(selectedRegionId);
+                        clipboardRegion = { ...reg, data: { ...reg.data } }; // shallow clone data
+                    }
+                }
+                
+                // Paste
+                if((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                    if(clipboardRegion) {
+                        const currentPlayheadTime = parseFloat(document.getElementById('playhead').style.left || 0) / PX_PER_SEC;
+                        
+                        // Recreate HTML based on type
+                        let html = '';
+                        if(clipboardRegion.type === 'visual') {
+                            html = `<img src="${clipboardRegion.data.img.src}" class="h-full w-full object-cover opacity-80 pointer-events-none">`;
+                        } else if(clipboardRegion.type === 'lyric') {
+                            html = `<input type="text" value="${clipboardRegion.data.text || ''}" class="bg-transparent border-none outline-none text-white font-bold w-full h-full px-2" onmousedown="event.stopPropagation()" oninput="updateLyricData(this)">`;
+                        } else {
+                            const icon = clipboardRegion.type === 'vocal' ? '🎤' : '🎶';
+                            html = `<div class="w-full h-full waveform-bg opacity-40 absolute inset-0 pointer-events-none"></div><div class="relative z-10 px-2 w-full flex flex-col justify-center gap-1"><span class="text-xs font-bold text-white truncate drop-shadow-md">${icon} Copied</span><input type="range" class="micro-slider w-full pointer-events-auto" min="0" max="1.5" step="0.1" value="${clipboardRegion.data.volume}" onmousedown="event.stopPropagation()" oninput="updateBlockVol(this, '${clipboardRegion.trackId}')"></div>`;
+                        }
+
+                        const newReg = createRegionElement(
+                            clipboardRegion.type, currentPlayheadTime, clipboardRegion.duration, 
+                            clipboardRegion.trackId, clipboardRegion.bgColorClass, html
+                        );
+                        // Deep copy essential data
+                        newReg.data = { ...clipboardRegion.data };
+                        selectRegion(newReg.id);
+                    }
+                }
+                
+                // Play/Pause shortcut
+                if(e.code === 'Space') { e.preventDefault(); togglePlayback(); }
+            });
+        }
+
+        // --- Audio FX ---
+        let fxEnabled = false;
+        function toggleFX(checked) { fxEnabled = checked; }
+
+        // --- Melodic Beat Sequencer (Do Re Mi) ---
+        const beatSteps = 16;
+        const melodicNotes = [
+            { name: 'Ti', freq: 493.88, color: 'bg-pink-500' },
+            { name: 'La', freq: 440.00, color: 'bg-purple-500' },
+            { name: 'So', freq: 392.00, color: 'bg-indigo-500' },
+            { name: 'Fa', freq: 349.23, color: 'bg-blue-500' },
+            { name: 'Mi', freq: 329.63, color: 'bg-teal-500' },
+            { name: 'Re', freq: 293.66, color: 'bg-green-500' },
+            { name: 'Do', freq: 261.63, color: 'bg-yellow-500' },
+            { name: 'Kick', freq: 0, color: 'bg-red-500', isDrum: true } // Keep a drum for rhythm
+        ];
+        
+        const melodicGrid = melodicNotes.map(() => Array(beatSteps).fill(false));
+        let bpm = 120;
+
+        function buildMelodicSequencer() {
+            const container = document.getElementById('melodic-grid');
+            container.innerHTML = '';
+            melodicNotes.forEach((note, rIdx) => {
+                const row = document.createElement('div');
+                row.className = 'flex gap-1 items-center';
+                
+                const label = document.createElement('div');
+                label.className = `w-12 sm:w-16 text-[10px] sm:text-xs font-bold text-white ${note.color} py-2 text-center rounded drop-shadow`;
+                label.innerText = note.name;
+                row.appendChild(label);
+                
+                for(let cIdx=0; cIdx<beatSteps; cIdx++) {
+                    const btn = document.createElement('button');
+                    // Add subtle grouping visual
+                    const groupClass = cIdx % 4 === 0 ? 'ml-2' : '';
+                    btn.className = `beat-btn flex-1 h-8 sm:h-10 rounded border border-neutral-700 bg-neutral-800 hover:bg-neutral-600 ${groupClass}`;
+                    btn.onclick = () => {
+                        melodicGrid[rIdx][cIdx] = !melodicGrid[rIdx][cIdx];
+                        if(melodicGrid[rIdx][cIdx]) {
+                            btn.classList.add(note.color, 'border-transparent', 'active');
+                            btn.classList.remove('bg-neutral-800');
+                            initAudio(); playMelodicNote(note, audioCtx.currentTime);
+                        } else {
+                            btn.classList.remove(note.color, 'border-transparent', 'active');
+                            btn.classList.add('bg-neutral-800');
+                        }
+                    };
+                    row.appendChild(btn);
+                }
+                container.appendChild(row);
+            });
+        }
+        function updateBPM(val) { bpm = val; document.getElementById('bpm-display').innerText = val; }
+
+        function playMelodicNote(noteObj, time) {
+            if(!audioCtx) return;
+            const synthType = document.getElementById('synth-type').value;
+            const noteLength = parseFloat(document.getElementById('note-length').value);
+            const beatVol = parseFloat(document.getElementById('beat-volume').value);
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            // Connect chain: osc -> gain -> masterBeatGain -> destination
+            osc.connect(gain);
+            
+            // Use live gain node if playing, otherwise temporary
+            const dest = (isPlaying && liveGainNodes.beat) ? liveGainNodes.beat : audioCtx.destination;
+            gain.connect(dest);
+            if(studioDestNode && !isPlaying) gain.connect(studioDestNode); // for manual preview
+
+            // Volume Envelope (Attack, Sustain, Release)
+            gain.gain.setValueAtTime(0, time);
+            gain.gain.linearRampToValueAtTime(beatVol, time + 0.02); // attack
+            gain.gain.setValueAtTime(beatVol, time + noteLength - 0.05); // sustain
+            gain.gain.linearRampToValueAtTime(0, time + noteLength); // release
+
+            if(noteObj.isDrum) {
+                // Simple Kick
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, time);
+                osc.frequency.exponentialRampToValueAtTime(0.01, time + noteLength);
+            } else {
+                // Melodic
+                osc.type = synthType;
+                osc.frequency.setValueAtTime(noteObj.freq, time);
+            }
+
+            osc.start(time);
+            osc.stop(time + noteLength);
+        }
+
+        // --- Playback Engine ---
+        function togglePlayback() {
+            if(isPlaying) stopPlayback();
+            else startPlayback();
+        }
+
+        function startPlayback() {
+            initAudio(); deselectAll();
+            isPlaying = true;
+            document.getElementById('play-btn').innerHTML = '<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+            document.getElementById('play-btn').classList.replace('bg-emerald-600', 'bg-amber-500');
+            
+            studioDestNode = audioCtx.createMediaStreamDestination();
+            
+            // Resume from playhead position
+            const currentPx = parseFloat(document.getElementById('playhead').style.left || 0);
+            const startOffsetSec = currentPx / PX_PER_SEC;
+            
+            playStartTime = audioCtx.currentTime - startOffsetSec;
+
+            // Setup Master Track Gains
+            ['vocals', 'music', 'beat'].forEach(track => {
+                liveGainNodes[track] = audioCtx.createGain();
+                liveGainNodes[track].gain.value = trackVolumes[track];
+                liveGainNodes[track].connect(audioCtx.destination);
+                liveGainNodes[track].connect(studioDestNode);
+            });
+
+            // Schedule Audio Regions that occur *after* the current playhead
+            activeSources = [];
+            regions.forEach(reg => {
+                if((reg.type === 'vocal' || reg.type === 'music') && reg.data && reg.data.buffer) {
+                    
+                    // Only schedule if the region ends after our start offset
+                    if(reg.start + reg.duration > startOffsetSec) {
+                        const src = audioCtx.createBufferSource();
+                        src.buffer = reg.data.buffer;
+                        
+                        // FX for vocals
+                        if(reg.type === 'vocal' && fxEnabled) src.playbackRate.value = 1.3; 
+
+                        // Individual block gain
+                        const blockGain = audioCtx.createGain();
+                        blockGain.gain.value = reg.data.volume;
+                        reg.data.liveBlockGain = blockGain; // save ref for live tweaking
+
+                        src.connect(blockGain);
+                        blockGain.connect(liveGainNodes[reg.trackId]); // Route to track master
+                        
+                        // Calculate when to start playing
+                        let scheduleTime = playStartTime + reg.start;
+                        let offsetIntoBuffer = 0;
+                        
+                        // If playhead is currently inside the region, start immediately but offset the audio
+                        if(startOffsetSec > reg.start) {
+                            scheduleTime = audioCtx.currentTime;
+                            offsetIntoBuffer = startOffsetSec - reg.start;
+                        }
+
+                        src.start(scheduleTime, offsetIntoBuffer);
+                        activeSources.push(src);
+                    }
+                }
+            });
+
+            animationFrameId = requestAnimationFrame(renderLoop);
+            
+            // Start Beat loop
+            beatNextNoteTime = audioCtx.currentTime + 0.05;
+            beatCurrentStep = Math.floor((startOffsetSec / (60/bpm/2))) % beatSteps; // approximate sync to timeline
+            beatScheduler();
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+            document.getElementById('play-btn').innerHTML = '<svg class="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+            document.getElementById('play-btn').classList.replace('bg-amber-500', 'bg-emerald-600');
+            
+            activeSources.forEach(src => { try{ src.stop(); }catch(e){} });
+            activeSources = [];
+            clearTimeout(beatTimerID);
+            
+            if(isRecording) toggleRecording();
+
+            // DO NOT reset playhead. Let it stay paused.
+            drawCanvasPlaceholder("Paused. Press Play to resume.");
+            cancelAnimationFrame(animationFrameId);
+        }
+
+        // Beat Scheduler
+        let beatNextNoteTime = 0.0;
+        let beatCurrentStep = 0;
+        let beatTimerID;
+        function beatScheduler() {
+            if(!isPlaying) return;
+            while (beatNextNoteTime < audioCtx.currentTime + 0.1) {
+                for(let r=0; r<melodicNotes.length; r++) {
+                    if(melodicGrid[r][beatCurrentStep]) playMelodicNote(melodicNotes[r], beatNextNoteTime);
+                }
+                const secPerBeat = 60.0 / bpm;
+                beatNextNoteTime += 0.5 * secPerBeat; // 8th notes
+                beatCurrentStep = (beatCurrentStep + 1) % beatSteps;
+            }
+            beatTimerID = setTimeout(beatScheduler, 25.0);
+        }
+
+        // Render Loop
+        function renderLoop() {
+            if(!isPlaying) return;
+            const elapsed = audioCtx.currentTime - playStartTime;
+            
+            // Update Playhead
+            const pxPos = elapsed * PX_PER_SEC;
+            document.getElementById('playhead').style.left = `${pxPos}px`;
+            
+            // Update Time Display
+            const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+            const secs = Math.floor(elapsed % 60).toString().padStart(2, '0');
+            document.getElementById('time-display').innerText = `${mins}:${secs}`;
+
+            // Auto-scroll
+            const scrollArea = document.getElementById('timeline-scroll-area');
+            if(pxPos > scrollArea.scrollLeft + scrollArea.clientWidth - 100) {
+                scrollArea.scrollLeft = pxPos - scrollArea.clientWidth / 2;
+            }
+
+            // Draw Canvas
+            ctx.fillStyle = '#09090b'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            let activeVisual = null;
+            let activeLyric = null;
+
+            regions.forEach(reg => {
+                if(elapsed >= reg.start && elapsed <= (reg.start + reg.duration)) {
+                    if(reg.type === 'visual') activeVisual = reg;
+                    if(reg.type === 'lyric') activeLyric = reg;
+                }
+            });
+
+            // Visuals
+            if(activeVisual && activeVisual.data.img) {
+                const img = activeVisual.data.img;
+                const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+                const x = (canvas.width / 2) - (img.width / 2) * scale;
+                const y = (canvas.height / 2) - (img.height / 2) * scale;
+                ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+            } else { drawVisualizer(elapsed); }
+
+            // Lyrics
+            if(activeLyric && activeLyric.data.text) {
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+                ctx.fillStyle = '#60a5fa'; // blue-400
+                ctx.font = 'bold 36px Nunito';
+                ctx.textAlign = 'center';
+                ctx.fillText(activeLyric.data.text, canvas.width/2, canvas.height - 30);
+            }
+
+            if(elapsed >= TIMELINE_DURATION) { stopPlayback(); return; }
+
+            animationFrameId = requestAnimationFrame(renderLoop);
+        }
+
+        function drawVisualizer(time) {
+            const numBars = 16;
+            const barWidth = canvas.width / numBars;
+            for(let i=0; i<numBars; i++) {
+                const h = 20 + Math.abs(Math.sin((time * 3) + i) * 150);
+                ctx.fillStyle = `hsla(${(time*40 + i*20)%360}, 70%, 50%, 0.5)`;
+                ctx.fillRect(i * barWidth + 5, canvas.height - h, barWidth - 10, h);
+            }
+        }
+
+        function drawCanvasPlaceholder(text) {
+            ctx.fillStyle = '#09090b'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#52525b'; ctx.font = '24px Nunito'; ctx.textAlign = 'center';
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+        }
+
+        // --- Recording / Export ---
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+
+        function toggleRecording() {
+            const btn = document.getElementById('record-btn');
+            const dot = document.getElementById('rec-dot');
+            
+            if (!isRecording) {
+                if(!isPlaying) { alert("Please press Play first, then click Export to start recording the show!"); return; }
+                try {
+                    const canvasStream = canvas.captureStream(30);
+                    const combinedStream = new MediaStream([
+                        ...canvasStream.getVideoTracks(),
+                        ...studioDestNode.stream.getAudioTracks()
+                    ]);
+
+                    mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+                    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+                    mediaRecorder.onstop = saveRecording;
+                    mediaRecorder.start();
+                    
+                    isRecording = true;
+                    btn.classList.replace('bg-red-600', 'bg-neutral-800');
+                    btn.classList.add('border', 'border-red-500', 'text-red-500');
+                    dot.classList.replace('bg-white', 'bg-red-500');
+                    btn.querySelector('span:last-child').innerText = 'Stop Recording';
+                } catch (e) { alert("Recording not supported in this environment."); }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                btn.classList.replace('bg-neutral-800', 'bg-red-600');
+                btn.classList.remove('border', 'border-red-500', 'text-red-500');
+                dot.classList.replace('bg-red-500', 'bg-white');
+                btn.querySelector('span:last-child').innerText = 'Export Video';
+            }
+        }
+
+        function saveRecording() {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            recordedChunks = [];
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            document.body.appendChild(a);
+            a.style = 'display: none';
+            a.href = url;
+            a.download = `Studio-Export-${Date.now()}.webm`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
