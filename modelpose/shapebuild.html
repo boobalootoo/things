@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Articulated Shape Builder Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load Three.js Core & Controls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+    
+    <!-- Load GLTF Exporter for 3D Exporting -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+    
+    <!-- Load Cannon.js for Physics Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #0f172a; }
+        canvas { display: block; touch-action: none; outline: none; }
+        .toolbar-scroll::-webkit-scrollbar { height: 6px; }
+        .toolbar-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .panel-scroll::-webkit-scrollbar { width: 4px; }
+        .panel-scroll::-webkit-scrollbar-thumb { background: #64748b; border-radius: 4px; }
+    </style>
+</head>
+<body class="flex flex-col text-slate-200 font-sans">
+
+    <!-- Top Toolbar -->
+    <header class="bg-slate-800 border-b border-slate-700 shadow-lg z-20 flex justify-between items-center px-4 py-3 shrink-0">
+        <div class="flex items-center gap-2 shrink-0">
+            <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"></path>
+            </svg>
+            <h1 class="text-xl font-bold tracking-wide shrink-0 hidden sm:block">Shape<span class="text-emerald-400">Builder</span> <span class="text-xs bg-emerald-900 text-emerald-200 px-2 py-1 rounded">PRO</span></h1>
+        </div>
+        
+        <div class="flex gap-2 overflow-x-auto toolbar-scroll w-full ml-4 pb-1 items-center">
+            <button onclick="setMode('camera')" id="btn-camera" class="mode-btn flex-shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium transition-colors hover:bg-emerald-500">
+                Camera
+            </button>
+            <div class="w-px h-6 bg-slate-600 mx-1 shrink-0"></div>
+            
+            <button onclick="setMode('draw')" id="btn-draw" class="mode-btn flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium transition-colors hover:bg-slate-600 border border-slate-600">
+                Draw:
+            </button>
+            <select id="shape-type" class="flex-shrink-0 px-2 py-1.5 rounded-lg bg-slate-900 text-slate-300 text-sm border border-slate-600 outline-none focus:border-emerald-500 cursor-pointer">
+                <option value="box">Box</option>
+                <option value="cylinder">Limb</option>
+                <option value="sphere">Sphere</option>
+            </select>
+            
+            <div class="w-px h-6 bg-slate-600 mx-1 shrink-0"></div>
+            <button onclick="setMode('joint')" id="btn-joint" class="mode-btn flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium transition-colors hover:bg-slate-600 border border-slate-600">Add Joint</button>
+            
+            <div class="w-px h-6 bg-slate-600 mx-1 shrink-0"></div>
+            <button onclick="setMode('select')" id="btn-select" class="mode-btn flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium transition-colors hover:bg-slate-600 border border-slate-600" title="Select shape to Paint or Edit">Select / Paint</button>
+            <button onclick="setMode('move')" id="btn-move" class="mode-btn flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium transition-colors hover:bg-slate-600 border border-slate-600">Move</button>
+            <button onclick="setMode('rotate')" id="btn-rotate" class="mode-btn flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium transition-colors hover:bg-slate-600 border border-slate-600">Pose</button>
+            <button onclick="setMode('scale')" id="btn-scale" class="mode-btn flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium transition-colors hover:bg-slate-600 border border-slate-600">Scale</button>
+            
+            <div class="w-px h-6 bg-slate-600 mx-1 shrink-0"></div>
+            <button onclick="setMode('erase')" id="btn-erase" class="mode-btn flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium transition-colors hover:bg-slate-600 border border-slate-600">Erase</button>
+            <button onclick="clearScene()" class="flex-shrink-0 px-3 py-1.5 rounded-lg bg-red-900/50 text-red-300 text-sm font-medium hover:bg-red-800/60 border border-red-800/50">Clear</button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative w-full h-full bg-slate-900 overflow-hidden" id="canvas-container">
+        <!-- Floating Right Properties Panel -->
+        <div class="absolute right-4 top-4 w-64 bg-slate-800/95 border border-slate-600 rounded-lg shadow-2xl p-4 flex flex-col gap-4 z-10 panel-scroll max-h-[calc(100vh-8rem)] overflow-y-auto">
+            
+            <!-- Shape Properties -->
+            <div class="border-b border-slate-700 pb-4">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Shape Properties</h2>
+                <div class="flex items-center justify-between mb-3">
+                    <label class="text-sm font-medium text-slate-300">Paint Color</label>
+                    <input type="color" id="paint-color" value="#34d399" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" onchange="applyColor()">
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="pass-through" class="w-4 h-4 rounded bg-slate-700 border-slate-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-800" onchange="applyPassThrough()">
+                    <label for="pass-through" class="text-sm font-medium text-slate-300" title="Shape ignores snapping and physics collisions">Pass Through (Ghost)</label>
+                </div>
+            </div>
+
+            <!-- Physics Controls -->
+            <div class="border-b border-slate-700 pb-4">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">World Physics</h2>
+                <button id="btn-physics" onclick="togglePhysics()" class="w-full px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors shadow mb-3">
+                    ▶ Start Physics (Gravity)
+                </button>
+                <div class="flex flex-col gap-1">
+                    <div class="flex justify-between">
+                        <label class="text-xs text-slate-400">Gravity Strength</label>
+                        <span id="gravity-val" class="text-xs text-slate-300">-9.8</span>
+                    </div>
+                    <input type="range" id="gravity-slider" min="-30" max="30" value="-9.8" step="0.2" class="w-full accent-blue-500" oninput="updateGravity(this.value)">
+                </div>
+            </div>
+
+            <!-- Export / Settings -->
+            <div>
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Export & Settings</h2>
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <button onclick="exportGLTF()" class="px-2 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium border border-slate-600 transition-colors">Export GLTF</button>
+                    <button onclick="toggleGrid()" class="px-2 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium border border-slate-600 transition-colors">Toggle Grid</button>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Status Indicator -->
+        <div id="status-toast" class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-800/95 border border-slate-600 px-6 py-2 rounded-full text-sm font-medium shadow-2xl pointer-events-none transition-opacity duration-300 z-10 whitespace-nowrap text-emerald-100">
+            Mode: Orbit Camera
+        </div>
+    </main>
+
+    <script>
+        // --- Core Application State ---
+        let mode = 'camera'; 
+        let shapes = []; 
+        let joints = []; 
+        
+        let scene, camera, renderer, orbitControls, transformControl, gridHelper, floor;
+        let raycaster, mouse;
+        let isDraggingGizmo = false;
+        
+        // Interaction State
+        let drawPlane = new THREE.Plane();
+        let drawState = { isDragging: false, startPoint: null, shape: null, hitNormal: null };
+        let jointState = { pendingParent: null, pendingJoint: null };
+        let hoveredObject = null;
+        let selectedShape = null; // For Select/Paint mode
+
+        // Physics State
+        let physicsWorld = null;
+        let physicsBodies = [];
+        let isPhysicsRunning = false;
+
+        // Base Geometries
+        const geoBox = new THREE.BoxGeometry(1, 1, 1);
+        const geoCylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
+        const geoSphere = new THREE.SphereGeometry(0.5, 32, 32);
+        const geoJoint = new THREE.SphereGeometry(0.3, 16, 16);
+
+        // Materials
+        const matJoint = new THREE.MeshPhongMaterial({ color: 0xfacc15, emissive: 0x854d0e, shininess: 100 });
+        const matJointHover = new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: 0xa16207, shininess: 100 });
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#0f172a');
+            scene.fog = new THREE.Fog('#0f172a', 30, 250);
+
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 20, 60);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(30, 60, 30);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.top = 50; dirLight.shadow.camera.bottom = -50;
+            dirLight.shadow.camera.left = -50; dirLight.shadow.camera.right = 50;
+            scene.add(dirLight);
+            scene.add(new THREE.DirectionalLight(0x0f172a, 0.6).position.set(-20, -20, -20));
+
+            // Grid & Floor
+            gridHelper = new THREE.GridHelper(200, 40, 0x334155, 0x1e293b);
+            scene.add(gridHelper);
+            floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(1000, 1000), 
+                new THREE.MeshPhongMaterial({ color: 0x0f172a, depthWrite: false })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Tools Setup
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+            orbitControls.enableDamping = true;
+            orbitControls.dampingFactor = 0.05;
+
+            // Transform Controls
+            transformControl = new THREE.TransformControls(camera, renderer.domElement);
+            transformControl.addEventListener('dragging-changed', (event) => {
+                orbitControls.enabled = !event.value && mode === 'camera';
+                isDraggingGizmo = event.value; 
+            });
+            scene.add(transformControl);
+
+            // Events
+            window.addEventListener('resize', onWindowResize);
+            const canvas = renderer.domElement;
+            canvas.addEventListener('pointermove', onPointerMove);
+            canvas.addEventListener('pointerdown', onPointerDown);
+            canvas.addEventListener('pointerup', onPointerUp);
+
+            animate();
+        }
+
+        // --- Core UI & Modes ---
+
+        function setMode(newMode) {
+            // Prevent changing modes while physics is running
+            if (isPhysicsRunning && newMode !== 'camera') {
+                setToast("Stop physics to edit shapes.");
+                return;
+            }
+
+            mode = newMode;
+            transformControl.detach();
+            selectedShape = null;
+            
+            if (jointState.pendingJoint && !jointState.pendingJoint.children.length) {
+                scene.remove(jointState.pendingJoint);
+                joints = joints.filter(j => j !== jointState.pendingJoint);
+            }
+            jointState = { pendingParent: null, pendingJoint: null };
+
+            orbitControls.enabled = (mode === 'camera');
+            
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('bg-emerald-600', 'text-white', 'border-transparent');
+                btn.classList.add('bg-slate-700', 'text-slate-300', 'border-slate-600');
+            });
+            document.getElementById(`btn-${newMode}`).classList.remove('bg-slate-700', 'text-slate-300', 'border-slate-600');
+            document.getElementById(`btn-${newMode}`).classList.add('bg-emerald-600', 'text-white', 'border-transparent');
+            
+            const msgs = {
+                'camera': 'Rotate & Pan Camera (Drag/Scroll)',
+                'draw': 'Click & drag to draw a shape. Snaps to surfaces.',
+                'joint': '1. Click a shape to place a Joint.',
+                'select': 'Click a shape to select it. Change its color or properties.',
+                'move': 'Click a shape or joint to Move it.',
+                'rotate': 'Click a shape to Rotate it (or pose its parent joint).',
+                'scale': 'Click a shape to Resize it.',
+                'erase': 'Click any shape or joint to delete it.'
+            };
+            setToast(msgs[newMode]);
+            updateMaterials();
+        }
+
+        function setToast(msg) {
+            document.getElementById('status-toast').textContent = msg;
+        }
+
+        function toggleGrid() {
+            gridHelper.visible = !gridHelper.visible;
+        }
+
+        // --- Selection & Properties Panel ---
+
+        function applyColor() {
+            if (selectedShape && selectedShape.userData.isShapeMesh) {
+                const colorHex = document.getElementById('paint-color').value;
+                selectedShape.material.color.set(colorHex);
+            }
+        }
+
+        function applyPassThrough() {
+            if (selectedShape && selectedShape.userData.isShapeMesh) {
+                selectedShape.userData.passThrough = document.getElementById('pass-through').checked;
+                if(selectedShape.userData.passThrough) {
+                    selectedShape.material.transparent = true;
+                    selectedShape.material.opacity = 0.6;
+                } else {
+                    selectedShape.material.transparent = false;
+                    selectedShape.material.opacity = 1.0;
+                }
+            }
+        }
+
+        function selectShape(mesh) {
+            selectedShape = mesh;
+            document.getElementById('paint-color').value = '#' + mesh.material.color.getHexString();
+            document.getElementById('pass-through').checked = mesh.userData.passThrough || false;
+            updateMaterials();
+        }
+
+        // --- Interaction Math ---
+
+        function updateMousePos(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+            const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+            mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        }
+
+        function getIntersected(checkShapes = true, checkJoints = true, ignorePassThrough = false) {
+            raycaster.setFromCamera(mouse, camera);
+            let targets = [];
+            if (checkShapes) targets.push(...shapes);
+            if (checkJoints) targets.push(...joints);
+
+            if (ignorePassThrough) {
+                targets = targets.filter(t => !t.userData.passThrough);
+            }
+
+            const intersects = raycaster.intersectObjects(targets, false);
+            return intersects.length > 0 ? intersects[0] : null;
+        }
+
+        function updateMaterials() {
+            shapes.forEach(s => {
+                s.material.emissive.setHex(0x000000);
+                if(s === selectedShape) s.material.emissive.setHex(0x113322); // Highlight selection
+            });
+            joints.forEach(j => j.material = matJoint);
+
+            if (hoveredObject && !isPhysicsRunning) {
+                if (hoveredObject.userData.isJoint) {
+                    hoveredObject.material = matJointHover;
+                } else if (hoveredObject.userData.isShapeMesh && ['move', 'rotate', 'scale', 'joint', 'erase', 'select'].includes(mode)) {
+                    hoveredObject.material.emissive.setHex(0x333333); 
+                }
+            }
+            if (jointState.pendingParent) {
+                jointState.pendingParent.material.emissive.setHex(0x064e3b);
+            }
+        }
+
+        function isDescendant(child, potentialParent) {
+            let curr = child;
+            while(curr) {
+                if (curr === potentialParent) return true;
+                curr = curr.parent;
+            }
+            return false;
+        }
+
+        // --- Pointer Events ---
+
+        function onPointerDown(event) {
+            if (mode === 'camera' || isDraggingGizmo || isPhysicsRunning) return;
+            event.preventDefault();
+            updateMousePos(event);
+            
+            // For drawing, we ignore pass-through shapes so we don't snap to ghosts
+            const hit = getIntersected(true, true, mode === 'draw');
+
+            if (mode === 'draw') {
+                drawState.isDragging = true;
+                
+                if (hit && hit.object.userData.isShapeMesh) {
+                    drawState.startPoint = hit.point.clone();
+                    drawState.hitNormal = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize() : new THREE.Vector3(0, 1, 0);
+                } else {
+                    drawState.hitNormal = null;
+                    const planeNormal = new THREE.Vector3();
+                    camera.getWorldDirection(planeNormal).negate();
+                    drawPlane.setFromNormalAndCoplanarPoint(planeNormal, new THREE.Vector3(0,0,0));
+                    
+                    const intersectPoint = new THREE.Vector3();
+                    raycaster.ray.intersectPlane(drawPlane, intersectPoint);
+                    if (intersectPoint) drawState.startPoint = intersectPoint.clone();
+                }
+
+                const cameraFacingNormal = new THREE.Vector3();
+                camera.getWorldDirection(cameraFacingNormal).negate();
+                drawPlane.setFromNormalAndCoplanarPoint(cameraFacingNormal, drawState.startPoint);
+
+                const group = new THREE.Group();
+                group.position.copy(drawState.startPoint);
+                group.userData = { isShapeGroup: true };
+                scene.add(group);
+
+                const type = document.getElementById('shape-type').value;
+                const geo = type === 'box' ? geoBox : type === 'sphere' ? geoSphere : geoCylinder;
+                const colorHex = document.getElementById('paint-color').value;
+                const mat = new THREE.MeshPhongMaterial({ color: colorHex, shininess: 40 });
+                
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.castShadow = true; mesh.receiveShadow = true;
+                mesh.userData = { isShapeMesh: true, parentGroup: group, shapeType: type, passThrough: false };
+                mesh.scale.set(0.01, 0.01, 0.01); 
+                
+                group.add(mesh); 
+                shapes.push(mesh); 
+                drawState.shape = mesh;
+                
+                selectShape(mesh); // Auto-select what you just drew
+            } 
+            else if (mode === 'select') {
+                if (hit && hit.object.userData.isShapeMesh) {
+                    selectShape(hit.object);
+                } else {
+                    selectedShape = null;
+                    updateMaterials();
+                }
+            }
+            else if (mode === 'joint') {
+                if (!jointState.pendingParent) {
+                    if (hit && hit.object.userData.isShapeMesh) {
+                        const joint = new THREE.Mesh(geoJoint, matJoint);
+                        joint.position.copy(hit.point);
+                        joint.userData = { isJoint: true };
+                        scene.add(joint);
+                        joints.push(joint);
+                        hit.object.userData.parentGroup.attach(joint);
+                        
+                        jointState.pendingParent = hit.object;
+                        jointState.pendingJoint = joint;
+                        setToast("2. Click the shape you want to attach to this joint.");
+                    }
+                } else {
+                    if (hit && hit.object.userData.isShapeMesh && hit.object !== jointState.pendingParent) {
+                        const targetGroup = hit.object.userData.parentGroup;
+                        const parentGroup = jointState.pendingParent.userData.parentGroup;
+                        
+                        if (isDescendant(targetGroup, parentGroup)) {
+                            setToast("Cannot link: Would create a loop!");
+                            setTimeout(() => setToast("1. Click a shape to place a Joint."), 2000);
+                        } else {
+                            jointState.pendingJoint.attach(targetGroup);
+                            setToast("Linked! You can now Pose them.");
+                            setTimeout(() => setMode('rotate'), 1500);
+                        }
+                    } else {
+                        scene.remove(jointState.pendingJoint);
+                        joints = joints.filter(j => j !== jointState.pendingJoint);
+                        setToast("Link cancelled. 1. Click a shape to place a Joint.");
+                    }
+                    jointState.pendingParent = null;
+                    jointState.pendingJoint = null;
+                }
+            }
+            else if (['move', 'rotate', 'scale'].includes(mode)) {
+                if (hit) {
+                    const obj = hit.object;
+                    if (obj.userData.isShapeMesh) selectShape(obj); // Select it while moving
+
+                    if (mode === 'scale') {
+                        if (obj.userData.isShapeMesh) {
+                            transformControl.attach(obj);
+                            transformControl.setMode('scale');
+                        } else if (obj.userData.isJoint) {
+                            transformControl.attach(obj);
+                            transformControl.setMode('scale');
+                        }
+                    } 
+                    else if (mode === 'rotate') {
+                        if (obj.userData.isJoint) {
+                            transformControl.attach(obj);
+                            transformControl.setMode('rotate');
+                        } else if (obj.userData.isShapeMesh) {
+                            const group = obj.userData.parentGroup;
+                            if (group.parent && group.parent.userData.isJoint) {
+                                transformControl.attach(group.parent); // Pose limb
+                                transformControl.setMode('rotate');
+                                setToast("Posing Limb (Rotating Parent Joint)");
+                            } else {
+                                transformControl.attach(group);
+                                transformControl.setMode('rotate');
+                            }
+                        }
+                    } 
+                    else if (mode === 'move') {
+                        if (obj.userData.isJoint) {
+                            transformControl.attach(obj);
+                            transformControl.setMode('translate');
+                        } else if (obj.userData.isShapeMesh) {
+                            transformControl.attach(obj.userData.parentGroup);
+                            transformControl.setMode('translate');
+                        }
+                    }
+                } else {
+                    transformControl.detach();
+                }
+            }
+            else if (mode === 'erase') {
+                if (hit) {
+                    const obj = hit.object;
+                    function removeRecursive(object) {
+                        const children = [...object.children]; 
+                        children.forEach(c => removeRecursive(c));
+                        scene.remove(object);
+                        if (object.userData.isShapeMesh) shapes = shapes.filter(s => s !== object);
+                        if (object.userData.isJoint) joints = joints.filter(j => j !== object);
+                    }
+                    if (obj.userData.isShapeMesh) {
+                        if(selectedShape === obj) selectedShape = null;
+                        removeRecursive(obj.userData.parentGroup);
+                    } else if (obj.userData.isJoint) {
+                        removeRecursive(obj);
+                    }
+                    transformControl.detach();
+                }
+            }
+            updateMaterials();
+        }
+
+        function onPointerMove(event) {
+            if (mode === 'camera' || isDraggingGizmo || isPhysicsRunning) return;
+            event.preventDefault();
+            updateMousePos(event);
+
+            if (mode === 'draw' && drawState.isDragging && drawState.shape) {
+                raycaster.setFromCamera(mouse, camera);
+                
+                const currentPoint = new THREE.Vector3();
+                raycaster.ray.intersectPlane(drawPlane, currentPoint);
+                if (!currentPoint) return;
+
+                const start = drawState.startPoint;
+                const mesh = drawState.shape;
+
+                const w = Math.abs(currentPoint.x - start.x);
+                const h = Math.abs(currentPoint.y - start.y);
+                const d = Math.max(w, h); 
+                
+                const scaleX = Math.max(w, 0.05);
+                const scaleY = Math.max(h, 0.05);
+                const scaleZ = Math.max(d, 0.05);
+                
+                mesh.scale.set(scaleX, scaleY, scaleZ);
+
+                let globalCenter = start.clone().add(currentPoint).multiplyScalar(0.5);
+
+                if (drawState.hitNormal) {
+                    const n = drawState.hitNormal;
+                    let projectedRadius = (scaleX * Math.abs(n.x) + scaleY * Math.abs(n.y) + scaleZ * Math.abs(n.z)) / 2;
+                    const distToPlane = n.dot(globalCenter.clone().sub(start));
+                    const pushOutDistance = projectedRadius - distToPlane;
+                    globalCenter.add(n.clone().multiplyScalar(pushOutDistance));
+                }
+                
+                mesh.position.copy(globalCenter).sub(start);
+                return;
+            }
+
+            if (['pose', 'joint', 'erase', 'move', 'rotate', 'scale', 'select'].includes(mode)) {
+                const hit = getIntersected(true, true);
+                const hitObj = hit ? hit.object : null;
+                
+                if (hoveredObject !== hitObj) {
+                    hoveredObject = hitObj;
+                    renderer.domElement.style.cursor = hoveredObject ? 'pointer' : 'crosshair';
+                    updateMaterials();
+                }
+            } else {
+                renderer.domElement.style.cursor = 'crosshair';
+            }
+        }
+
+        function onPointerUp(event) {
+            if (mode === 'draw' && drawState.isDragging) {
+                drawState.isDragging = false;
+                if (drawState.shape && drawState.shape.scale.length() < 0.2) {
+                    scene.remove(drawState.shape.userData.parentGroup);
+                    shapes = shapes.filter(s => s !== drawState.shape);
+                    if(selectedShape === drawState.shape) selectedShape = null;
+                }
+                drawState.shape = null;
+            }
+        }
+
+        function clearScene() {
+            if(isPhysicsRunning) togglePhysics(); // Stop physics first
+            [...shapes, ...joints].forEach(obj => {
+                const target = obj.userData.parentGroup || obj;
+                scene.remove(target);
+            });
+            shapes = [];
+            joints = [];
+            selectedShape = null;
+            transformControl.detach();
+            jointState = { pendingParent: null, pendingJoint: null };
+            setMode('draw');
+        }
+
+        // --- Physics Engine (Cannon.js) Integration ---
+
+        function updateGravity(val) {
+            document.getElementById('gravity-val').textContent = val;
+            if (physicsWorld) {
+                physicsWorld.gravity.set(0, parseFloat(val), 0);
+            }
+        }
+
+        function togglePhysics() {
+            isPhysicsRunning = !isPhysicsRunning;
+            const btn = document.getElementById('btn-physics');
+            
+            if (isPhysicsRunning) {
+                btn.classList.replace('bg-blue-600', 'bg-red-600');
+                btn.classList.replace('hover:bg-blue-500', 'hover:bg-red-500');
+                btn.innerHTML = '⏹ Stop Physics & Reset';
+                transformControl.detach(); // Hide gizmos
+                startPhysics();
+                setToast("Physics running. Shapes are falling!");
+            } else {
+                btn.classList.replace('bg-red-600', 'bg-blue-600');
+                btn.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+                btn.innerHTML = '▶ Start Physics (Gravity)';
+                stopPhysics();
+                setMode('camera'); // Reset to safe mode
+            }
+        }
+
+        function startPhysics() {
+            physicsWorld = new CANNON.World();
+            physicsWorld.broadphase = new CANNON.NaiveBroadphase();
+            physicsWorld.gravity.set(0, parseFloat(document.getElementById('gravity-slider').value), 0);
+            physicsWorld.solver.iterations = 10;
+
+            // Add Ground
+            const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
+            groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+            physicsWorld.addBody(groundBody);
+
+            physicsBodies = [];
+
+            // 1. Convert Three.js local hierarchy to World Space to let Physics drive them independently
+            shapes.forEach(mesh => {
+                const group = mesh.userData.parentGroup;
+                group.userData.origParent = group.parent; // Save to restore later
+                scene.attach(group); 
+            });
+
+            // 2. Create Cannon Bodies for each shape
+            shapes.forEach(mesh => {
+                const group = mesh.userData.parentGroup;
+                const type = mesh.userData.shapeType;
+                
+                // Get absolute world scale
+                const wScale = new THREE.Vector3();
+                mesh.getWorldScale(wScale);
+
+                let shape;
+                if (type === 'sphere') {
+                    shape = new CANNON.Sphere(wScale.x); // Assumes uniform scale for sphere
+                } else {
+                    // Box & Cylinder (Using Box bounds for cylinder for stability in simple ragdolls)
+                    shape = new CANNON.Box(new CANNON.Vec3(wScale.x/2, wScale.y/2, wScale.z/2));
+                }
+
+                const mass = mesh.userData.passThrough ? 0 : (wScale.x * wScale.y * wScale.z); // Mass based on volume
+                const body = new CANNON.Body({
+                    mass: mass,
+                    shape: shape,
+                    position: new CANNON.Vec3(group.position.x, group.position.y, group.position.z),
+                    quaternion: new CANNON.Quaternion(group.quaternion.x, group.quaternion.y, group.quaternion.z, group.quaternion.w)
+                });
+
+                if (mesh.userData.passThrough) {
+                    body.collisionFilterGroup = 0; // Collides with nothing
+                    body.collisionFilterMask = 0;
+                }
+
+                physicsWorld.addBody(body);
+                physicsBodies.push({ group: group, body: body, initialPos: group.position.clone(), initialQuat: group.quaternion.clone() });
+            });
+
+            // 3. Create Constraints for Joints (Bind parent shape and child shape)
+            joints.forEach(joint => {
+                const parentGroup = joint.parent;
+                if (!parentGroup || !parentGroup.userData.isShapeGroup) return;
+
+                const parentData = physicsBodies.find(pb => pb.group === parentGroup);
+                if (!parentData) return;
+
+                const jointWorldPos = new THREE.Vector3();
+                joint.getWorldPosition(jointWorldPos);
+
+                joint.children.forEach(childGroup => {
+                    if (childGroup.userData.isShapeGroup) {
+                        const childData = physicsBodies.find(pb => pb.group === childGroup);
+                        if (childData) {
+                            // Find local pivot points in body coordinates
+                            const pivotA = new CANNON.Vec3();
+                            parentData.body.pointToLocalFrame(new CANNON.Vec3(jointWorldPos.x, jointWorldPos.y, jointWorldPos.z), pivotA);
+
+                            const pivotB = new CANNON.Vec3();
+                            childData.body.pointToLocalFrame(new CANNON.Vec3(jointWorldPos.x, jointWorldPos.y, jointWorldPos.z), pivotB);
+
+                            const constraint = new CANNON.PointToPointConstraint(
+                                parentData.body, pivotA,
+                                childData.body, pivotB
+                            );
+                            physicsWorld.addConstraint(constraint);
+                        }
+                    }
+                });
+            });
+        }
+
+        function stopPhysics() {
+            physicsWorld = null;
+            // Restore exact positions and hierarchy as it was before physics started
+            physicsBodies.forEach(pb => {
+                pb.group.position.copy(pb.initialPos);
+                pb.group.quaternion.copy(pb.initialQuat);
+            });
+            // Re-attach to rebuild the articulation hierarchy
+            shapes.forEach(mesh => {
+                const group = mesh.userData.parentGroup;
+                if (group.userData.origParent) {
+                    group.userData.origParent.attach(group);
+                }
+            });
+            physicsBodies = [];
+        }
+
+        // --- Export Functions ---
+
+        function exportGLTF() {
+            if(isPhysicsRunning) togglePhysics(); // Can't export during simulation
+            
+            const exporter = new THREE.GLTFExporter();
+            // Create a temporary scene containing only the shapes and joints, not the grid/lights/floor
+            const exportScene = new THREE.Scene();
+            const rootObjects = shapes.map(s => s.userData.parentGroup).filter(g => g.parent === scene);
+            
+            rootObjects.forEach(obj => exportScene.add(obj.clone())); // Clone to avoid messing up active scene
+
+            exporter.parse(exportScene, function (gltf) {
+                const output = JSON.stringify(gltf, null, 2);
+                const blob = new Blob([output], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.style.display = 'none';
+                link.href = url;
+                link.download = 'ShapeBuilder_Export.gltf';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setToast("GLTF Exported successfully!");
+            }, { binary: false });
+        }
+
+
+        // --- Render Loop ---
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Physics Step
+            if (physicsWorld) {
+                physicsWorld.step(1/60);
+                // Sync Cannon bodies back to Three.js visual groups
+                physicsBodies.forEach(pb => {
+                    pb.group.position.copy(pb.body.position);
+                    pb.group.quaternion.copy(pb.body.quaternion);
+                });
+            }
+
+            if (orbitControls.enabled) orbitControls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
