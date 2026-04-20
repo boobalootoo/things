@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D Rigger & Motion Capture Mirror</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- MediaPipe Pose for Body Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <!-- ES Module Shims for Three.js -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f172a; color: #fff; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        #ui-layer { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            pointer-events: none; z-index: 10; display: flex; flex-direction: column; 
+            justify-content: space-between; padding: 20px; 
+        }
+        .pointer-events-auto { pointer-events: auto; }
+        
+        /* MediaPipe Video Preview */
+        #video-preview {
+            position: absolute; bottom: 20px; right: 20px; width: 120px; height: auto;
+            border-radius: 12px; border: 2px solid #38bdf8;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            transform: scaleX(-1); /* Mirror visual */
+            z-index: 20; background: #000; display: none;
+        }
+        @media (min-width: 768px) { #video-preview { width: 200px; } }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    </style>
+</head>
+<body class="font-sans antialiased text-gray-800">
+
+    <div id="canvas-container"></div>
+    
+    <video id="input_video" class="hidden" playsinline></video>
+    <video id="video-preview" autoplay playsinline muted></video>
+
+    <div id="ui-layer">
+        <button id="toggle-ui" class="pointer-events-auto absolute top-4 right-4 bg-white/10 backdrop-blur border border-white/20 px-3 py-2 rounded-lg shadow-lg text-sm font-semibold text-white hover:bg-white/20 transition flex items-center gap-2 z-50">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+            <span id="toggle-text">Hide UI</span>
+        </button>
+
+        <div id="ui-wrapper" class="flex flex-col h-full transition-all duration-300 max-w-md w-full overflow-y-auto pr-2 pb-16">
+            
+            <!-- STEP 1: Rig Creation -->
+            <div class="bg-slate-800/90 backdrop-blur p-5 rounded-xl shadow-2xl border border-slate-700 pointer-events-auto mb-4">
+                <h1 class="text-xl font-bold mb-1 text-cyan-400">Step 1: Setup Model</h1>
+                <p class="text-xs text-slate-400 mb-4">Upload a static 3D model, move joints to fit, and slice it.</p>
+                
+                <label class="w-full flex justify-center py-2 px-4 border border-dashed border-cyan-500 rounded-lg cursor-pointer hover:bg-cyan-900/30 transition text-cyan-400 font-semibold text-sm mb-3">
+                    <input type="file" id="file-input" accept=".glb,.gltf" class="hidden" />
+                    Upload Static Model (.glb)
+                </label>
+                
+                <div id="setup-controls" class="hidden flex flex-col gap-3 border-t border-slate-700 pt-3">
+                    <div class="flex space-x-2 text-sm items-center">
+                        <button id="btn-camera" class="px-3 py-1.5 flex-1 bg-cyan-600 text-white rounded shadow transition">Camera</button>
+                        <button id="btn-move" class="px-3 py-1.5 flex-1 bg-slate-600 hover:bg-slate-500 text-white rounded shadow transition">Move Joints</button>
+                        <label id="symmetry-container" class="flex items-center space-x-1 ml-2 cursor-pointer">
+                            <input type="checkbox" id="check-symmetry" class="w-4 h-4 text-cyan-500 rounded bg-slate-700 border-slate-500" checked>
+                            <span class="text-slate-300 text-xs font-medium">Sym</span>
+                        </label>
+                    </div>
+                    
+                    <button id="btn-slice" class="px-4 py-2 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded shadow transition flex justify-center items-center gap-2">
+                        Slice & Rig Model
+                    </button>
+                    <button id="btn-reset-slice" class="px-4 py-2 w-full bg-rose-600 hover:bg-rose-500 text-white font-bold rounded shadow transition hidden justify-center items-center gap-2">
+                        Reset to Skeleton
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 2: Save / Load Rig -->
+            <div class="bg-slate-800/90 backdrop-blur p-5 rounded-xl shadow-2xl border border-slate-700 pointer-events-auto mb-4">
+                <h1 class="text-xl font-bold mb-1 text-indigo-400">Step 2: Save / Load</h1>
+                <p class="text-xs text-slate-400 mb-4">Export your rigged model to skip slicing next time.</p>
+                
+                <div class="flex gap-2">
+                    <button id="btn-export-rig" class="px-3 py-2 flex-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow transition text-sm font-bold opacity-50 cursor-not-allowed" disabled>
+                        Download Rig
+                    </button>
+                    <label class="px-3 py-2 flex-1 bg-slate-700 hover:bg-slate-600 text-white rounded-lg shadow transition text-sm font-bold text-center cursor-pointer">
+                        <input type="file" id="file-import-rig" accept=".glb,.gltf" class="hidden" />
+                        Upload Rig
+                    </label>
+                </div>
+            </div>
+
+            <!-- STEP 3: Mocap -->
+            <div class="bg-slate-800/90 backdrop-blur p-5 rounded-xl shadow-2xl border border-blue-500 pointer-events-auto relative overflow-hidden">
+                <div class="absolute inset-0 bg-blue-500/10 pointer-events-none"></div>
+                <h1 class="text-xl font-bold mb-1 text-blue-400">Step 3: Mocap Mirror</h1>
+                <p class="text-xs text-slate-400 mb-4">Requires a rigged model loaded in the scene.</p>
+                
+                <button id="btn-start-mocap" class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow transition flex justify-center items-center gap-2 opacity-50 cursor-not-allowed" disabled>
+                    Start Camera Mirror
+                </button>
+            </div>
+
+            <div id="loading" class="hidden mt-4 bg-slate-800 p-3 rounded text-cyan-400 text-sm font-semibold animate-pulse text-center border border-cyan-500/30">
+                Processing...
+            </div>
+            
+            <div class="mt-auto pt-6 text-center">
+                <p class="bg-slate-800/80 inline-block px-4 py-2 rounded-full text-xs text-slate-300 shadow pointer-events-auto">
+                    Left Click: Select/Rotate &bull; Right Click: Pan
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+
+        // --- Core Scene Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0f172a, 0.05);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.5, 4);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 1, 0);
+
+        // --- Lighting & Environment ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+        hemiLight.position.set(0, 20, 0);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0x38bdf8, 1.2);
+        dirLight.position.set(3, 10, 10);
+        scene.add(dirLight);
+
+        const pointLight = new THREE.PointLight(0xf472b6, 0.8);
+        pointLight.position.set(-5, 5, -5);
+        scene.add(pointLight);
+
+        const gridHelper = new THREE.GridHelper(20, 20, 0x38bdf8, 0x334155);
+        scene.add(gridHelper);
+
+        // --- Application State variables ---
+        let currentModel = null;
+        let jointMarkers = {};
+        let visualBones = [];
+        let riggedFigure = null;
+        let rigParts = {}; // Map of boneId -> Object3D Group
+        let isSymmetryEnabled = true;
+        let isMocapActive = false;
+        
+        const loader = new GLTFLoader();
+        const exporter = new GLTFExporter();
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // --- Rig Definition ---
+        const rigBones = [
+            { id: 'Torso', parent: 'Pelvis', start: 'waist', end: 'neck' },
+            { id: 'Head', parent: 'Torso', start: 'neck', end: 'head_top' },
+            { id: 'Pelvis', parent: null, start: 'pelvis', end: 'waist' },
+            { id: 'L_UpperArm', parent: 'Torso', start: 'l_shoulder', end: 'l_elbow' },
+            { id: 'L_LowerArm', parent: 'L_UpperArm', start: 'l_elbow', end: 'l_wrist' },
+            { id: 'L_Hand', parent: 'L_LowerArm', start: 'l_wrist', end: 'l_hand_tip' },
+            { id: 'R_UpperArm', parent: 'Torso', start: 'r_shoulder', end: 'r_elbow' },
+            { id: 'R_LowerArm', parent: 'R_UpperArm', start: 'r_elbow', end: 'r_wrist' },
+            { id: 'R_Hand', parent: 'R_LowerArm', start: 'r_wrist', end: 'r_hand_tip' },
+            { id: 'L_UpperLeg', parent: 'Pelvis', start: 'l_hip', end: 'l_knee' },
+            { id: 'L_LowerLeg', parent: 'L_UpperLeg', start: 'l_knee', end: 'l_ankle' },
+            { id: 'L_Foot', parent: 'L_LowerLeg', start: 'l_ankle', end: 'l_foot_tip' },
+            { id: 'R_UpperLeg', parent: 'Pelvis', start: 'r_hip', end: 'r_knee' },
+            { id: 'R_LowerLeg', parent: 'R_UpperLeg', start: 'r_knee', end: 'r_ankle' },
+            { id: 'R_Foot', parent: 'R_LowerLeg', start: 'r_ankle', end: 'r_foot_tip' }
+        ];
+
+        // --- Setup Transform Controls ---
+        const transformControl = new TransformControls(camera, renderer.domElement);
+        transformControl.addEventListener('dragging-changed', function (event) {
+            controls.enabled = !event.value;
+        });
+        transformControl.addEventListener('change', function () {
+            if (!riggedFigure && currentModel) {
+                if (isSymmetryEnabled && transformControl.object && transformControl.dragging) {
+                    const draggedJoint = transformControl.object;
+                    const id = draggedJoint.userData.jointId;
+                    if (id) {
+                        let oppId = null;
+                        if (id.startsWith('l_')) oppId = 'r_' + id.substring(2);
+                        else if (id.startsWith('r_')) oppId = 'l_' + id.substring(2);
+
+                        if (oppId && jointMarkers[oppId]) {
+                            jointMarkers[oppId].position.set(-draggedJoint.position.x, draggedJoint.position.y, draggedJoint.position.z);
+                        }
+                    }
+                }
+                updateVisualBones();
+            }
+        });
+        scene.add(transformControl);
+
+        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, depthTest: false });
+        const boneLineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, linewidth: 2 });
+
+        // --- Functions: Slicing Pipeline ---
+        function createJoint(id, position, isTip = false) {
+            const geometry = new THREE.SphereGeometry(0.04, 16, 16);
+            const marker = new THREE.Mesh(geometry, markerMaterial);
+            marker.position.copy(position);
+            marker.userData.jointId = id;
+            marker.userData.isTip = isTip;
+            if (isTip) marker.visible = false;
+            scene.add(marker);
+            jointMarkers[id] = marker;
+            return marker;
+        }
+
+        function updateVisualBones() {
+            visualBones.forEach(b => scene.remove(b));
+            visualBones = [];
+            if (riggedFigure) return;
+
+            rigBones.forEach(bone => {
+                if (jointMarkers[bone.start] && jointMarkers[bone.end]) {
+                    const points = [jointMarkers[bone.start].position, jointMarkers[bone.end].position];
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const line = new THREE.Line(geometry, boneLineMaterial);
+                    scene.add(line);
+                    visualBones.push(line);
+                }
+            });
+        }
+
+        function drawHeuristicSkeleton(object) {
+            Object.values(jointMarkers).forEach(m => scene.remove(m));
+            jointMarkers = {};
+
+            const box = new THREE.Box3().setFromObject(object);
+            const height = box.max.y - box.min.y;
+            const w2 = (box.max.x - box.min.x) / 2;
+            const center = box.getCenter(new THREE.Vector3());
+            const minY = box.min.y;
+
+            createJoint('pelvis', new THREE.Vector3(center.x, minY + height*0.48, center.z));
+            createJoint('waist', new THREE.Vector3(center.x, minY + height*0.58, center.z));
+            createJoint('neck', new THREE.Vector3(center.x, minY + height*0.85, center.z));
+            createJoint('head_top', new THREE.Vector3(center.x, box.max.y + 0.05, center.z), true);
+            
+            // L Arm
+            createJoint('l_shoulder', new THREE.Vector3(center.x + w2*0.45, minY + height*0.80, center.z));
+            createJoint('l_elbow', new THREE.Vector3(center.x + w2*0.75, minY + height*0.60, center.z));
+            createJoint('l_wrist', new THREE.Vector3(center.x + w2*0.85, minY + height*0.45, center.z));
+            createJoint('l_hand_tip', new THREE.Vector3(center.x + w2*0.95, minY + height*0.35, center.z), true);
+            // R Arm
+            createJoint('r_shoulder', new THREE.Vector3(center.x - w2*0.45, minY + height*0.80, center.z));
+            createJoint('r_elbow', new THREE.Vector3(center.x - w2*0.75, minY + height*0.60, center.z));
+            createJoint('r_wrist', new THREE.Vector3(center.x - w2*0.85, minY + height*0.45, center.z));
+            createJoint('r_hand_tip', new THREE.Vector3(center.x - w2*0.95, minY + height*0.35, center.z), true);
+            // L Leg
+            createJoint('l_hip', new THREE.Vector3(center.x + w2*0.25, minY + height*0.45, center.z));
+            createJoint('l_knee', new THREE.Vector3(center.x + w2*0.25, minY + height*0.25, center.z));
+            createJoint('l_ankle', new THREE.Vector3(center.x + w2*0.25, minY + height*0.08, center.z));
+            createJoint('l_foot_tip', new THREE.Vector3(center.x + w2*0.25, minY, center.z + (box.max.z-box.min.z)*0.5), true);
+            // R Leg
+            createJoint('r_hip', new THREE.Vector3(center.x - w2*0.25, minY + height*0.45, center.z));
+            createJoint('r_knee', new THREE.Vector3(center.x - w2*0.25, minY + height*0.25, center.z));
+            createJoint('r_ankle', new THREE.Vector3(center.x - w2*0.25, minY + height*0.08, center.z));
+            createJoint('r_foot_tip', new THREE.Vector3(center.x - w2*0.25, minY, center.z + (box.max.z-box.min.z)*0.5), true);
+            
+            updateVisualBones();
+        }
+
+        function distSqPointToSegment(p, v, w) {
+            const l2 = v.distanceToSquared(w);
+            if (l2 === 0) return p.distanceToSquared(v);
+            let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y) + (p.z - v.z) * (w.z - v.z)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            return p.distanceToSquared(new THREE.Vector3(v.x + t * (w.x - v.x), v.y + t * (w.y - v.y), v.z + t * (w.z - v.z)));
+        }
+
+        function sliceAndRigModel(sourceModel) {
+            const partsData = {};
+            rigBones.forEach(bone => {
+                partsData[bone.id] = {
+                    ballPosWorld: jointMarkers[bone.start].position.clone(),
+                    endPosWorld: jointMarkers[bone.end].position.clone(),
+                    meshesData: []
+                };
+            });
+
+            sourceModel.updateMatrixWorld(true);
+
+            // Assign triangles
+            sourceModel.traverse(child => {
+                if (child.isMesh) {
+                    let geom = child.geometry;
+                    if (geom.index) geom = geom.toNonIndexed(); 
+                    
+                    const posAttr = geom.attributes.position;
+                    const normAttr = geom.attributes.normal;
+                    const uvAttr = geom.attributes.uv;
+                    
+                    const boneGeomData = {};
+                    rigBones.forEach(b => { boneGeomData[b.id] = { pos: [], norm: [], uv: [] }; });
+
+                    const v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), centroid = new THREE.Vector3();
+
+                    for (let i = 0; i < posAttr.count; i += 3) {
+                        v0.fromBufferAttribute(posAttr, i).applyMatrix4(child.matrixWorld);
+                        v1.fromBufferAttribute(posAttr, i+1).applyMatrix4(child.matrixWorld);
+                        v2.fromBufferAttribute(posAttr, i+2).applyMatrix4(child.matrixWorld);
+                        centroid.copy(v0).add(v1).add(v2).divideScalar(3);
+
+                        let closestBone = null, minDist = Infinity;
+                        rigBones.forEach(bone => {
+                            const p1 = jointMarkers[bone.start].position;
+                            const p2 = jointMarkers[bone.end].position;
+                            const dist = distSqPointToSegment(centroid, p1, p2);
+                            if (dist < minDist) { minDist = dist; closestBone = bone.id; }
+                        });
+
+                        const target = boneGeomData[closestBone];
+                        const ballPos = partsData[closestBone].ballPosWorld;
+                        
+                        [i, i+1, i+2].forEach(idx => {
+                            const v = new THREE.Vector3().fromBufferAttribute(posAttr, idx).applyMatrix4(child.matrixWorld);
+                            v.sub(ballPos); // local to joint
+                            target.pos.push(v.x, v.y, v.z);
+                            if (normAttr) {
+                                const n = new THREE.Vector3().fromBufferAttribute(normAttr, idx).transformDirection(child.matrixWorld);
+                                target.norm.push(n.x, n.y, n.z);
+                            }
+                            if (uvAttr) target.uv.push(uvAttr.getX(idx), uvAttr.getY(idx));
+                        });
+                    }
+
+                    rigBones.forEach(bone => {
+                        if (boneGeomData[bone.id].pos.length > 0) {
+                            partsData[bone.id].meshesData.push({
+                                data: boneGeomData[bone.id],
+                                material: child.material
+                            });
+                        }
+                    });
+                }
+            });
+
+            const rootGroup = new THREE.Group();
+            rootGroup.position.set(0, 0, 0);
+            rigParts = {};
+
+            // Build hierarchical rig
+            rigBones.forEach(bone => {
+                const ballJoint = new THREE.Group();
+                ballJoint.userData.isBallJoint = true;
+                ballJoint.userData.partId = bone.id;
+                
+                // Store structural vector for FK Solver & Export
+                const locEnd = partsData[bone.id].endPosWorld.clone().sub(partsData[bone.id].ballPosWorld);
+                ballJoint.userData.localEndPosArray = locEnd.toArray(); // Array survives export/import better
+                
+                partsData[bone.id].meshesData.forEach(md => {
+                    const geom = new THREE.BufferGeometry();
+                    geom.setAttribute('position', new THREE.Float32BufferAttribute(md.data.pos, 3));
+                    if (md.data.norm.length > 0) geom.setAttribute('normal', new THREE.Float32BufferAttribute(md.data.norm, 3));
+                    if (md.data.uv.length > 0) geom.setAttribute('uv', new THREE.Float32BufferAttribute(md.data.uv, 2));
+                    
+                    const mat = md.material.clone();
+                    mat.side = THREE.DoubleSide; 
+                    const mesh = new THREE.Mesh(geom, mat);
+                    mesh.userData.isBodyPartMesh = true;
+                    mesh.userData.parentJoint = ballJoint;
+                    ballJoint.add(mesh);
+                });
+
+                if (bone.parent) {
+                    const parentBallPos = partsData[bone.parent].ballPosWorld;
+                    const localPos = partsData[bone.id].ballPosWorld.clone().sub(parentBallPos);
+                    ballJoint.position.copy(localPos);
+                } else {
+                    ballJoint.position.copy(partsData[bone.id].ballPosWorld);
+                }
+                rigParts[bone.id] = ballJoint;
+            });
+
+            // Connect parents
+            rigBones.forEach(bone => {
+                if (bone.parent) rigParts[bone.parent].add(rigParts[bone.id]);
+                else rootGroup.add(rigParts[bone.id]);
+            });
+
+            return rootGroup;
+        }
+
+        // --- MOCAP FK Solver ---
+        function updateRigFromMediaPipe(landmarks) {
+            if (!riggedFigure || !isMocapActive) return;
+
+            // Mirror X, Flip Y, Keep Z for depth
+            const getV = (idx) => new THREE.Vector3(-landmarks[idx].x, -landmarks[idx].y, -landmarks[idx].z);
+            const getMid = (i1, i2) => getV(i1).add(getV(i2)).multiplyScalar(0.5);
+
+            const dirs = {};
+            // Maps MediaPipe landmarks to bone directions
+            dirs['Torso'] = getMid(11, 12).sub(getMid(23, 24)).normalize();
+            dirs['Head'] = getV(0).sub(getMid(11, 12)).normalize();
+            
+            dirs['L_UpperArm'] = getV(13).sub(getV(11)).normalize();
+            dirs['L_LowerArm'] = getV(15).sub(getV(13)).normalize();
+            
+            dirs['R_UpperArm'] = getV(14).sub(getV(12)).normalize();
+            dirs['R_LowerArm'] = getV(16).sub(getV(14)).normalize();
+            
+            dirs['L_UpperLeg'] = getV(25).sub(getV(23)).normalize();
+            dirs['L_LowerLeg'] = getV(27).sub(getV(25)).normalize();
+            
+            dirs['R_UpperLeg'] = getV(26).sub(getV(24)).normalize();
+            dirs['R_LowerLeg'] = getV(28).sub(getV(26)).normalize();
+
+            // Must process top-down in hierarchy
+            const order = ['Torso', 'Head', 'L_UpperArm', 'L_LowerArm', 'R_UpperArm', 'R_LowerArm', 'L_UpperLeg', 'L_LowerLeg', 'R_UpperLeg', 'R_LowerLeg'];
+
+            riggedFigure.updateMatrixWorld(true);
+
+            for (const partId of order) {
+                const part = rigParts[partId];
+                if (!part || !dirs[partId] || dirs[partId].lengthSq() === 0) continue;
+
+                const targetDir = dirs[partId];
+
+                // Reconstruct localEndPos from stored array
+                const localEndVec = new THREE.Vector3().fromArray(part.userData.localEndPosArray);
+                
+                // Get current world direction of this bone
+                const worldEnd = part.localToWorld(localEndVec.clone());
+                const worldStart = part.localToWorld(new THREE.Vector3(0,0,0));
+                const currentDir = worldEnd.sub(worldStart).normalize();
+
+                // Delta rotation
+                const qDelta = new THREE.Quaternion().setFromUnitVectors(currentDir, targetDir);
+
+                // Apply to world quaternion
+                const worldQ = new THREE.Quaternion();
+                part.getWorldQuaternion(worldQ);
+                worldQ.premultiply(qDelta);
+
+                // Convert back to local
+                const parentWorldQ = new THREE.Quaternion();
+                if (part.parent) part.parent.getWorldQuaternion(parentWorldQ);
+                
+                part.quaternion.copy(parentWorldQ.invert().multiply(worldQ));
+                part.updateMatrixWorld(true); // update for children
+            }
+        }
+
+        // --- MediaPipe Initialization ---
+        async function initMediaPipe() {
+            const videoElement = document.getElementById('input_video');
+            const videoPreview = document.getElementById('video-preview');
+            
+            const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+            pose.setOptions({
+                modelComplexity: 1, smoothLandmarks: true, enableSegmentation: false,
+                minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+            });
+
+            pose.onResults((results) => {
+                if (results.poseWorldLandmarks) {
+                    updateRigFromMediaPipe(results.poseWorldLandmarks);
+                }
+            });
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
+                });
+                videoElement.srcObject = stream;
+                videoPreview.srcObject = stream;
+                videoPreview.style.display = 'block';
+                await videoElement.play();
+
+                const processVideo = async () => {
+                    if(isMocapActive) await pose.send({image: videoElement});
+                    requestAnimationFrame(processVideo);
+                };
+                processVideo();
+            } catch (err) {
+                console.error("Camera error:", err);
+                alert("Could not access camera for Motion Capture.");
+            }
+        }
+
+        // --- UI Logic & Event Listeners ---
+        function showLoading(text) {
+            const l = document.getElementById('loading');
+            l.textContent = text; l.classList.remove('hidden');
+        }
+        function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+
+        function enableRiggedState() {
+            document.getElementById('btn-export-rig').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('btn-export-rig').disabled = false;
+            document.getElementById('btn-start-mocap').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('btn-start-mocap').disabled = false;
+            setMode('rotate');
+        }
+
+        // State Machine for Interaction modes
+        let mode = 'camera';
+        function setMode(newMode) {
+            mode = newMode;
+            const btnCam = document.getElementById('btn-camera');
+            const btnMove = document.getElementById('btn-move');
+            if(btnCam) btnCam.className = 'px-3 py-1.5 flex-1 bg-slate-600 hover:bg-slate-500 text-white rounded shadow transition';
+            if(btnMove) btnMove.className = 'px-3 py-1.5 flex-1 bg-slate-600 hover:bg-slate-500 text-white rounded shadow transition';
+
+            if (mode === 'camera') {
+                if(btnCam) btnCam.className = 'px-3 py-1.5 flex-1 bg-cyan-600 text-white rounded shadow transition';
+                transformControl.detach();
+            } else if (mode === 'translate' || mode === 'rotate') {
+                if (riggedFigure && mode === 'translate') mode = 'rotate'; // Lock translation if rigged
+                if(btnMove) btnMove.className = 'px-3 py-1.5 flex-1 bg-cyan-600 text-white rounded shadow transition';
+                transformControl.setMode(mode);
+            }
+        }
+
+        document.getElementById('btn-camera')?.addEventListener('click', () => setMode('camera'));
+        document.getElementById('btn-move')?.addEventListener('click', () => setMode(riggedFigure ? 'rotate' : 'translate'));
+
+        // Toggle UI
+        document.getElementById('toggle-ui').addEventListener('click', () => {
+            const wrap = document.getElementById('ui-wrapper');
+            wrap.classList.toggle('opacity-0');
+            wrap.classList.toggle('pointer-events-none');
+            document.getElementById('toggle-text').textContent = wrap.classList.contains('opacity-0') ? 'Show UI' : 'Hide UI';
+        });
+
+        // 1. Upload Static Model
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            showLoading("Loading model...");
+            
+            const url = URL.createObjectURL(file);
+            loader.load(url, (gltf) => {
+                if (currentModel) scene.remove(currentModel);
+                if (riggedFigure) { scene.remove(riggedFigure); riggedFigure = null; }
+                transformControl.detach();
+
+                currentModel = gltf.scene;
+                const box = new THREE.Box3().setFromObject(currentModel);
+                const size = box.getSize(new THREE.Vector3());
+                const scaleFactor = 2.0 / size.y;
+                currentModel.scale.setScalar(scaleFactor);
+                currentModel.position.set(-box.getCenter(new THREE.Vector3()).x * scaleFactor, -box.min.y * scaleFactor, -box.getCenter(new THREE.Vector3()).z * scaleFactor);
+
+                scene.add(currentModel);
+
+                setTimeout(() => {
+                    currentModel.updateMatrixWorld(true);
+                    drawHeuristicSkeleton(currentModel);
+                    document.getElementById('setup-controls').classList.remove('hidden');
+                    document.getElementById('btn-slice').style.display = 'flex';
+                    document.getElementById('btn-reset-slice').style.display = 'none';
+                    hideLoading();
+                    setMode('translate');
+                }, 50);
+                URL.revokeObjectURL(url);
+            });
+        });
+
+        // 2. Slice Model
+        document.getElementById('btn-slice').addEventListener('click', () => {
+            if (!currentModel) return;
+            showLoading("Splitting & Rigging Geometry...");
+            setTimeout(() => {
+                riggedFigure = sliceAndRigModel(currentModel);
+                scene.add(riggedFigure);
+                
+                currentModel.visible = false;
+                Object.values(jointMarkers).forEach(m => m.visible = false);
+                visualBones.forEach(b => b.visible = false);
+                
+                transformControl.detach();
+                document.getElementById('btn-move').textContent = "Pose Figure";
+                
+                document.getElementById('btn-slice').style.display = 'none';
+                document.getElementById('btn-reset-slice').style.display = 'flex';
+                document.getElementById('symmetry-container').style.display = 'none';
+                
+                enableRiggedState();
+                hideLoading();
+            }, 50); 
+        });
+
+        // Reset Slicing
+        document.getElementById('btn-reset-slice').addEventListener('click', () => {
+            if (riggedFigure) { scene.remove(riggedFigure); riggedFigure = null; }
+            currentModel.visible = true;
+            Object.values(jointMarkers).forEach(m => { if (!m.userData.isTip) m.visible = true; });
+            visualBones.forEach(b => b.visible = true);
+            updateVisualBones();
+            
+            transformControl.detach();
+            document.getElementById('btn-move').textContent = "Move Joints";
+            setMode('translate');
+
+            document.getElementById('btn-slice').style.display = 'flex';
+            document.getElementById('btn-reset-slice').style.display = 'none';
+            document.getElementById('symmetry-container').style.display = 'flex';
+        });
+
+        // 3. Export Rigged Model
+        document.getElementById('btn-export-rig').addEventListener('click', () => {
+            if (!riggedFigure) return;
+            showLoading("Exporting...");
+            exporter.parse(riggedFigure, (gltf) => {
+                const blob = new Blob([gltf], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'Mocap_Rigged_Figure.glb';
+                link.click();
+                URL.revokeObjectURL(url);
+                hideLoading();
+            }, (err) => { console.error(err); alert("Export failed."); hideLoading(); }, { binary: true });
+        });
+
+        // 4. Import Rigged Model
+        document.getElementById('file-import-rig').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            showLoading("Loading Rigged Model...");
+            
+            const url = URL.createObjectURL(file);
+            loader.load(url, (gltf) => {
+                if (currentModel) { scene.remove(currentModel); currentModel = null; }
+                if (riggedFigure) { scene.remove(riggedFigure); }
+                transformControl.detach();
+                
+                // Hide setup UI since we are skipping it
+                document.getElementById('setup-controls').classList.add('hidden');
+                Object.values(jointMarkers).forEach(m => m.visible = false);
+                visualBones.forEach(b => b.visible = false);
+
+                riggedFigure = gltf.scene;
+                rigParts = {};
+                
+                // Reconstruct Rig Map
+                riggedFigure.traverse(child => {
+                    if (child.userData && child.userData.isBallJoint) {
+                        rigParts[child.userData.partId] = child;
+                        // Restore circular parentJoint ref for click-to-pose UI
+                        child.children.forEach(mesh => {
+                            if (mesh.userData && mesh.userData.isBodyPartMesh) {
+                                mesh.userData.parentJoint = child;
+                            }
+                        });
+                    }
+                });
+
+                scene.add(riggedFigure);
+                enableRiggedState();
+                hideLoading();
+                URL.revokeObjectURL(url);
+            });
+        });
+
+        // 5. Start Mocap
+        let isMediaPipeInit = false;
+        document.getElementById('btn-start-mocap').addEventListener('click', async (e) => {
+            if(!riggedFigure) return;
+            
+            const btn = e.target;
+            if(!isMocapActive) {
+                isMocapActive = true;
+                btn.textContent = "Stop Camera Mirror";
+                btn.classList.replace('bg-blue-600', 'bg-red-600');
+                btn.classList.replace('hover:bg-blue-500', 'hover:bg-red-500');
+                transformControl.detach(); // Stop manual posing
+                
+                // Fold UI back so user can see
+                document.getElementById('ui-wrapper').classList.add('opacity-0', 'pointer-events-none');
+                document.getElementById('toggle-text').textContent = 'Show UI';
+
+                if(!isMediaPipeInit) {
+                    showLoading("Starting Camera & AI...");
+                    await initMediaPipe();
+                    isMediaPipeInit = true;
+                    hideLoading();
+                }
+            } else {
+                isMocapActive = false;
+                btn.textContent = "Start Camera Mirror";
+                btn.classList.replace('bg-red-600', 'bg-blue-600');
+                btn.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+                document.getElementById('video-preview').style.display = 'none';
+            }
+        });
+
+        // Raycasting for manual joint selection
+        window.addEventListener('pointerdown', (event) => {
+            if (event.target !== renderer.domElement || transformControl.dragging || isMocapActive) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            if (riggedFigure) {
+                const intersects = raycaster.intersectObject(riggedFigure, true);
+                if (intersects.length > 0 && intersects[0].object.userData.isBodyPartMesh) {
+                    transformControl.attach(intersects[0].object.userData.parentJoint);
+                    if (mode !== 'rotate') setMode('rotate');
+                } else { setMode('camera'); }
+            } else if (currentModel) {
+                const visibleMarkers = Object.values(jointMarkers).filter(m => m.visible);
+                const intersects = raycaster.intersectObjects(visibleMarkers, false);
+                if (intersects.length > 0) {
+                    transformControl.attach(intersects[0].object);
+                    if (mode === 'camera') setMode('translate');
+                } else { setMode('camera'); }
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+    </script>
+</body>
+</html>
