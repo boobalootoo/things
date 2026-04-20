@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Debug Mocap Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.0/umd/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/FBXLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #020617; color: white; font-family: sans-serif; }
+        #canvas-container { position: absolute; inset: 0; z-index: 1; }
+        .ui-card { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(15, 23, 42, 0.9); padding: 15px 20px; border-radius: 16px; border: 1px solid #10b981; width: 320px; backdrop-filter: blur(12px); pointer-events: auto; max-height: 90vh; overflow-y: auto; }
+        #video-preview { position: absolute; bottom: 20px; right: 20px; width: 180px; border-radius: 12px; border: 2px solid #10b981; transform: scaleX(-1); z-index: 5; background: #000; }
+        .drop-overlay { position: fixed; inset: 0; background: rgba(16, 185, 129, 0.4); border: 4px dashed #10b981; z-index: 100; display: none; align-items: center; justify-content: center; pointer-events: none; }
+        .bone-badge { padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; background: #ef4444; color: white; }
+        .bone-badge.found { background: #10b981; }
+        
+        /* Custom scrollbar for bone list */
+        .bone-scroll::-webkit-scrollbar { width: 6px; }
+        .bone-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 4px; }
+        .bone-scroll::-webkit-scrollbar-thumb { background: #10b981; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div id="drop-zone" class="drop-overlay">
+        <p class="text-3xl font-bold">DROP .GLB or .FBX FILE HERE</p>
+    </div>
+
+    <div class="ui-card shadow-2xl">
+        <h1 class="text-xl font-black text-emerald-500 border-b border-slate-700 pb-2 mb-3">MOCAP DIAGNOSTICS</h1>
+        
+        <div class="space-y-4 mb-4">
+            <!-- AXIS CALIBRATOR -->
+            <div class="bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/30">
+                <p class="text-[10px] uppercase text-emerald-400 font-bold mb-2">1. Axis Calibrator</p>
+                <select id="axis-select" class="w-full bg-slate-800 text-xs text-white p-2 rounded border border-slate-600 focus:outline-none focus:border-emerald-500">
+                    <option value="z">Z-Axis (Standard Web)</option>
+                    <option value="x">X-Axis (Mixamo FBX Default)</option>
+                    <option value="y">Y-Axis (Blender Default)</option>
+                </select>
+            </div>
+
+            <!-- RAW BONE INSPECTOR -->
+            <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">2. Raw Bone Inspector</p>
+                <div id="bone-list" class="bone-scroll h-24 overflow-y-auto text-[9px] font-mono text-slate-400 bg-black/60 p-2 rounded border border-slate-800">
+                    Awaiting model drop...
+                </div>
+            </div>
+
+            <!-- LIVE BONE SCANNER -->
+            <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">3. Engine Mapping</p>
+                <div class="grid grid-cols-3 gap-2 text-[10px]">
+                    <div class="flex justify-between items-center">L. Arm: <span id="b-l-arm" class="bone-badge">Missing</span></div>
+                    <div class="flex justify-between items-center">Spine: <span id="b-spine" class="bone-badge">Missing</span></div>
+                    <div class="flex justify-between items-center">R. Arm: <span id="b-r-arm" class="bone-badge">Missing</span></div>
+                    <div class="flex justify-between items-center">L. Elbow: <span id="b-l-elb" class="bone-badge">Missing</span></div>
+                    <div class="flex justify-between items-center">Neck: <span id="b-neck" class="bone-badge">Missing</span></div>
+                    <div class="flex justify-between items-center">R. Elbow: <span id="b-r-elb" class="bone-badge">Missing</span></div>
+                    <div class="flex justify-between items-center">L. Leg: <span id="b-l-leg" class="bone-badge">Missing</span></div>
+                    <div class="flex justify-between items-center">Head: <span id="b-head" class="bone-badge">Missing</span></div>
+                    <div class="flex justify-between items-center">R. Leg: <span id="b-r-leg" class="bone-badge">Missing</span></div>
+                </div>
+            </div>
+
+            <!-- TOGGLES -->
+            <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                <p class="text-[10px] uppercase text-slate-500 font-bold mb-2">4. Visualizers</p>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs">Show Model Skin</span>
+                    <input type="checkbox" id="check-model" checked class="w-4 h-4 accent-emerald-500">
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs">Show Model Skeleton</span>
+                    <input type="checkbox" id="check-skeleton" checked class="w-4 h-4 accent-emerald-500">
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs">Show Tracking Stickman</span>
+                    <input type="checkbox" id="check-stick" checked class="w-4 h-4 accent-emerald-500">
+                </div>
+            </div>
+        </div>
+
+        <button id="start-btn" class="w-full py-3 bg-emerald-600 rounded-xl font-bold text-sm hover:bg-emerald-500 transition-all shadow-lg active:scale-95">
+            START CAMERA
+        </button>
+    </div>
+
+    <video id="video-input" class="hidden" playsinline></video>
+    <canvas id="video-preview"></canvas>
+    <div id="canvas-container"></div>
+
+    <script>
+        let scene, camera, renderer, model, stickman, modelSkeletonHelper;
+        let pose, cameraUtil;
+        
+        const VISIBILITY_THRESHOLD = 0.5; 
+        const BONE_PAIRS = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28]];
+
+        // Active Bones Dictionary
+        const activeBones = {};
+
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 6);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+            const sun = new THREE.DirectionalLight(0xffffff, 1);
+            sun.position.set(5, 10, 5);
+            scene.add(sun);
+            scene.add(new THREE.GridHelper(20, 20, 0x1e293b, 0x0f172a));
+
+            setupStickman();
+            animate();
+        }
+
+        function setupStickman() {
+            stickman = new THREE.Group();
+            stickman.joints = [];
+            const geo = new THREE.SphereGeometry(0.06, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+            
+            for(let i=0; i<33; i++) {
+                const s = new THREE.Mesh(geo, mat);
+                stickman.joints.push(s);
+                stickman.add(s);
+            }
+            stickman.joints[0].material = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.6 });
+            stickman.joints[0].scale.set(4.5, 4.5, 4.5);
+
+            stickman.bones = [];
+            const bMat = new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.5 });
+            BONE_PAIRS.forEach(() => {
+                const b = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 6), bMat);
+                stickman.bones.push(b);
+                stickman.add(b);
+            });
+            scene.add(stickman);
+        }
+
+        function updateBoneUI(id, isFound) {
+            const el = document.getElementById(id);
+            if(isFound) {
+                el.innerText = "Bound";
+                el.classList.add("found");
+            } else {
+                el.innerText = "Missing";
+                el.classList.remove("found");
+            }
+        }
+
+        function setupLoadedModel(loadedObject) {
+            if (model) scene.remove(model);
+            if (modelSkeletonHelper) scene.remove(modelSkeletonHelper);
+            
+            model = loadedObject;
+            for (const key in activeBones) delete activeBones[key];
+
+            let foundBoneNames = [];
+
+            // ROBUST FUZZY BONE SEARCH & INSPECTOR
+            model.traverse(n => { 
+                if(n.isBone) {
+                    foundBoneNames.push(n.name);
+                    const lowerName = n.name.toLowerCase();
+                    
+                    // Left Arm Logic
+                    if (lowerName.includes('left') || lowerName.match(/^l_|_l$/)) {
+                        if (lowerName.includes('arm') || lowerName.includes('shoulder')) {
+                            if (lowerName.includes('fore') || lowerName.includes('lower') || lowerName.includes('roll')) activeBones.leftForearm = n;
+                            else if (!activeBones.leftUpperArm) activeBones.leftUpperArm = n;
+                        }
+                        if (lowerName.includes('leg') || lowerName.includes('thigh') || lowerName.includes('calf')) {
+                            if (lowerName.includes('calf') || lowerName.includes('lower')) activeBones.leftShin = n;
+                            else if (!activeBones.leftThigh) activeBones.leftThigh = n;
+                        }
+                    }
+                    // Right Arm Logic
+                    if (lowerName.includes('right') || lowerName.match(/^r_|_r$/)) {
+                        if (lowerName.includes('arm') || lowerName.includes('shoulder')) {
+                            if (lowerName.includes('fore') || lowerName.includes('lower') || lowerName.includes('roll')) activeBones.rightForearm = n;
+                            else if (!activeBones.rightUpperArm) activeBones.rightUpperArm = n;
+                        }
+                        if (lowerName.includes('leg') || lowerName.includes('thigh') || lowerName.includes('calf')) {
+                            if (lowerName.includes('calf') || lowerName.includes('lower')) activeBones.rightShin = n;
+                            else if (!activeBones.rightThigh) activeBones.rightThigh = n;
+                        }
+                    }
+                    // Core Logic (Spine, Neck, Head)
+                    if (lowerName.includes('spine')) {
+                        if (!activeBones.spine) activeBones.spine = n; // Grab the first/lowest spine joint
+                    }
+                    if (lowerName.includes('neck')) activeBones.neck = n;
+                    if (lowerName.includes('head') || lowerName.includes('mixamorighead')) activeBones.head = n;
+                } 
+            });
+
+            // Populate Bone Inspector List
+            const boneListEl = document.getElementById('bone-list');
+            if (foundBoneNames.length === 0) {
+                boneListEl.innerHTML = "<span class='text-red-400'>NO BONES FOUND.</span><br>This is a static mesh (like a statue), not a rigged character.";
+            } else {
+                boneListEl.innerHTML = foundBoneNames.map(name => `• ${name}`).join('<br>');
+            }
+
+            // Update Engine Mapping UI
+            updateBoneUI('b-l-arm', !!activeBones.leftUpperArm);
+            updateBoneUI('b-r-arm', !!activeBones.rightUpperArm);
+            updateBoneUI('b-l-elb', !!activeBones.leftForearm);
+            updateBoneUI('b-r-elb', !!activeBones.rightForearm);
+            updateBoneUI('b-l-leg', !!activeBones.leftThigh);
+            updateBoneUI('b-r-leg', !!activeBones.rightThigh);
+            updateBoneUI('b-spine', !!activeBones.spine);
+            updateBoneUI('b-neck', !!activeBones.neck);
+            updateBoneUI('b-head', !!activeBones.head);
+
+            // CENTER & SCALE
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            
+            model.position.x -= center.x;
+            model.position.y -= center.y;
+            model.position.z -= center.z;
+            
+            model.userData.originalHeight = size.y;
+            model.scale.setScalar(4 / Math.max(size.x, size.y, size.z));
+            
+            scene.add(model);
+            
+            if (foundBoneNames.length > 0) {
+                modelSkeletonHelper = new THREE.SkeletonHelper(model);
+                modelSkeletonHelper.visible = document.getElementById('check-skeleton').checked;
+                scene.add(modelSkeletonHelper);
+            }
+        }
+
+        function loadLocalModel(file) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            const url = URL.createObjectURL(file);
+            document.getElementById('bone-list').innerText = "Parsing file...";
+            
+            if (ext === 'fbx') {
+                new THREE.FBXLoader().load(url, fbx => setupLoadedModel(fbx));
+                document.getElementById('axis-select').value = 'x';
+            } else {
+                new THREE.GLTFLoader().load(url, gltf => setupLoadedModel(gltf.scene));
+            }
+        }
+
+        async function startMocap() {
+            const video = document.getElementById('video-input');
+            const preview = document.getElementById('video-preview');
+            const ctx = preview.getContext('2d');
+
+            pose = new Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+            pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+
+            pose.onResults((res) => {
+                if (!res.poseLandmarks) return;
+                const lm = res.poseLandmarks;
+
+                let highestVisibleJoint = null;
+                let highestY = -Infinity;
+                const showStickman = document.getElementById('check-stick').checked;
+                stickman.visible = showStickman;
+                
+                lm.forEach((p, i) => {
+                    const isVis = p.visibility > VISIBILITY_THRESHOLD;
+                    if (stickman.joints[i]) {
+                        stickman.joints[i].visible = showStickman && isVis;
+                        stickman.joints[i].position.set((0.5-p.x)*8, (0.5-p.y)*8, -p.z*4);
+                        if (isVis && stickman.joints[i].position.y > highestY) {
+                            highestY = stickman.joints[i].position.y;
+                            highestVisibleJoint = stickman.joints[i];
+                        }
+                    }
+                });
+
+                BONE_PAIRS.forEach((p, i) => {
+                    const j1 = stickman.joints[p[0]], j2 = stickman.joints[p[1]], bone = stickman.bones[i];
+                    if (j1.visible && j2.visible && showStickman) {
+                        bone.visible = true;
+                        bone.position.copy(j1.position).lerp(j2.position, 0.5);
+                        bone.scale.set(1, j1.position.distanceTo(j2.position), 1);
+                        bone.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), j2.position.clone().sub(j1.position).normalize());
+                    } else bone.visible = false;
+                });
+
+                if (model && highestVisibleJoint) {
+                    model.visible = document.getElementById('check-model').checked;
+                    if(modelSkeletonHelper) modelSkeletonHelper.visible = document.getElementById('check-skeleton').checked;
+
+                    // Dynamic Scale & Pos
+                    if(stickman.joints[11].visible && stickman.joints[12].visible) {
+                        model.scale.setScalar((stickman.joints[11].position.distanceTo(stickman.joints[12].position) * 4.0) / (model.userData.originalHeight || 1));
+                    }
+                    model.position.x += (highestVisibleJoint.position.x - model.position.x) * 0.2;
+                    model.position.y += ((highestVisibleJoint.position.y - (((model.userData.originalHeight||1)/2)*model.scale.y) + 0.3) - model.position.y) * 0.2;
+
+                    // THE AXIS FIXER
+                    const axis = document.getElementById('axis-select').value;
+
+                    // Core (Spine & Head)
+                    if (activeBones.spine && lm[11].visibility > VISIBILITY_THRESHOLD && lm[23].visibility > VISIBILITY_THRESHOLD) {
+                        const midShoulderX = (lm[11].x + lm[12].x) / 2;
+                        const midShoulderY = (lm[11].y + lm[12].y) / 2;
+                        const midHipX = (lm[23].x + lm[24].x) / 2;
+                        const midHipY = (lm[23].y + lm[24].y) / 2;
+                        
+                        const spineAngle = Math.atan2(midShoulderY - midHipY, midShoulderX - midHipX);
+                        activeBones.spine.rotation[axis] = spineAngle + Math.PI/2;
+                    }
+
+                    if (activeBones.head && lm[0].visibility > VISIBILITY_THRESHOLD && lm[11].visibility > VISIBILITY_THRESHOLD) {
+                        const midShoulderX = (lm[11].x + lm[12].x) / 2;
+                        const midShoulderY = (lm[11].y + lm[12].y) / 2;
+                        const headAngle = Math.atan2(lm[0].y - midShoulderY, lm[0].x - midShoulderX);
+                        activeBones.head.rotation[axis] = headAngle + Math.PI/2;
+                    }
+
+                    // Left Arm
+                    if (activeBones.leftUpperArm && lm[11].visibility > VISIBILITY_THRESHOLD && lm[13].visibility > VISIBILITY_THRESHOLD) {
+                        const angle = Math.atan2(lm[13].y - lm[11].y, lm[13].x - lm[11].x);
+                        activeBones.leftUpperArm.rotation[axis] = angle;
+                        if (activeBones.leftForearm && lm[15].visibility > VISIBILITY_THRESHOLD) {
+                            activeBones.leftForearm.rotation[axis] = Math.atan2(lm[15].y - lm[13].y, lm[15].x - lm[13].x) - angle;
+                        }
+                    }
+                    // Right Arm
+                    if (activeBones.rightUpperArm && lm[12].visibility > VISIBILITY_THRESHOLD && lm[14].visibility > VISIBILITY_THRESHOLD) {
+                        const angle = Math.atan2(lm[14].y - lm[12].y, lm[14].x - lm[12].x);
+                        activeBones.rightUpperArm.rotation[axis] = axis === 'z' ? angle - Math.PI : -angle;
+                        if (activeBones.rightForearm && lm[16].visibility > VISIBILITY_THRESHOLD) {
+                            activeBones.rightForearm.rotation[axis] = (Math.atan2(lm[16].y - lm[14].y, lm[16].x - lm[14].x) - angle) * (axis === 'z' ? 1 : -1);
+                        }
+                    }
+                }
+
+                preview.width = 180; preview.height = 135;
+                ctx.drawImage(res.image, 0, 0, 180, 135);
+            });
+
+            cameraUtil = new Camera(video, { onFrame: async () => { await pose.send({ image: video }); } });
+            await cameraUtil.start();
+        }
+
+        function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); }
+
+        window.addEventListener('dragover', (e) => { e.preventDefault(); document.getElementById('drop-zone').style.display = 'flex'; });
+        window.addEventListener('dragleave', () => { document.getElementById('drop-zone').style.display = 'none'; });
+        window.addEventListener('drop', (e) => { e.preventDefault(); document.getElementById('drop-zone').style.display = 'none'; if (e.dataTransfer.files[0]) loadLocalModel(e.dataTransfer.files[0]); });
+
+        document.getElementById('start-btn').onclick = async function() {
+            this.innerText = "STARTING...";
+            await startMocap();
+            this.style.display = 'none';
+        };
+
+        window.onload = initThree;
+    </script>
+</body>
+</html>
