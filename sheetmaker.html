@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Shape Replacer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .drop-zone {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px dashed #cbd5e1;
+        }
+        .drop-zone.dragover {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+            transform: scale(1.01);
+        }
+        .preview-container svg {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            filter: drop-shadow(0 10px 15px -3px rgb(0 0 0 / 0.1));
+        }
+        #infoModal {
+            backdrop-filter: blur(8px);
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-900 selection:bg-blue-100">
+
+    <!-- Header -->
+    <header class="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
+        <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <div class="bg-blue-600 p-1.5 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6 3 3-3 3"/><path d="M18 9H3v11"/></svg>
+                </div>
+                <span class="hidden sm:inline">SVG Shape Replacer</span>
+                <span class="sm:hidden text-lg">Replacer</span>
+            </h1>
+            <div class="flex items-center gap-2">
+                <button id="openInfo" class="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-100 rounded-full transition-colors text-sm font-medium text-slate-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                    Guide
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-4 md:p-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- Left Sidebar: Controls -->
+            <div class="lg:col-span-4 space-y-6">
+                <!-- Step 1 -->
+                <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                        Step 1: Source SVG
+                    </h2>
+                    <div id="svgDropZone" class="drop-zone rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 bg-slate-50/50">
+                        <input type="file" id="svgInput" accept=".svg" class="hidden">
+                        <div class="space-y-3">
+                            <div class="w-12 h-12 bg-white rounded-full shadow-sm border border-slate-100 flex items-center justify-center mx-auto">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="text-blue-600" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold">Upload Master SVG</p>
+                                <p class="text-xs text-slate-500 mt-1">Simple shapes with flat fills work best</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Step 2 -->
+                <section id="mappingSection" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hidden animate-in fade-in duration-500">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                            Step 2: Color Mapping
+                        </h2>
+                        <span id="colorCount" class="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full font-bold text-slate-500">0 COLORS</span>
+                    </div>
+                    <div id="colorList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                        <!-- Color rows injected here -->
+                    </div>
+                </section>
+            </div>
+
+            <!-- Main Content: Preview -->
+            <div class="lg:col-span-8 space-y-6">
+                <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 min-h-[500px] flex flex-col relative">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                            Step 3: Preview & Export
+                        </h2>
+                        
+                        <div id="exportGroup" class="hidden flex items-center gap-2">
+                            <div class="relative group">
+                                <button id="exportDropdownBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all shadow-md active:scale-95">
+                                    Export Result
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div class="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-40 p-1">
+                                    <button onclick="exportAs('svg')" class="w-full text-left px-4 py-2 hover:bg-blue-50 rounded-lg text-sm flex items-center justify-between">
+                                        Save as SVG <span class="text-[10px] text-slate-400">VECTOR</span>
+                                    </button>
+                                    <button onclick="exportAs('png')" class="w-full text-left px-4 py-2 hover:bg-blue-50 rounded-lg text-sm flex items-center justify-between border-t border-slate-50">
+                                        Save as PNG <span class="text-[10px] text-slate-400">RASTER</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="previewArea" class="flex-grow border border-slate-100 rounded-xl bg-slate-50/50 preview-container flex items-center justify-center overflow-auto p-4 transition-all">
+                        <div class="text-center space-y-4 max-w-xs opacity-50">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto text-slate-300" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                            <p class="text-sm italic">Waiting for your master SVG file to process shapes...</p>
+                        </div>
+                    </div>
+
+                    <!-- Hidden Canvas for Raster Export -->
+                    <canvas id="exportCanvas" class="hidden"></canvas>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <!-- Info Modal -->
+    <div id="infoModal" class="fixed inset-0 bg-slate-900/40 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+                <h3 class="text-xl font-bold">User Guide</h3>
+                <button id="closeInfo" class="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-full transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="p-8 space-y-8 overflow-y-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="font-bold text-blue-600 mb-3 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="m16 8-4 4-4-4"/><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"/></svg>
+                            Quick Start
+                        </h4>
+                        <ul class="space-y-3 text-sm text-slate-600">
+                            <li><span class="font-bold text-slate-900">1. Upload SVG:</span> Any SVG with standard <code>fill</code> colors.</li>
+                            <li><span class="font-bold text-slate-900">2. Map Images:</span> Choose a photo for any specific color found.</li>
+                            <li><span class="font-bold text-slate-900">3. Pick Sizing:</span> 
+                                <br><em class="text-xs">Cover:</em> Fills shape completely (cropping edges).
+                                <br><em class="text-xs">Fit:</em> Shows full image (may leave gaps).
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                        <h4 class="font-bold text-slate-900 mb-2">Export Formats</h4>
+                        <p class="text-xs text-slate-500 mb-3">Choose the best output for your needs:</p>
+                        <ul class="space-y-2 text-xs">
+                            <li class="flex items-start gap-2">
+                                <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">SVG</span>
+                                <span>Perfect for web. Scalable and self-contained with images inside.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">PNG</span>
+                                <span>High-res flat image. Best for presentations and printing.</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        Related Repository Files
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                        <a href="index.html" class="flex items-center justify-between p-4 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 transition-colors group">
+                            <div class="flex items-center gap-3">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-600"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                <span class="font-medium text-blue-900">index.html</span>
+                            </div>
+                            <span class="text-[10px] font-bold text-blue-400 group-hover:text-blue-600">MAIN</span>
+                        </a>
+                        <div class="flex items-center gap-3 p-4 border border-slate-100 rounded-xl text-slate-400 bg-slate-50 italic">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-30"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            README.md (Optional)
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-100 text-center">
+                <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Hosted on GitHub Pages</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const svgInput = document.getElementById('svgInput');
+        const svgDropZone = document.getElementById('svgDropZone');
+        const previewArea = document.getElementById('previewArea');
+        const mappingSection = document.getElementById('mappingSection');
+        const colorList = document.getElementById('colorList');
+        const exportGroup = document.getElementById('exportGroup');
+        const colorCount = document.getElementById('colorCount');
+        const infoModal = document.getElementById('infoModal');
+        const openInfo = document.getElementById('openInfo');
+        const closeInfo = document.getElementById('closeInfo');
+
+        let currentSvgElement = null;
+        let originalColors = [];
+        let mappings = {}; // hex -> { base64: str, mode: 'slice'|'meet' }
+
+        // Modal Controls
+        openInfo.onclick = () => infoModal.classList.remove('hidden');
+        closeInfo.onclick = () => infoModal.classList.add('hidden');
+        window.onclick = (e) => { if(e.target === infoModal) infoModal.classList.add('hidden'); }
+
+        // File Selection
+        svgDropZone.onclick = () => svgInput.click();
+        svgDropZone.ondragover = (e) => { e.preventDefault(); svgDropZone.classList.add('dragover'); };
+        svgDropZone.ondragleave = () => svgDropZone.classList.remove('dragover');
+        svgDropZone.ondrop = (e) => {
+            e.preventDefault();
+            svgDropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === "image/svg+xml") handleSvgFile(file);
+        };
+
+        svgInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) handleSvgFile(file);
+        };
+
+        function handleSvgFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(e.target.result, "image/svg+xml");
+                const svg = svgDoc.querySelector('svg');
+                
+                if (!svg) {
+                    notify("Error: No valid SVG tag found.");
+                    return;
+                }
+
+                currentSvgElement = svg;
+                extractColors(svg);
+                renderSvgPreview();
+                mappingSection.classList.remove('hidden');
+                exportGroup.classList.remove('hidden');
+            };
+            reader.readAsText(file);
+        }
+
+        function extractColors(svg) {
+            const colors = new Set();
+            const elements = svg.querySelectorAll('*');
+            
+            elements.forEach(el => {
+                const fill = el.getAttribute('fill');
+                if (fill && fill !== 'none' && !fill.startsWith('url')) {
+                    colors.add(fill.toLowerCase().trim());
+                }
+                // Handle inline styles as well
+                const styleFill = el.style.fill;
+                if (styleFill && styleFill !== 'none' && !styleFill.startsWith('url')) {
+                    colors.add(styleFill.toLowerCase().trim());
+                }
+            });
+
+            originalColors = Array.from(colors);
+            colorCount.textContent = `${originalColors.length} COLORS DETECTED`;
+            renderColorControls();
+        }
+
+        function renderColorControls() {
+            colorList.innerHTML = '';
+            originalColors.forEach((color, idx) => {
+                const row = document.createElement('div');
+                row.className = "p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 transition-all hover:border-blue-200";
+                
+                row.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-5 h-5 rounded-md border border-white shadow-sm" style="background-color: ${color}"></div>
+                            <span class="text-[10px] font-mono font-bold text-slate-500 uppercase">${color}</span>
+                        </div>
+                        <select data-color="${color}" class="mode-select text-[10px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:ring-2 ring-blue-100">
+                            <option value="slice">COVER (Crop)</option>
+                            <option value="meet">FIT (Whole)</option>
+                        </select>
+                    </div>
+                    <label class="block cursor-pointer">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold mb-1 ml-1">Replace Image</div>
+                        <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-500 hover:bg-blue-50 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                            <span id="label-${idx}">Choose file...</span>
+                            <input type="file" accept="image/*" data-color="${color}" data-idx="${idx}" class="image-map-input hidden">
+                        </div>
+                    </label>
+                `;
+                colorList.appendChild(row);
+            });
+
+            // Events for new inputs
+            document.querySelectorAll('.image-map-input').forEach(input => {
+                input.onchange = (e) => {
+                    const color = e.target.getAttribute('data-color');
+                    const idx = e.target.getAttribute('data-idx');
+                    const file = e.target.files[0];
+                    if (file) {
+                        document.getElementById(`label-${idx}`).textContent = file.name;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            if (!mappings[color]) mappings[color] = {};
+                            mappings[color].base64 = ev.target.result;
+                            updateSvgWithPatterns();
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+            });
+
+            document.querySelectorAll('.mode-select').forEach(sel => {
+                sel.onchange = (e) => {
+                    const color = e.target.getAttribute('data-color');
+                    if (mappings[color]) {
+                        mappings[color].mode = e.target.value;
+                        updateSvgWithPatterns();
+                    }
+                };
+            });
+        }
+
+        function updateSvgWithPatterns() {
+            if (!currentSvgElement) return;
+
+            let defs = currentSvgElement.querySelector('defs');
+            if (!defs) {
+                defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+                currentSvgElement.prepend(defs);
+            }
+
+            Object.keys(mappings).forEach((color, idx) => {
+                const map = mappings[color];
+                if (!map.base64) return;
+
+                const patternId = `pattern-${idx}`;
+                let pattern = defs.querySelector(`#${patternId}`);
+                if (!pattern) {
+                    pattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+                    pattern.setAttribute("id", patternId);
+                    pattern.setAttribute("patternContentUnits", "objectBoundingBox");
+                    pattern.setAttribute("width", "1");
+                    pattern.setAttribute("height", "1");
+                    
+                    const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+                    img.setAttribute("x", "0");
+                    img.setAttribute("y", "0");
+                    img.setAttribute("width", "1");
+                    img.setAttribute("height", "1");
+                    pattern.appendChild(img);
+                    defs.appendChild(pattern);
+                }
+
+                const img = pattern.querySelector('image');
+                img.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", map.base64);
+                img.setAttribute("preserveAspectRatio", `xMidYMid ${map.mode || 'slice'}`);
+
+                // Apply to shapes
+                const elements = currentSvgElement.querySelectorAll('*');
+                elements.forEach(el => {
+                    const fill = (el.getAttribute('fill') || el.style.fill || "").toLowerCase().trim();
+                    if (fill === color) {
+                        el.setAttribute('fill', `url(#${patternId})`);
+                        el.style.fill = ""; // Clear inline style override
+                    }
+                });
+            });
+
+            renderSvgPreview();
+        }
+
+        function renderSvgPreview() {
+            previewArea.innerHTML = '';
+            const clone = currentSvgElement.cloneNode(true);
+            previewArea.appendChild(clone);
+        }
+
+        async function exportAs(type) {
+            if (!currentSvgElement) return;
+            
+            const svgData = new XMLSerializer().serializeToString(currentSvgElement);
+            
+            if (type === 'svg') {
+                const blob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+                triggerDownload(URL.createObjectURL(blob), "result.svg");
+            } 
+            else if (type === 'png') {
+                const canvas = document.getElementById('exportCanvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                
+                const svgBlob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+                const url = URL.createObjectURL(svgBlob);
+
+                img.onload = () => {
+                    // Export at high res (2x scale)
+                    const scale = 2;
+                    canvas.width = (currentSvgElement.viewBox.baseVal.width || currentSvgElement.width.baseVal.value) * scale;
+                    canvas.height = (currentSvgElement.viewBox.baseVal.height || currentSvgElement.height.baseVal.value) * scale;
+                    
+                    ctx.fillStyle = "rgba(0,0,0,0)";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    
+                    const pngUrl = canvas.toDataURL("image/png");
+                    triggerDownload(pngUrl, "result.png");
+                    URL.revokeObjectURL(url);
+                };
+                img.src = url;
+            }
+        }
+
+        function triggerDownload(url, filename) {
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            notify(`Exported: ${filename}`);
+        }
+
+        function notify(msg) {
+            const div = document.createElement('div');
+            div.className = "fixed bottom-6 right-6 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl z-[100] text-xs font-bold tracking-tight animate-in slide-in-from-bottom-5";
+            div.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    ${msg}
+                </div>
+            `;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 3000);
+        }
+    </script>
+</body>
+</html>
