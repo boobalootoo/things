@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic Replacer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- PowerPoint Library -->
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
+    <style>
+        .shape-hover:hover {
+            cursor: pointer;
+            filter: brightness(1.1) saturate(1.2);
+            outline: 3px solid #3b82f6;
+            outline-offset: -2px;
+        }
+        .is-selected {
+            outline: 4px solid #ef4444 !important;
+            outline-offset: 2px;
+            filter: brightness(1.3);
+        }
+        #previewArea svg {
+            max-width: 100%;
+            height: auto;
+            max-height: 65vh;
+        }
+        .export-btn {
+            transition: all 0.2s ease;
+        }
+        .export-btn:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+        }
+    </style>
+</head>
+<body class="bg-[#f8fafc] min-h-screen font-sans text-slate-800 flex flex-col">
+
+    <!-- Persistent Instruction Banner -->
+    <div class="bg-blue-600 text-white py-3 px-4 sticky top-0 z-[60] shadow-md">
+        <div class="max-w-6xl mx-auto flex flex-wrap justify-center items-center gap-x-8 gap-y-2 text-xs md:text-sm font-bold uppercase tracking-wider">
+            <div class="flex items-center gap-2"><span class="bg-white text-blue-600 w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span> Upload File</div>
+            <div class="hidden sm:block text-blue-300">→</div>
+            <div class="flex items-center gap-2"><span class="bg-white text-blue-600 w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span> Select items to replace</div>
+            <div class="hidden sm:block text-blue-300">→</div>
+            <div class="flex items-center gap-2"><span class="bg-white text-blue-600 w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span> Choose new photo</div>
+            <div class="hidden sm:block text-blue-300">→</div>
+            <div class="flex items-center gap-2"><span class="bg-white text-blue-600 w-5 h-5 rounded-full flex items-center justify-center text-[10px]">4</span> Download</div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 px-6 h-16 flex items-center justify-between z-50">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 p-1.5 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4"/></svg>
+            </div>
+            <h1 class="text-lg font-bold tracking-tight">Easy Magic Replacer</h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="helpBtn" class="text-slate-400 hover:text-slate-600 flex items-center gap-1 text-sm font-bold">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                Info
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-6xl mx-auto w-full p-4 md:p-8">
+        
+        <!-- Upload State -->
+        <div id="uploadState" class="py-20 text-center space-y-8">
+            <div class="max-w-md mx-auto">
+                <h2 class="text-4xl font-black text-slate-900 mb-4">Ready?</h2>
+                <p class="text-slate-500 text-lg">Upload your drawing to start swapping parts.</p>
+            </div>
+            
+            <label class="inline-block group cursor-pointer">
+                <input type="file" id="masterSvgInput" accept=".svg" class="hidden">
+                <div class="bg-blue-600 text-white px-16 py-12 rounded-[3rem] shadow-2xl group-hover:bg-blue-700 transition-all group-hover:scale-105 active:scale-95">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-4" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                    <span class="text-3xl font-black">Open Drawing</span>
+                </div>
+            </label>
+        </div>
+
+        <!-- Editor State -->
+        <div id="editorState" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- Controls Sidebar -->
+            <div class="lg:col-span-3 space-y-6">
+                
+                <!-- Sizing Mode -->
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Photo Size</p>
+                    <div class="flex flex-col gap-2">
+                        <button id="sizeStretch" onclick="setSizeMode('slice')" class="w-full py-3 rounded-xl border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-sm transition-all">Stretch to Fill</button>
+                        <button id="sizeFit" onclick="setSizeMode('xMidYMid meet')" class="w-full py-3 rounded-xl border-2 border-slate-100 text-slate-500 font-bold text-sm transition-all hover:border-slate-300">Keep Original Shape</button>
+                    </div>
+                </div>
+
+                <!-- Replace Mode -->
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Selection Mode</p>
+                    <div class="space-y-2">
+                        <button onclick="setReplaceMode('same')" id="btn-mode-same" class="mode-btn w-full text-left p-3 rounded-xl border-2 border-blue-600 bg-blue-50 text-blue-800 text-xs font-bold">Replace Every Copy</button>
+                        <button onclick="setReplaceMode('single')" id="btn-mode-single" class="mode-btn w-full text-left p-3 rounded-xl border-2 border-slate-100 text-slate-500 text-xs font-bold">Just This One</button>
+                        <button onclick="setReplaceMode('multi')" id="btn-mode-multi" class="mode-btn w-full text-left p-3 rounded-xl border-2 border-slate-100 text-slate-500 text-xs font-bold">Pick Multiple Items</button>
+                    </div>
+                    
+                    <div id="multiControls" class="mt-4 hidden animate-pulse">
+                        <button id="replaceMultiBtn" class="w-full py-3 bg-red-500 text-white rounded-xl font-black text-xs shadow-lg hover:bg-red-600">REPLACE SELECTED (0)</button>
+                    </div>
+                </div>
+
+                <!-- Global Tools -->
+                <button onclick="replaceAllImages()" class="w-full py-4 bg-slate-800 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg">
+                    Replace ALL Images
+                </button>
+
+                <button onclick="location.reload()" class="w-full py-2 text-slate-400 hover:text-slate-600 font-bold text-xs">
+                    ← Change Master File
+                </button>
+            </div>
+
+            <!-- Preview and Export -->
+            <div class="lg:col-span-9 space-y-6">
+                <div id="previewArea" class="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-200 flex items-center justify-center min-h-[500px] overflow-hidden relative">
+                    <!-- SVG Render -->
+                </div>
+
+                <div class="bg-white p-6 rounded-[2.5rem] shadow-lg border border-slate-200 flex flex-wrap items-center justify-center gap-4">
+                    <p class="w-full text-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Save finished work</p>
+                    <button onclick="exportResult('pdf')" class="export-btn bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold">PDF</button>
+                    <button onclick="exportResult('pptx')" class="export-btn bg-orange-600 text-white px-8 py-4 rounded-2xl font-bold">PowerPoint</button>
+                    <button onclick="exportResult('docx')" class="export-btn bg-blue-700 text-white px-8 py-4 rounded-2xl font-bold">Word Doc</button>
+                    <button onclick="exportResult('png')" class="export-btn bg-emerald-600 text-white px-8 py-4 rounded-2xl font-bold">Picture</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Invisible Image Picker -->
+    <input type="file" id="imageInput" accept="image/*" class="hidden">
+
+    <!-- Info Modal -->
+    <div id="infoModal" class="fixed inset-0 bg-slate-900/60 z-[100] hidden flex items-center justify-center p-4 backdrop-blur-md">
+        <div class="bg-white rounded-[3rem] w-full max-w-lg p-10 shadow-2xl relative">
+            <button id="closeInfo" class="absolute top-8 right-8 p-2 text-slate-400 hover:text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h3 class="text-3xl font-black mb-6">File Info</h3>
+            <div class="space-y-4 mb-8">
+                <p class="text-slate-600 leading-relaxed">This tool lets you click parts of a drawing and fill them with photos. You can choose to replace every copy of a color or just one specific shape.</p>
+            </div>
+            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Related Files</p>
+            <div class="flex items-center gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span class="font-bold text-sm">index.html</span>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="renderCanvas" class="hidden"></canvas>
+
+    <script>
+        const masterSvgInput = document.getElementById('masterSvgInput');
+        const uploadState = document.getElementById('uploadState');
+        const editorState = document.getElementById('editorState');
+        const previewArea = document.getElementById('previewArea');
+        const imageInput = document.getElementById('imageInput');
+        const infoModal = document.getElementById('infoModal');
+        const helpBtn = document.getElementById('helpBtn');
+        const closeInfo = document.getElementById('closeInfo');
+
+        let currentSvg = null;
+        let replaceMode = 'same'; // 'same', 'single', 'multi'
+        let sizeMode = 'slice'; // 'slice' or 'xMidYMid meet'
+        let selectedItems = []; // For multi-select mode
+
+        helpBtn.onclick = () => infoModal.classList.remove('hidden');
+        closeInfo.onclick = () => infoModal.classList.add('hidden');
+
+        masterSvgInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(ev.target.result, "image/svg+xml");
+                const svg = doc.querySelector('svg');
+                if (svg) {
+                    currentSvg = svg;
+                    uploadState.classList.add('hidden');
+                    editorState.classList.remove('hidden');
+                    renderPreview();
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        function setSizeMode(mode) {
+            sizeMode = mode;
+            document.getElementById('sizeStretch').className = mode === 'slice' ? 'w-full py-3 rounded-xl border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-sm' : 'w-full py-3 rounded-xl border-2 border-slate-100 text-slate-500 font-bold text-sm hover:border-slate-300';
+            document.getElementById('sizeFit').className = mode !== 'slice' ? 'w-full py-3 rounded-xl border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-sm' : 'w-full py-3 rounded-xl border-2 border-slate-100 text-slate-500 font-bold text-sm hover:border-slate-300';
+        }
+
+        function setReplaceMode(mode) {
+            replaceMode = mode;
+            selectedItems = [];
+            updateMultiControls();
+            
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('border-blue-600', 'bg-blue-50', 'text-blue-800');
+                btn.classList.add('border-slate-100', 'text-slate-500');
+            });
+            const active = document.getElementById(`btn-mode-${mode}`);
+            active.classList.add('border-blue-600', 'bg-blue-50', 'text-blue-800');
+            active.classList.remove('border-slate-100', 'text-slate-500');
+
+            document.getElementById('multiControls').classList.toggle('hidden', mode !== 'multi');
+            renderPreview();
+        }
+
+        function updateMultiControls() {
+            const btn = document.getElementById('replaceMultiBtn');
+            btn.textContent = `REPLACE SELECTED (${selectedItems.length})`;
+            btn.onclick = () => {
+                if(selectedItems.length > 0) imageInput.click();
+            };
+        }
+
+        function renderPreview() {
+            previewArea.innerHTML = '';
+            const elements = currentSvg.querySelectorAll('*');
+            elements.forEach((el, index) => {
+                const fill = el.getAttribute('fill');
+                const tagName = el.tagName.toLowerCase();
+                const isImage = tagName === 'image';
+                const isShape = fill && fill !== 'none' && !fill.startsWith('url');
+
+                if (isImage || isShape) {
+                    el.classList.add('shape-hover');
+                    el.classList.toggle('is-selected', selectedItems.includes(el));
+                    
+                    el.onclick = (e) => {
+                        e.stopPropagation();
+                        if (replaceMode === 'multi') {
+                            const idx = selectedItems.indexOf(el);
+                            if (idx > -1) selectedItems.splice(idx, 1);
+                            else selectedItems.push(el);
+                            updateMultiControls();
+                            renderPreview();
+                        } else {
+                            selectedItems = [el];
+                            imageInput.click();
+                        }
+                    };
+                }
+            });
+            previewArea.appendChild(currentSvg);
+        }
+
+        imageInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file || selectedItems.length === 0) return;
+
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const base64 = ev.target.result;
+                
+                selectedItems.forEach(targetEl => {
+                    const fill = targetEl.getAttribute('fill');
+                    const tagName = targetEl.tagName.toLowerCase();
+                    const isImage = tagName === 'image';
+                    const href = targetEl.getAttribute('href') || targetEl.getAttribute('xlink:href');
+
+                    if (replaceMode === 'same') {
+                        if (isImage) {
+                            currentSvg.querySelectorAll('image').forEach(img => {
+                                if ((img.getAttribute('href') || img.getAttribute('xlink:href')) === href) {
+                                    applyReplacement(img, base64);
+                                }
+                            });
+                        } else {
+                            currentSvg.querySelectorAll('*').forEach(el => {
+                                if (el.getAttribute('fill') === fill) applyReplacement(el, base64);
+                            });
+                        }
+                    } else {
+                        // 'single' or 'multi' both just apply to the elements in selectedItems
+                        applyReplacement(targetEl, base64);
+                    }
+                });
+
+                selectedItems = [];
+                updateMultiControls();
+                renderPreview();
+            };
+            reader.readAsDataURL(file);
+        };
+
+        function applyReplacement(el, base64) {
+            const isImage = el.tagName.toLowerCase() === 'image';
+            if (isImage) {
+                el.setAttribute('href', base64);
+                el.setAttribute('xlink:href', base64);
+                el.setAttribute('preserveAspectRatio', sizeMode);
+            } else {
+                const fill = el.getAttribute('fill');
+                const patternId = `pattern-${fill.replace('#', '')}-${Math.random().toString(36).substr(2, 5)}`;
+                let defs = currentSvg.querySelector('defs');
+                if (!defs) {
+                    defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+                    currentSvg.prepend(defs);
+                }
+                const pattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+                pattern.setAttribute("id", patternId);
+                pattern.setAttribute("patternContentUnits", "objectBoundingBox");
+                pattern.setAttribute("width", "1");
+                pattern.setAttribute("height", "1");
+                const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+                img.setAttribute("href", base64);
+                img.setAttribute("width", "1");
+                img.setAttribute("height", "1");
+                img.setAttribute("preserveAspectRatio", sizeMode);
+                pattern.appendChild(img);
+                defs.appendChild(pattern);
+                el.setAttribute('fill', `url(#${patternId})`);
+            }
+        }
+
+        function replaceAllImages() {
+            const allImages = currentSvg.querySelectorAll('image');
+            if (allImages.length === 0) {
+                alert("No images found in this drawing to replace.");
+                return;
+            }
+            selectedItems = Array.from(allImages);
+            replaceMode = 'multi'; // Temporarily force multi logic
+            imageInput.click();
+        }
+
+        async function exportResult(type) {
+            const svgData = new XMLSerializer().serializeToString(currentSvg);
+            const canvas = document.getElementById('renderCanvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            const svgBlob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+            const url = URL.createObjectURL(svgBlob);
+
+            img.onload = () => {
+                const w = (currentSvg.viewBox.baseVal.width || currentSvg.width.baseVal.value) || 800;
+                const h = (currentSvg.viewBox.baseVal.height || currentSvg.height.baseVal.value) || 600;
+                canvas.width = w * 2; canvas.height = h * 2;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const pngData = canvas.toDataURL('image/png');
+
+                if (type === 'png') downloadFile(pngData, 'design.png', true);
+                else if (type === 'pdf') {
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF(w > h ? 'l' : 'p', 'pt', [w, h]);
+                    pdf.addImage(pngData, 'PNG', 0, 0, w, h);
+                    pdf.save('design.pdf');
+                } 
+                else if (type === 'pptx') {
+                    let pres = new PptxGenJS();
+                    let slide = pres.addSlide();
+                    slide.addImage({ data: pngData, x: 0, y: 0, w: '100%', h: '100%' });
+                    pres.writeFile({ fileName: "design.pptx" });
+                } 
+                else if (type === 'docx') {
+                    const html = `<html><body><img src="${pngData}" style="width:100%;"></body></html>`;
+                    downloadFile(new Blob(['\ufeff', html], { type: 'application/msword' }), 'design.doc');
+                }
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
+        }
+
+        function downloadFile(content, filename, isDataUrl = false) {
+            const link = document.createElement('a');
+            link.href = isDataUrl ? content : URL.createObjectURL(content);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
