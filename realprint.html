@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print-a-Poster | A4 Tiling Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jsPDF for generating the final document -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .canvas-container {
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+            cursor: grab;
+        }
+
+        .canvas-container:active {
+            cursor: grabbing;
+        }
+
+        .tile {
+            position: absolute;
+            border: 2px solid #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+            cursor: move;
+            transition: box-shadow 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        .tile:hover {
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+            background: rgba(59, 130, 246, 0.2);
+            z-index: 20;
+        }
+
+        .tile::after {
+            content: attr(data-index);
+            color: #3b82f6;
+            font-weight: bold;
+            font-size: 1.2rem;
+            pointer-events: none;
+        }
+
+        .tile-controls {
+            position: absolute;
+            top: -35px;
+            right: 0;
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .tile:hover .tile-controls {
+            opacity: 1;
+        }
+
+        .control-btn {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 4px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-btn:hover {
+            background: #f1f5f9;
+            color: #ef4444;
+        }
+
+        .control-btn.rotate:hover {
+            color: #3b82f6;
+        }
+
+        /* Loading Spinner */
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #image-preview {
+            max-width: none;
+            pointer-events: none;
+        }
+
+        #canvas-wrapper {
+            transform-origin: top left;
+            transition: transform 0.2s ease-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div class="flex items-center gap-2">
+            <div class="bg-blue-600 text-white p-2 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            </div>
+            <h1 class="text-xl font-bold text-slate-800">Print-a-Poster</h1>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="toggleInfo()" class="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden">
+        
+        <!-- Controls Sidebar -->
+        <aside class="w-full md:w-80 bg-white border-r border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto">
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">1. Upload Image</label>
+                <input type="file" id="imageInput" accept="image/*" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+            </div>
+
+            <div id="size-controls" class="hidden flex flex-col gap-4">
+                <hr class="border-slate-100" />
+                
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-sm font-semibold text-slate-700">Workspace Zoom</label>
+                        <span id="zoomVal" class="text-xs font-mono text-slate-400">100%</span>
+                    </div>
+                    <input type="range" id="zoomInput" min="10" max="200" value="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <hr class="border-slate-100" />
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">2. Desired Print Width</label>
+                    <div class="flex gap-2">
+                        <input type="number" id="targetWidth" value="100" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <select id="unitInput" class="border border-slate-300 rounded-lg px-2 py-2 text-sm bg-slate-50">
+                            <option value="cm">cm</option>
+                            <option value="in">in</option>
+                        </select>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-1">Height will adjust automatically.</p>
+                </div>
+
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <p class="text-xs font-medium text-slate-500">Poster Stats:</p>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-xs text-slate-600">Total Size:</span>
+                        <span id="finalDimText" class="text-xs font-bold text-slate-800">-</span>
+                    </div>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-xs text-slate-600">A4 Pages:</span>
+                        <span id="pageCountText" class="text-xs font-bold text-slate-800">-</span>
+                    </div>
+                </div>
+
+                <button id="addTileBtn" class="flex items-center justify-center gap-2 bg-slate-800 text-white py-2.5 rounded-lg font-medium hover:bg-slate-900 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                    Add A4 Tile
+                </button>
+
+                <button id="clearTilesBtn" class="text-xs text-red-500 font-medium hover:underline">Clear all tiles</button>
+
+                <hr class="border-slate-100" />
+
+                <button id="printBtn" class="flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+                    <span id="btnText">Export PDF</span>
+                    <div id="btnLoader" class="loader hidden"></div>
+                </button>
+            </div>
+
+            <div id="upload-prompt" class="flex-1 flex flex-col items-center justify-center text-center p-4 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
+                <svg class="text-slate-300 mb-2" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                <p class="text-sm text-slate-400">Upload an image to start designing your poster.</p>
+            </div>
+        </aside>
+
+        <!-- Canvas Area -->
+        <section class="flex-1 relative overflow-auto canvas-container bg-slate-200" id="viewport">
+            <div id="canvas-wrapper" class="inline-block">
+                <div id="canvas" class="relative origin-top-left p-20 min-h-full min-w-full inline-block">
+                    <img id="image-preview" class="shadow-2xl opacity-0 transition-opacity duration-500" />
+                    <!-- Tiles will be appended here -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Info Overlay -->
+    <div id="infoOverlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white">
+                <h2 class="text-2xl font-bold text-slate-800">Help & Documentation</h2>
+                <button onclick="toggleInfo()" class="p-2 hover:bg-slate-100 rounded-full text-slate-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <div class="p-8 space-y-6">
+                <section>
+                    <h3 class="text-lg font-bold text-slate-800 mb-2">How to use this site</h3>
+                    <ul class="space-y-3 text-slate-600 list-disc pl-5">
+                        <li><strong>Step 1:</strong> Select a high-resolution image from your device.</li>
+                        <li><strong>Step 2:</strong> Enter the physical size you want the image to be when printed.</li>
+                        <li><strong>Step 3:</strong> Use the <strong>Zoom</strong> slider in the sidebar to see your whole poster if it is very large.</li>
+                        <li><strong>Step 4:</strong> Click "Add A4 Tile". Hover over a tile to see <strong>Rotate</strong> (landscape/portrait) and <strong>Delete</strong> options.</li>
+                        <li><strong>Step 5:</strong> Click "Export PDF". The app creates a PDF where each page matches the orientation of its respective tile.</li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h3 class="text-lg font-bold text-slate-800 mb-2">GitHub Pages Hosting</h3>
+                    <p class="text-slate-600 mb-2 text-sm leading-relaxed">
+                        To host this on GitHub pages, simply upload this `index.html` file to a repository and enable "Pages" in the settings. This tool is client-side only; no data leaves your browser.
+                    </p>
+                </section>
+
+                <section class="bg-slate-50 p-4 rounded-xl">
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Related Files in Folder</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="bg-white border border-slate-200 p-3 rounded-lg flex items-center gap-3">
+                            <span class="text-blue-500 font-mono text-xs">index.html</span>
+                            <span class="text-[10px] text-slate-400 ml-auto">Main App</span>
+                        </div>
+                        <div class="bg-white border border-slate-200 p-3 rounded-lg flex items-center gap-3">
+                            <span class="text-slate-400 font-mono text-xs">README.md</span>
+                            <span class="text-[10px] text-slate-400 ml-auto">Project Docs</span>
+                        </div>
+                        <div class="bg-white border border-slate-200 p-3 rounded-lg flex items-center gap-3 opacity-50">
+                            <span class="text-slate-400 font-mono text-xs">LICENSE</span>
+                            <span class="text-[10px] text-slate-400 ml-auto">MIT</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const A4_W_MM = 210;
+        const A4_H_MM = 297;
+        const PX_PER_MM = 3.7795275591;
+
+        let currentImage = null;
+        let originalImgW = 0;
+        let originalImgH = 0;
+        let tiles = [];
+        let tileCount = 0;
+        let currentZoom = 1;
+
+        const imageInput = document.getElementById('imageInput');
+        const imagePreview = document.getElementById('image-preview');
+        const targetWidthInput = document.getElementById('targetWidth');
+        const unitInput = document.getElementById('unitInput');
+        const sizeControls = document.getElementById('size-controls');
+        const uploadPrompt = document.getElementById('upload-prompt');
+        const canvas = document.getElementById('canvas');
+        const canvasWrapper = document.getElementById('canvas-wrapper');
+        const zoomInput = document.getElementById('zoomInput');
+        const zoomVal = document.getElementById('zoomVal');
+        const addTileBtn = document.getElementById('addTileBtn');
+        const clearTilesBtn = document.getElementById('clearTilesBtn');
+        const printBtn = document.getElementById('printBtn');
+        const finalDimText = document.getElementById('finalDimText');
+        const pageCountText = document.getElementById('pageCountText');
+
+        function toggleInfo() {
+            document.getElementById('infoOverlay').classList.toggle('hidden');
+            document.getElementById('infoOverlay').classList.toggle('flex');
+        }
+
+        // Zoom Handling
+        zoomInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            currentZoom = val / 100;
+            zoomVal.textContent = `${val}%`;
+            canvasWrapper.style.transform = `scale(${currentZoom})`;
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+                    originalImgW = img.width;
+                    originalImgH = img.height;
+                    imagePreview.src = event.target.result;
+                    imagePreview.classList.remove('opacity-0');
+                    sizeControls.classList.remove('hidden');
+                    uploadPrompt.classList.add('hidden');
+                    updateImageScaling();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function updateImageScaling() {
+            if (!currentImage) return;
+            const targetWidthValue = parseFloat(targetWidthInput.value) || 0;
+            const unit = unitInput.value;
+            let targetWidthMM = unit === 'cm' ? targetWidthValue * 10 : targetWidthValue * 25.4;
+            let ratio = originalImgH / originalImgW;
+            let targetHeightMM = targetWidthMM * ratio;
+            imagePreview.style.width = (targetWidthMM * PX_PER_MM) + 'px';
+            imagePreview.style.height = (targetHeightMM * PX_PER_MM) + 'px';
+            finalDimText.textContent = `${(targetWidthMM/10).toFixed(1)} x ${(targetHeightMM/10).toFixed(1)} cm`;
+        }
+
+        [targetWidthInput, unitInput].forEach(el => el.addEventListener('input', updateImageScaling));
+
+        addTileBtn.addEventListener('click', () => {
+            tileCount++;
+            const tile = document.createElement('div');
+            tile.className = 'tile';
+            tile.setAttribute('data-index', tileCount);
+            tile.setAttribute('data-portrait', 'true');
+            
+            const w = A4_W_MM * PX_PER_MM;
+            const h = A4_H_MM * PX_PER_MM;
+            tile.style.width = w + 'px';
+            tile.style.height = h + 'px';
+            tile.style.left = '100px';
+            tile.style.top = '100px';
+
+            // Controls
+            const ctrl = document.createElement('div');
+            ctrl.className = 'tile-controls';
+            
+            const rotateBtn = document.createElement('button');
+            rotateBtn.className = 'control-btn rotate';
+            rotateBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><polyline points="21 3 21 8 16 8"></polyline></svg>';
+            rotateBtn.onclick = (e) => {
+                e.stopPropagation();
+                const isPortrait = tile.getAttribute('data-portrait') === 'true';
+                const curW = parseFloat(tile.style.width);
+                const curH = parseFloat(tile.style.height);
+                tile.style.width = curH + 'px';
+                tile.style.height = curW + 'px';
+                tile.setAttribute('data-portrait', !isPortrait);
+            };
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'control-btn delete';
+            delBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                tile.remove();
+                tiles = tiles.filter(t => t !== tile);
+                updateStats();
+            };
+
+            ctrl.appendChild(rotateBtn);
+            ctrl.appendChild(delBtn);
+            tile.appendChild(ctrl);
+
+            setupDraggable(tile);
+            canvas.appendChild(tile);
+            tiles.push(tile);
+            updateStats();
+        });
+
+        clearTilesBtn.addEventListener('click', () => {
+            tiles.forEach(t => t.remove());
+            tiles = [];
+            tileCount = 0;
+            updateStats();
+        });
+
+        function updateStats() {
+            pageCountText.textContent = tiles.length;
+        }
+
+        function setupDraggable(el) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            el.onmousedown = dragMouseDown;
+
+            function dragMouseDown(e) {
+                if (e.target.closest('.control-btn')) return;
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                // Adjust movement based on zoom
+                pos1 = (pos3 - e.clientX) / currentZoom;
+                pos2 = (pos4 - e.clientY) / currentZoom;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                el.style.top = (el.offsetTop - pos2) + "px";
+                el.style.left = (el.offsetLeft - pos1) + "px";
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+            
+            el.addEventListener('touchstart', (e) => {
+                if (e.target.closest('.control-btn')) return;
+                const touch = e.touches[0];
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+            }, {passive: false});
+
+            el.addEventListener('touchmove', (e) => {
+                if (e.target.closest('.control-btn')) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                pos1 = (pos3 - touch.clientX) / currentZoom;
+                pos2 = (pos4 - touch.clientY) / currentZoom;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+                el.style.top = (el.offsetTop - pos2) + "px";
+                el.style.left = (el.offsetLeft - pos1) + "px";
+            }, {passive: false});
+        }
+
+        printBtn.addEventListener('click', async () => {
+            if (!currentImage || tiles.length === 0) {
+                const msg = document.createElement('div');
+                msg.className = 'fixed bottom-10 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-lg z-[200]';
+                msg.textContent = "Upload an image and add at least one tile.";
+                document.body.appendChild(msg);
+                setTimeout(() => msg.remove(), 3000);
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const btnText = document.getElementById('btnText');
+            const btnLoader = document.getElementById('btnLoader');
+            
+            btnText.textContent = "Processing...";
+            btnLoader.classList.remove('hidden');
+            printBtn.disabled = true;
+
+            try {
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const displayW = parseFloat(imagePreview.style.width);
+                const displayH = parseFloat(imagePreview.style.height);
+                const scaleX = originalImgW / displayW;
+                const scaleY = originalImgH / displayH;
+
+                for (let i = 0; i < tiles.length; i++) {
+                    const tile = tiles[i];
+                    const isPortrait = tile.getAttribute('data-portrait') === 'true';
+                    
+                    const tileRelX = tile.offsetLeft - imagePreview.offsetLeft;
+                    const tileRelY = tile.offsetTop - imagePreview.offsetTop;
+                    const tileW = parseFloat(tile.style.width);
+                    const tileH = parseFloat(tile.style.height);
+
+                    const sourceX = tileRelX * scaleX;
+                    const sourceY = tileRelY * scaleY;
+                    const sourceW = tileW * scaleX;
+                    const sourceH = tileH * scaleY;
+
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = sourceW;
+                    tempCanvas.height = sourceH;
+                    const ctx = tempCanvas.getContext('2d');
+                    ctx.drawImage(currentImage, sourceX, sourceY, sourceW, sourceH, 0, 0, sourceW, sourceH);
+                    
+                    if (i > 0) pdf.addPage('a4', isPortrait ? 'p' : 'l');
+                    else if (!isPortrait) {
+                        // First page needs handling if it started landscape
+                        pdf.setPage(1);
+                        pdf.addPage('a4', 'l');
+                        pdf.deletePage(1);
+                    }
+                    
+                    const imgData = tempCanvas.toDataURL('image/jpeg', 0.92);
+                    const pdfW = isPortrait ? 210 : 297;
+                    const pdfH = isPortrait ? 297 : 210;
+                    pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
+                }
+
+                pdf.save('poster-layout.pdf');
+            } catch (err) {
+                console.error(err);
+            } finally {
+                btnText.textContent = "Export PDF";
+                btnLoader.classList.add('hidden');
+                printBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
