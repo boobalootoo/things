@@ -1,0 +1,301 @@
+import React, { useState, useMemo } from 'react';
+import { 
+  Layout, Type, Image as ImageIcon, Palette, Code, Play, 
+  Trash2, Info, ExternalLink, Layers, MousePointer2, 
+  ChevronRight, HelpCircle, Eye, Settings, Search, 
+  BookOpen, Terminal, Sparkles, Globe, Cpu, Database
+} from 'lucide-react';
+
+const WebBlocksPro = () => {
+  const [blocks, setBlocks] = useState([]);
+  const [view, setView] = useState('design'); // design, code, encyclopedia
+  const [selectedBlock, setSelectedBlock] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeWiki, setActiveWiki] = useState('html'); // html, css, js
+
+  // --- DATA: THE ENCYCLOPEDIA ---
+  const languages = {
+    html: {
+      name: "HTML5",
+      icon: <Globe className="text-orange-500" />,
+      overview: "The 'Skeleton'. It tells the browser what content exists: text, images, or links.",
+      articles: [
+        { title: "Document Structure", content: "Every HTML file starts with <!DOCTYPE html> followed by <html>, <head> (for metadata), and <body> (for visible content)." },
+        { title: "Semantic Tags", content: "Using tags like <header>, <main>, and <footer> instead of just <div> helps search engines and screen readers understand your site." },
+        { title: "Forms & Inputs", content: "The <form> element wraps <input>, <textarea>, and <button> to collect user data." }
+      ]
+    },
+    css: {
+      name: "CSS3",
+      icon: <Palette className="text-blue-500" />,
+      overview: "The 'Skin'. It controls layout, colors, fonts, and animations.",
+      articles: [
+        { title: "Flexbox", content: "The most powerful way to align items. Use 'display: flex' on a container to easily center children or space them out." },
+        { title: "Grid", content: "Best for 2D layouts. Define rows and columns to create complex magazine-style designs." },
+        { title: "Responsive Design", content: "Use '@media' queries to change styles based on the screen size (mobile vs desktop)." }
+      ]
+    },
+    js: {
+      name: "JavaScript",
+      icon: <Cpu className="text-yellow-500" />,
+      overview: "The 'Brain'. It makes the site interactive: popups, data fetching, and logic.",
+      articles: [
+        { title: "Variables", content: "Use 'const' for values that don't change and 'let' for values that do. Example: let score = 0;" },
+        { title: "Functions", content: "Blocks of code that run when called. function sayHello() { console.log('Hi!'); }" },
+        { title: "DOM Manipulation", content: "How JS talks to HTML. Use 'document.querySelector' to grab an element and change its content." }
+      ]
+    }
+  };
+
+  const tasks = [
+    { goal: "Change text color", language: "CSS", method: "Use the 'color' property.", code: "p { color: red; }" },
+    { goal: "Make a button do something", language: "JavaScript", method: "Add an Event Listener.", code: "btn.addEventListener('click', () => { ... });" },
+    { goal: "Add a link to another site", language: "HTML", method: "Use the Anchor tag.", code: "<a href='https://google.com'>Link</a>" },
+    { goal: "Center a box", language: "CSS", method: "Flexbox is easiest.", code: "display: flex; justify-content: center;" },
+    { goal: "Store a username", language: "JavaScript", method: "Use localStorage.", code: "localStorage.setItem('name', 'User');" },
+    { goal: "Create a list of items", language: "HTML", method: "Use <ul> and <li> tags.", code: "<ul><li>Item</li></ul>" }
+  ];
+
+  const filteredTasks = tasks.filter(t => 
+    t.goal.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.language.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // --- LOGIC: BUILDER ---
+  const elementLibrary = [
+    { id: 'h1', name: 'Header', tag: 'h1', defaultContent: 'Heading', icon: <Type /> },
+    { id: 'p', name: 'Text', tag: 'p', defaultContent: 'Paragraph text...', icon: <Type /> },
+    { id: 'img', name: 'Image', tag: 'img', src: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=400', icon: <ImageIcon /> },
+    { id: 'btn', name: 'Button', tag: 'button', defaultContent: 'Click Me', icon: <MousePointer2 /> },
+  ];
+
+  const addBlock = (type) => {
+    const newBlock = {
+      id: Math.random().toString(36).substr(2, 9),
+      ...type,
+      styles: { color: '#000000', fontSize: '16px', marginTop: '10px' }
+    };
+    setBlocks([...blocks, newBlock]);
+    setSelectedBlock(newBlock.id);
+  };
+
+  const generateHTML = () => {
+    let html = `<!DOCTYPE html>\n<html>\n<head>\n<style>\n`;
+    blocks.forEach(b => {
+      const styles = Object.entries(b.styles).map(([k,v]) => `${k.replace(/[A-Z]/g, m => "-" + m.toLowerCase())}:${v};`).join('');
+      html += `#el-${b.id} { ${styles} }\n`;
+    });
+    html += `</style>\n</head>\n<body>\n`;
+    blocks.forEach(b => {
+      if(b.tag === 'img') html += `<img id="el-${b.id}" src="${b.src}" />\n`;
+      else html += `<${b.tag} id="el-${b.id}">${b.content || b.defaultContent}</${b.tag}>\n`;
+    });
+    html += `</body>\n</html>`;
+    return html;
+  };
+
+  return (
+    <div className="flex flex-col h-screen bg-slate-50 text-slate-900 font-sans">
+      {/* Top Nav */}
+      <header className="h-14 bg-white border-b flex items-center justify-between px-6 shadow-sm z-30">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-indigo-600 rounded-lg text-white"><Layout size={20}/></div>
+          <span className="font-bold text-lg tracking-tight">WebBlocks <span className="text-indigo-500 italic">Pro</span></span>
+        </div>
+
+        <div className="flex bg-slate-100 p-1 rounded-xl">
+          <button onClick={() => setView('design')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${view === 'design' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>Designer</button>
+          <button onClick={() => setView('code')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${view === 'code' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>Source</button>
+          <button onClick={() => setView('encyclopedia')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${view === 'encyclopedia' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>Encyclopedia</button>
+        </div>
+
+        <button onClick={() => alert("Code exported to console for now!")} className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-700">Export Site</button>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Main Workspace */}
+        {view === 'encyclopedia' ? (
+          <div className="flex flex-1 overflow-hidden bg-white">
+            {/* Sidebar Wiki Nav */}
+            <aside className="w-64 border-r p-6 space-y-8 overflow-y-auto">
+              <div>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">The Languages</h3>
+                <div className="space-y-2">
+                  {Object.entries(languages).map(([key, lang]) => (
+                    <button 
+                      key={key}
+                      onClick={() => setActiveWiki(key)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activeWiki === key ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-50'}`}
+                    >
+                      {lang.icon}
+                      <span className="font-bold text-sm">{lang.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Task Search</h3>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="Search task..." 
+                    className="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+            </aside>
+
+            {/* Wiki Content */}
+            <main className="flex-1 overflow-y-auto p-12 max-w-4xl mx-auto">
+              {searchQuery ? (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-bold">Search Results for "{searchQuery}"</h2>
+                  {filteredTasks.map((task, i) => (
+                    <div key={i} className="p-6 border rounded-2xl bg-slate-50 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-bold text-slate-800">{task.goal}</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${task.language === 'HTML' ? 'bg-orange-100 text-orange-700' : task.language === 'CSS' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                          {task.language}
+                        </span>
+                      </div>
+                      <p className="text-slate-600">{task.method}</p>
+                      <pre className="bg-slate-900 text-indigo-300 p-4 rounded-lg font-mono text-sm">
+                        <code>{task.code}</code>
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-12">
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="p-4 bg-slate-100 rounded-2xl">{languages[activeWiki].icon}</div>
+                      <div>
+                        <h1 className="text-4xl font-black text-slate-900">{languages[activeWiki].name}</h1>
+                        <p className="text-lg text-slate-500">{languages[activeWiki].overview}</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="grid grid-cols-1 gap-8">
+                    {languages[activeWiki].articles.map((art, i) => (
+                      <div key={i} className="space-y-2">
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                          <BookOpen size={20} className="text-indigo-500" /> {art.title}
+                        </h3>
+                        <p className="text-slate-600 leading-relaxed text-lg">{art.content}</p>
+                        <hr className="mt-8 border-slate-100" />
+                      </div>
+                    ))}
+                  </section>
+                </div>
+              )}
+            </main>
+          </div>
+        ) : (
+          <>
+            {/* Sidebar Elements */}
+            <aside className="w-64 border-r bg-white p-4 overflow-y-auto">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Standard Elements</h3>
+              <div className="space-y-2">
+                {elementLibrary.map(el => (
+                  <button 
+                    key={el.id}
+                    onClick={() => addBlock(el)}
+                    className="w-full flex items-center gap-3 p-3 bg-slate-50 border border-transparent hover:border-indigo-200 hover:bg-indigo-50 rounded-xl transition-all"
+                  >
+                    <div className="text-indigo-600">{el.icon}</div>
+                    <span className="text-sm font-bold text-slate-700">{el.name}</span>
+                  </button>
+                ))}
+              </div>
+            </aside>
+
+            {/* Builder Canvas */}
+            <main className="flex-1 bg-slate-100 p-8 overflow-y-auto flex flex-col items-center">
+              {view === 'design' ? (
+                <div className="w-full max-w-3xl bg-white min-h-[600px] shadow-2xl rounded-2xl p-8 space-y-4">
+                  {blocks.length === 0 && (
+                    <div className="h-[400px] flex flex-col items-center justify-center text-slate-300">
+                      <Sparkles size={48} className="mb-4 opacity-20" />
+                      <p className="font-medium">Your canvas is waiting for elements.</p>
+                    </div>
+                  )}
+                  {blocks.map(b => (
+                    <div 
+                      key={b.id} 
+                      onClick={() => setSelectedBlock(b.id)}
+                      className={`relative group cursor-pointer transition-all ${selectedBlock === b.id ? 'ring-2 ring-indigo-500 rounded-lg p-2' : 'hover:bg-slate-50 rounded-lg p-2'}`}
+                      style={b.styles}
+                    >
+                      {b.tag === 'img' ? <img src={b.src} className="w-full h-auto rounded" alt="user content" /> : b.content || b.defaultContent}
+                      {selectedBlock === b.id && (
+                        <button onClick={(e) => { e.stopPropagation(); setBlocks(blocks.filter(x => x.id !== b.id)); setSelectedBlock(null); }} className="absolute -top-3 -right-3 bg-red-500 text-white p-1.5 rounded-full shadow-lg"><Trash2 size={12}/></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="w-full max-w-4xl bg-slate-900 rounded-2xl overflow-hidden shadow-2xl h-full flex flex-col">
+                  <div className="px-6 py-4 border-b border-slate-800 flex items-center gap-2">
+                    <Terminal size={16} className="text-indigo-400" />
+                    <span className="text-xs font-mono text-slate-400">Generated Code Structure</span>
+                  </div>
+                  <pre className="p-8 text-indigo-200 font-mono text-sm overflow-auto flex-1">
+                    <code>{generateHTML()}</code>
+                  </pre>
+                </div>
+              )}
+            </main>
+
+            {/* Inspector */}
+            <aside className="w-72 border-l bg-white p-6 overflow-y-auto">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Properties</h3>
+              {!selectedBlock ? (
+                <div className="text-slate-400 text-center text-sm mt-10">Select an element to edit styles.</div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500">Content</label>
+                    <textarea 
+                      className="w-full p-3 bg-slate-50 border rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      value={blocks.find(x => x.id === selectedBlock).content || ""}
+                      onChange={(e) => setBlocks(blocks.map(x => x.id === selectedBlock ? {...x, content: e.target.value} : x))}
+                    />
+                  </div>
+                  <div className="space-y-4 pt-4 border-t border-slate-100">
+                    <label className="text-xs font-bold text-slate-500 block">Typography</label>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400">Size</span>
+                      <input 
+                        type="range" min="10" max="100" 
+                        value={parseInt(blocks.find(x => x.id === selectedBlock).styles.fontSize)}
+                        onChange={(e) => setBlocks(blocks.map(x => x.id === selectedBlock ? {...x, styles: {...x.styles, fontSize: `${e.target.value}px`}} : x))}
+                        className="w-32"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400">Color</span>
+                      <input 
+                        type="color" 
+                        value={blocks.find(x => x.id === selectedBlock).styles.color}
+                        onChange={(e) => setBlocks(blocks.map(x => x.id === selectedBlock ? {...x, styles: {...x.styles, color: e.target.value}} : x))}
+                        className="w-8 h-8 rounded-lg overflow-hidden border-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </aside>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default WebBlocksPro;
