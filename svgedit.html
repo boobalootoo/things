@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Craft Pro - Vector Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --canvas-bg: #f3f4f6;
+            --editor-bg: #ffffff;
+        }
+        body {
+            overscroll-behavior: none;
+            overflow: hidden;
+        }
+        #canvas-container {
+            cursor: crosshair;
+            background-image: 
+                linear-gradient(45deg, #e5e7eb 25%, transparent 25%), 
+                linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #e5e7eb 75%), 
+                linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        .tool-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+        #main-svg {
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            background: white;
+            touch-action: none;
+            user-select: none;
+        }
+        .selected {
+            outline: 2px dashed #3b82f6;
+            outline-offset: 2px;
+        }
+        @media (max-width: 768px) {
+            #toolbar {
+                flex-direction: row;
+                bottom: 0;
+                width: 100%;
+                height: auto;
+                overflow-x: auto;
+                padding: 10px;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+            }
+            #canvas-container {
+                height: calc(100vh - 140px);
+            }
+            #properties {
+                position: fixed;
+                right: 0;
+                top: 60px;
+                height: calc(100vh - 140px);
+                z-index: 30;
+                transform: translateX(100%);
+                transition: transform 0.3s ease;
+            }
+            #properties.mobile-show {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col h-screen font-sans">
+
+    <!-- Header / Navbar -->
+    <header class="bg-slate-900 text-white p-3 flex justify-between items-center shadow-md z-40">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-bezier-curve text-blue-400 text-xl"></i>
+            <h1 class="text-lg font-bold tracking-tight">SVG<span class="text-blue-400">Craft</span> <span class="text-[10px] bg-blue-600 px-1 rounded ml-1">PRO</span></h1>
+        </div>
+        <div class="flex gap-2">
+            <input type="file" id="import-svg" accept=".svg" class="hidden" onchange="handleImport(event)">
+            <button onclick="document.getElementById('import-svg').click()" class="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-sm transition">
+                <i class="fas fa-upload mr-1"></i> Import
+            </button>
+            <button onclick="downloadSVG()" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm transition">
+                <i class="fas fa-download mr-1"></i> Export
+            </button>
+            <button onclick="toggleModal('info-modal')" class="bg-gray-600 hover:bg-gray-700 w-8 h-8 rounded-full flex items-center justify-center transition">
+                <i class="fas fa-info text-sm"></i>
+            </button>
+            <button onclick="toggleMobileProps()" class="md:hidden bg-blue-500 w-8 h-8 rounded-full flex items-center justify-center">
+                <i class="fas fa-sliders-h"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden relative">
+        <!-- Sidebar Toolbar -->
+        <aside id="toolbar" class="bg-white border-r border-gray-200 p-2 flex flex-col gap-2 z-20 shadow-lg md:shadow-none">
+            <button onclick="setTool('select')" id="btn-select" class="tool-btn p-3 rounded-lg hover:bg-gray-100 active transition" title="Select (V)">
+                <i class="fas fa-mouse-pointer"></i>
+            </button>
+            <button onclick="setTool('rect')" id="btn-rect" class="tool-btn p-3 rounded-lg hover:bg-gray-100 transition" title="Rectangle (R)">
+                <i class="far fa-square"></i>
+            </button>
+            <button onclick="setTool('circle')" id="btn-circle" class="tool-btn p-3 rounded-lg hover:bg-gray-100 transition" title="Circle (C)">
+                <i class="far fa-circle"></i>
+            </button>
+            <button onclick="setTool('ellipse')" id="btn-ellipse" class="tool-btn p-3 rounded-lg hover:bg-gray-100 transition" title="Ellipse (E)">
+                <i class="fas fa-egg"></i>
+            </button>
+            <button onclick="setTool('poly')" id="btn-poly" class="tool-btn p-3 rounded-lg hover:bg-gray-100 transition" title="Polygon (G)">
+                <i class="fas fa-draw-polygon"></i>
+            </button>
+            <button onclick="setTool('line')" id="btn-line" class="tool-btn p-3 rounded-lg hover:bg-gray-100 transition" title="Line (L)">
+                <i class="fas fa-minus"></i>
+            </button>
+            <button onclick="setTool('pencil')" id="btn-pencil" class="tool-btn p-3 rounded-lg hover:bg-gray-100 transition" title="Pencil (P)">
+                <i class="fas fa-pencil-alt"></i>
+            </button>
+            <button onclick="setTool('text')" id="btn-text" class="tool-btn p-3 rounded-lg hover:bg-gray-100 transition" title="Text (T)">
+                <i class="fas fa-font"></i>
+            </button>
+            <div class="h-[1px] bg-gray-200 my-1 hidden md:block"></div>
+            <button onclick="clearCanvas()" class="p-3 rounded-lg hover:bg-red-50 text-red-500 transition" title="Clear Canvas">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </aside>
+
+        <!-- Main Canvas Area -->
+        <main id="canvas-container" class="flex-1 overflow-auto flex items-center justify-center p-4 relative pb-24 md:pb-4">
+            <svg id="main-svg" width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+                <!-- SVG Content -->
+            </svg>
+        </main>
+
+        <!-- Properties Panel (Right) -->
+        <aside id="properties" class="bg-white border-l border-gray-200 w-64 p-4 overflow-y-auto hidden md:block shadow-xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-bold text-sm text-gray-500 uppercase tracking-wider">Properties</h2>
+                <button onclick="toggleMobileProps()" class="md:hidden text-gray-400"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="space-y-4">
+                <div id="prop-text-container" class="hidden">
+                    <label class="block text-xs font-semibold mb-1 text-blue-600">Text Content</label>
+                    <input type="text" id="prop-text-content" class="w-full border rounded p-1 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold mb-1">Fill Color</label>
+                    <div class="flex gap-2">
+                        <input type="color" id="prop-fill" value="#3b82f6" class="w-10 h-8 rounded cursor-pointer">
+                        <button onclick="toggleFillNone()" id="btn-fill-none" class="text-[10px] border px-2 rounded hover:bg-gray-50">Transparent</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold mb-1">Stroke Color</label>
+                    <input type="color" id="prop-stroke" value="#000000" class="w-full h-8 rounded cursor-pointer">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold mb-1">Stroke Width</label>
+                    <input type="range" id="prop-stroke-width" min="0" max="20" value="2" class="w-full">
+                    <span id="stroke-val" class="text-xs text-gray-500">2px</span>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold mb-1">Opacity</label>
+                    <input type="range" id="prop-opacity" min="0" max="1" step="0.1" value="1" class="w-full">
+                </div>
+                <div id="prop-font-size-container" class="hidden">
+                    <label class="block text-xs font-semibold mb-1 text-blue-600">Font Size</label>
+                    <input type="number" id="prop-font-size" value="24" class="w-full border rounded p-1 text-sm">
+                </div>
+            </div>
+
+            <div class="mt-8 pt-4 border-t border-gray-100">
+                <h2 class="font-bold text-sm text-gray-500 uppercase tracking-wider mb-4">Object Actions</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="moveLayer('up')" class="p-2 text-xs border rounded hover:bg-gray-50" title="Move Up">
+                        <i class="fas fa-layer-group mr-1 text-green-600"></i> Bring Forward
+                    </button>
+                    <button onclick="moveLayer('down')" class="p-2 text-xs border rounded hover:bg-gray-50" title="Move Down">
+                        <i class="fas fa-layer-group mr-1 text-orange-600 rotate-180"></i> Send Back
+                    </button>
+                </div>
+                <button onclick="deleteSelected()" class="w-full mt-3 text-left p-2 text-sm text-red-600 hover:bg-red-50 rounded transition">
+                    <i class="fas fa-trash-alt mr-2"></i> Delete Selected
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="info-modal" class="modal opacity-0 pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 px-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 relative">
+            <button onclick="toggleModal('info-modal')" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+
+            <h2 class="text-2xl font-bold mb-4 text-slate-800 border-b pb-2">SVG Craft Pro Guide</h2>
+            
+            <div class="space-y-4 text-gray-600">
+                <section>
+                    <h3 class="font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-plus-circle text-blue-500"></i> Tools & Elements</h3>
+                    <p class="text-sm">We've added <strong>Ellipse</strong>, <strong>Polygons</strong>, and <strong>Text</strong>. Click the text tool, then click the canvas to start typing. For Polygons, drag to size them.</p>
+                </section>
+
+                <section>
+                    <h3 class="font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-file-import text-green-500"></i> Import & Control</h3>
+                    <p class="text-sm">Use the <strong>Import</strong> button to upload any <code>.svg</code> file. Every single path, rectangle, and group inside the file becomes selectable and editable within the tool.</p>
+                </section>
+
+                <section>
+                    <h3 class="font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-cloud-upload-alt text-orange-500"></i> GitHub Pages Deployment</h3>
+                    <ol class="list-decimal ml-5 text-sm space-y-1">
+                        <li>Create a GitHub Repo.</li>
+                        <li>Upload this <code>index.html</code>.</li>
+                        <li>Enable <strong>Settings > Pages</strong>.</li>
+                    </ol>
+                </section>
+
+                <section class="bg-slate-50 p-4 rounded-lg">
+                    <h3 class="font-bold text-slate-800 mb-2">Related Project Files</h3>
+                    <ul class="text-xs space-y-2 font-mono">
+                        <li><a href="index.html" class="text-blue-600 hover:underline">index.html</a> - The main application core.</li>
+                        <li><a href="#" class="text-gray-400 pointer-events-none">assets/icons.svg</a> - System UI assets.</li>
+                        <li><a href="#" class="text-gray-400 pointer-events-none">docs/README.md</a> - Documentation file.</li>
+                    </ul>
+                </section>
+            </div>
+
+            <button onclick="toggleModal('info-modal')" class="mt-6 w-full bg-slate-900 text-white py-2 rounded-lg hover:bg-slate-800 transition">
+                Close Guide
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const svg = document.getElementById('main-svg');
+        const properties = document.getElementById('properties');
+        let currentTool = 'select';
+        let isDrawing = false;
+        let startX, startY;
+        let currentElement = null;
+        let selectedElement = null;
+
+        // Tool Config
+        function setTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${tool}`).classList.add('active');
+            if(tool !== 'select') deselectAll();
+        }
+
+        function toggleMobileProps() {
+            properties.classList.toggle('hidden');
+            properties.classList.toggle('mobile-show');
+        }
+
+        // SVG Drawing Logic
+        svg.addEventListener('mousedown', startDrawing);
+        svg.addEventListener('mousemove', draw);
+        svg.addEventListener('mouseup', stopDrawing);
+        svg.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawing(e.touches[0]); });
+        svg.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); });
+        svg.addEventListener('touchend', (e) => { e.preventDefault(); stopDrawing(); });
+
+        function getMousePos(e) {
+            const CTM = svg.getScreenCTM();
+            return {
+                x: (e.clientX - CTM.e) / CTM.a,
+                y: (e.clientY - CTM.f) / CTM.d
+            };
+        }
+
+        function startDrawing(e) {
+            const pos = getMousePos(e);
+            startX = pos.x;
+            startY = pos.y;
+
+            if (currentTool === 'select') {
+                const target = e.target;
+                if (target !== svg) {
+                    selectElement(target);
+                } else {
+                    deselectAll();
+                }
+                return;
+            }
+
+            isDrawing = true;
+            const fill = document.getElementById('prop-fill').value;
+            const stroke = document.getElementById('prop-stroke').value;
+            const strokeWidth = document.getElementById('prop-stroke-width').value;
+            const opacity = document.getElementById('prop-opacity').value;
+
+            if (currentTool === 'rect') {
+                currentElement = createSVGElement("rect", { x: startX, y: startY, width: 0, height: 0 });
+            } else if (currentTool === 'circle') {
+                currentElement = createSVGElement("circle", { cx: startX, cy: startY, r: 0 });
+            } else if (currentTool === 'ellipse') {
+                currentElement = createSVGElement("ellipse", { cx: startX, cy: startY, rx: 0, ry: 0 });
+            } else if (currentTool === 'poly') {
+                currentElement = createSVGElement("polygon", { points: `${startX},${startY} ${startX},${startY} ${startX},${startY}` });
+            } else if (currentTool === 'line') {
+                currentElement = createSVGElement("line", { x1: startX, y1: startY, x2: startX, y2: startY });
+            } else if (currentTool === 'pencil') {
+                currentElement = createSVGElement("path", { d: `M ${startX} ${startY}`, fill: "none" });
+            } else if (currentTool === 'text') {
+                currentElement = createSVGElement("text", { x: startX, y: startY });
+                currentElement.textContent = "Click to type";
+                currentElement.setAttribute("font-family", "sans-serif");
+                currentElement.setAttribute("font-size", "24");
+                isDrawing = false; // Text is click-to-add
+                selectElement(currentElement);
+            }
+
+            if(currentElement) {
+                applyStyles(currentElement, fill, stroke, strokeWidth, opacity);
+                svg.appendChild(currentElement);
+            }
+        }
+
+        function draw(e) {
+            if (!isDrawing || !currentElement) return;
+            const pos = getMousePos(e);
+
+            if (currentTool === 'rect') {
+                currentElement.setAttribute("x", Math.min(pos.x, startX));
+                currentElement.setAttribute("y", Math.min(pos.y, startY));
+                currentElement.setAttribute("width", Math.abs(pos.x - startX));
+                currentElement.setAttribute("height", Math.abs(pos.y - startY));
+            } else if (currentTool === 'circle') {
+                const r = Math.sqrt(Math.pow(pos.x - startX, 2) + Math.pow(pos.y - startY, 2));
+                currentElement.setAttribute("r", r);
+            } else if (currentTool === 'ellipse') {
+                currentElement.setAttribute("rx", Math.abs(pos.x - startX));
+                currentElement.setAttribute("ry", Math.abs(pos.y - startY));
+            } else if (currentTool === 'line') {
+                currentElement.setAttribute("x2", pos.x);
+                currentElement.setAttribute("y2", pos.y);
+            } else if (currentTool === 'pencil') {
+                const d = currentElement.getAttribute("d");
+                currentElement.setAttribute("d", `${d} L ${pos.x} ${pos.y}`);
+            } else if (currentTool === 'poly') {
+                const r = Math.abs(pos.x - startX);
+                const sides = 6;
+                let pts = "";
+                for(let i=0; i<sides; i++){
+                    const angle = (i/sides) * 2 * Math.PI;
+                    const px = startX + r * Math.cos(angle);
+                    const py = startY + r * Math.sin(angle);
+                    pts += `${px},${py} `;
+                }
+                currentElement.setAttribute("points", pts.trim());
+            }
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            currentElement = null;
+        }
+
+        function createSVGElement(tag, attrs) {
+            const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+            for (let k in attrs) el.setAttribute(k, attrs[k]);
+            el.style.pointerEvents = "all";
+            return el;
+        }
+
+        function applyStyles(el, fill, stroke, width, opacity) {
+            if (el.tagName === 'line' || el.tagName === 'path') {
+                el.setAttribute("fill", "none");
+            } else {
+                el.setAttribute("fill", fill);
+            }
+            el.setAttribute("stroke", stroke);
+            el.setAttribute("stroke-width", width);
+            el.setAttribute("opacity", opacity);
+        }
+
+        // Selection & Property Sync
+        function selectElement(el) {
+            deselectAll();
+            selectedElement = el;
+            selectedElement.classList.add('selected');
+            
+            // Show properties panel
+            properties.classList.remove('hidden');
+            
+            // Sync Fill/Stroke
+            document.getElementById('prop-fill').value = rgbToHex(el.getAttribute("fill")) || '#000000';
+            document.getElementById('prop-stroke').value = rgbToHex(el.getAttribute("stroke")) || '#000000';
+            document.getElementById('prop-stroke-width').value = el.getAttribute("stroke-width") || 1;
+            document.getElementById('prop-opacity').value = el.getAttribute("opacity") || 1;
+            document.getElementById('stroke-val').innerText = (el.getAttribute("stroke-width") || 1) + 'px';
+
+            // Text Specific
+            const textContainer = document.getElementById('prop-text-container');
+            const fontSizeContainer = document.getElementById('prop-font-size-container');
+            if (el.tagName === 'text') {
+                textContainer.classList.remove('hidden');
+                fontSizeContainer.classList.remove('hidden');
+                document.getElementById('prop-text-content').value = el.textContent;
+                document.getElementById('prop-font-size').value = el.getAttribute('font-size') || 24;
+            } else {
+                textContainer.classList.add('hidden');
+                fontSizeContainer.classList.add('hidden');
+            }
+        }
+
+        function deselectAll() {
+            if (selectedElement) {
+                selectedElement.classList.remove('selected');
+                selectedElement = null;
+            }
+        }
+
+        // Action Handlers
+        function deleteSelected() {
+            if (selectedElement) {
+                selectedElement.remove();
+                selectedElement = null;
+            }
+        }
+
+        function clearCanvas() {
+            if(confirm("Discard all work?")) svg.innerHTML = '';
+        }
+
+        function moveLayer(dir) {
+            if(!selectedElement) return;
+            if(dir === 'up') {
+                const next = selectedElement.nextElementSibling;
+                if(next) svg.insertBefore(next, selectedElement);
+            } else {
+                const prev = selectedElement.previousElementSibling;
+                if(prev) svg.insertBefore(selectedElement, prev);
+            }
+        }
+
+        // Property Listeners
+        document.getElementById('prop-fill').addEventListener('input', (e) => {
+            if(selectedElement) selectedElement.setAttribute("fill", e.target.value);
+        });
+        document.getElementById('prop-stroke').addEventListener('input', (e) => {
+            if(selectedElement) selectedElement.setAttribute("stroke", e.target.value);
+        });
+        document.getElementById('prop-stroke-width').addEventListener('input', (e) => {
+            const val = e.target.value;
+            document.getElementById('stroke-val').innerText = val + 'px';
+            if(selectedElement) selectedElement.setAttribute("stroke-width", val);
+        });
+        document.getElementById('prop-opacity').addEventListener('input', (e) => {
+            if(selectedElement) selectedElement.setAttribute("opacity", e.target.value);
+        });
+        document.getElementById('prop-text-content').addEventListener('input', (e) => {
+            if(selectedElement && selectedElement.tagName === 'text') selectedElement.textContent = e.target.value;
+        });
+        document.getElementById('prop-font-size').addEventListener('input', (e) => {
+            if(selectedElement && selectedElement.tagName === 'text') selectedElement.setAttribute('font-size', e.target.value);
+        });
+
+        function toggleFillNone() {
+            if(selectedElement) selectedElement.setAttribute("fill", "none");
+        }
+
+        // Import / Export
+        function handleImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(e.target.result, "image/svg+xml");
+                const importedElements = doc.documentElement.children;
+                Array.from(importedElements).forEach(child => {
+                    // Deep clone and ensure pointer events work for selection
+                    const clone = child.cloneNode(true);
+                    clone.style.pointerEvents = "all";
+                    svg.appendChild(clone);
+                });
+            };
+            reader.readAsText(file);
+        }
+
+        function downloadSVG() {
+            deselectAll();
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'my-design.svg';
+            link.click();
+        }
+
+        // Utility
+        function toggleModal(id) {
+            const modal = document.getElementById(id);
+            modal.classList.toggle('opacity-0');
+            modal.classList.toggle('pointer-events-none');
+        }
+
+        function rgbToHex(color) {
+            if (!color || color === 'none' || color.startsWith('#')) return color;
+            const rgb = color.match(/\d+/g);
+            if (!rgb) return '#000000';
+            return "#" + ((1 << 24) + (parseInt(rgb[0]) << 16) + (parseInt(rgb[1]) << 8) + parseInt(rgb[2])).toString(16).slice(1);
+        }
+
+        // Shortcuts
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Delete') deleteSelected();
+            const keys = { 'v':'select', 'r':'rect', 'c':'circle', 'e':'ellipse', 'l':'line', 'p':'pencil', 't':'text', 'g':'poly' };
+            if (keys[e.key.toLowerCase()]) setTool(keys[e.key.toLowerCase()]);
+        });
+    </script>
+</body>
+</html>
