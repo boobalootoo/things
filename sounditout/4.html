@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Sound Sequencer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* --- CUSTOM FONT IMPLEMENTATION --- */
+        @font-face {
+            font-family: 'Sassoon Infant';
+            src: url('https://raw.githubusercontent.com/boobalootoo/things/main/EYFONTS/SassoonInfantStd.otf') format('opentype');
+            font-weight: normal;
+            font-style: normal;
+        }
+        
+        body {
+            font-family: 'Sassoon Infant', 'Inter', sans-serif;
+            touch-action: manipulation;
+            background-color: #f8fafc;
+        }
+
+        /* Draggable items styling */
+        .draggable {
+            cursor: grab;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            text-transform: lowercase; 
+        }
+        .draggable:active {
+            transform: scale(0.9) rotate(-2deg);
+        }
+        .drag-over {
+            border: 2px dashed #4f46e5;
+            background-color: #eef2ff;
+            transform: scale(1.02);
+        }
+        
+        /* Sequence grid styling */
+        .sequence-cell {
+            width: 100%; 
+            aspect-ratio: 1 / 1; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #e2e8f0; 
+            background-color: #ffffff;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            border-radius: 0.5rem; 
+            text-transform: lowercase;
+            font-weight: 600;
+        }
+        .sequence-cell:hover {
+            border-color: #cbd5e1;
+            background-color: #f1f5f9;
+        }
+
+        #sequence-grid {
+            gap: 4px; 
+            grid-template-columns: repeat(10, 1fr);
+        }
+
+        .cell-filled {
+            background-color: #6366f1 !important; 
+            color: white !important;
+            border-color: #4338ca !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Modal & Settings Panel */
+        .overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 50;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        /* Animation for active sound */
+        @keyframes pulse-yellow {
+            0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7); transform: scale(1); }
+            70% { box-shadow: 0 0 0 10px rgba(234, 179, 8, 0); transform: scale(1.1); }
+            100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); transform: scale(1); }
+        }
+        .active-playing {
+            z-index: 10;
+            animation: pulse-yellow 0.4s infinite;
+            background-color: #facc15 !important;
+            color: #000 !important;
+            border-color: #ca8a04 !important;
+        }
+
+        input[type="range"] {
+            accent-color: #6366f1;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-2 sm:p-4">
+
+    <!-- Header Actions -->
+    <div class="fixed top-4 right-4 flex gap-2 z-40">
+        <button id="openSettings" class="bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 transition-colors text-gray-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
+        <button id="openInfo" class="bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 transition-colors text-indigo-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        </button>
+    </div>
+
+    <div class="bg-white p-4 sm:p-6 rounded-3xl shadow-2xl w-full max-w-5xl space-y-6">
+        
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Sound Sequencer</h1>
+                <p class="text-gray-400 text-xs font-semibold uppercase tracking-widest">Large 40-Slot Workspace</p>
+            </div>
+            
+            <div class="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
+                <button id="modeNormal" class="px-4 py-2 rounded-lg text-sm font-bold transition-all bg-white shadow-sm text-indigo-600">Normal</button>
+                <button id="modeBlend" class="px-4 py-2 rounded-lg text-sm font-bold transition-all text-gray-500 hover:bg-gray-200">Segment & Blend</button>
+            </div>
+        </div>
+
+        <!-- Sequence Grid Area -->
+        <div class="bg-slate-50 p-2 sm:p-4 rounded-2xl border border-slate-100">
+            <div id="sequence-grid" class="grid grid-cols-10">
+                <!-- 40 Cells Generated by JS -->
+            </div>
+        </div>
+
+        <!-- Source Elements -->
+        <div class="space-y-4">
+            <div id="letter-source-grid" class="grid grid-cols-7 sm:grid-cols-9 md:grid-cols-10 gap-2">
+                <!-- Letters Generated by JS -->
+            </div>
+        </div>
+
+        <!-- Master Actions -->
+        <div class="flex justify-between items-center pt-2">
+            <button id="clearSequence" class="flex items-center gap-2 text-xs text-red-400 font-bold uppercase tracking-wider hover:text-red-600 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                Reset Grid
+            </button>
+            <div id="playContainer">
+                <!-- Play button -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="infoModal" class="overlay">
+        <div class="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl space-y-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-indigo-600">Quick Guide</h2>
+                <button id="closeInfo" class="text-gray-400 hover:text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4 text-gray-600">
+                <p>• <strong>Strict Non-Overlapping:</strong> Sounds will now wait precisely for the previous sound to finish before playing, preventing cluttered noise.</p>
+                <p>• <strong>Pre-Trimmed Audio:</strong> Uses pre-trimmed .wav files for exact, instantaneous timing.</p>
+                <p>• <strong>Workspace:</strong> You have 40 slots to build multiple words or long sentences.</p>
+                <p>• <strong>Segment & Blend:</strong> Groups letters into words. It sounds out each letter, then smoothly sequences the whole word with zero overlap.</p>
+            </div>
+
+            <hr class="border-gray-100">
+
+            <div>
+                <h3 class="font-bold text-gray-800 mb-2">Related Files</h3>
+                <ul class="grid grid-cols-2 gap-2 text-indigo-500 text-sm">
+                    <li><a href="index.html" class="hover:underline flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg> index.html</a></li>
+                    <li><a href="sounds.html" class="hover:underline flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg> sounds.html</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="overlay">
+        <div class="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-8">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-gray-800">Timing Settings</h2>
+                <button id="closeSettings" class="text-gray-400 hover:text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+
+            <div class="space-y-6">
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <label class="text-sm font-bold text-gray-700">Letter Gap (ms)</label>
+                        <span id="letterGapVal" class="text-xs font-mono bg-indigo-50 text-indigo-600 px-2 py-1 rounded">50ms</span>
+                    </div>
+                    <input type="range" id="letterGapRange" min="0" max="1000" step="25" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <label class="text-sm font-bold text-gray-700">Word Gap (ms)</label>
+                        <span id="wordGapVal" class="text-xs font-mono bg-indigo-50 text-indigo-600 px-2 py-1 rounded">400ms</span>
+                    </div>
+                    <input type="range" id="wordGapRange" min="50" max="2000" step="50" value="400" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <button id="saveSettings" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all">Done</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split(''); 
+        const baseUrl = 'https://raw.githubusercontent.com/boobalootoo/things/main/sounditout/alphabet/2/';
+        const GRID_SIZE = 40;
+
+        // --- DOM Elements ---
+        const sequenceGrid = document.getElementById('sequence-grid');
+        const letterSourceGrid = document.getElementById('letter-source-grid');
+        const playContainer = document.getElementById('playContainer');
+        const infoModal = document.getElementById('infoModal');
+        const settingsModal = document.getElementById('settingsModal');
+        
+        const letterGapRange = document.getElementById('letterGapRange');
+        const wordGapRange = document.getElementById('wordGapRange');
+        const letterGapVal = document.getElementById('letterGapVal');
+        const wordGapVal = document.getElementById('wordGapVal');
+
+        const modeNormal = document.getElementById('modeNormal');
+        const modeBlend = document.getElementById('modeBlend');
+
+        // --- State ---
+        let audioContext;
+        let sequence = Array(GRID_SIZE).fill(' '); 
+        let audioCache = {};
+        let isPlaying = false; 
+        let currentMode = 'normal';
+        let activeSources = []; // Tracks currently playing audio nodes for instant cancellation
+        let settings = {
+            letterGap: 50,
+            wordGap: 400
+        };
+
+        // --- Audio Processing Logic ---
+
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') audioContext.resume();
+        }
+
+        function stopAllAudio() {
+            // Stops any currently playing sound immediately to prevent overlap
+            activeSources.forEach(source => {
+                try { source.stop(); } catch (e) {}
+            });
+            activeSources = [];
+        }
+
+        async function loadAudio(letter) {
+            if (audioCache[letter]) return audioCache[letter];
+            const audioUrl = `${baseUrl}${letter}.wav`; 
+            try {
+                const response = await fetch(audioUrl);
+                if (!response.ok) throw new Error();
+                const arrayBuffer = await response.arrayBuffer();
+                const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                audioCache[letter] = decodedBuffer;
+                return decodedBuffer;
+            } catch (error) {
+                console.error(`Error loading audio for ${letter}:`, error);
+                return null;
+            }
+        }
+
+        async function loadAndPlay(letter) {
+            initAudioContext();
+            stopAllAudio(); // Prevent manual clicks from overlapping
+            const buffer = await loadAudio(letter);
+            if (buffer) {
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                activeSources.push(source);
+                
+                source.onended = () => {
+                    activeSources = activeSources.filter(s => s !== source);
+                };
+                source.start(0);
+            }
+        }
+
+        // --- Playback Engine ---
+
+        async function playLetter(letter, index = -1) {
+            if (!isPlaying) return;
+            const buffer = await loadAudio(letter);
+            if (!buffer) return;
+
+            if (index !== -1) sequenceGrid.children[index].classList.add('active-playing');
+
+            // Wrap in a promise that resolves EXACTLY when the sound finishes natively
+            return new Promise(resolve => {
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                activeSources.push(source);
+
+                source.onended = () => {
+                    activeSources = activeSources.filter(s => s !== source);
+                    if (index !== -1) sequenceGrid.children[index].classList.remove('active-playing');
+                    resolve(); // Complete precisely at the end of the file
+                };
+
+                source.start(0);
+            });
+        }
+
+        async function playWordBlended(wordIndices) {
+            if (!isPlaying) return;
+            
+            // Highlight the entire word
+            wordIndices.forEach(i => sequenceGrid.children[i].classList.add('active-playing'));
+
+            // Play them sequentially with NO GAP instead of overlapping
+            for(let i=0; i<wordIndices.length; i++) {
+                if(!isPlaying) break;
+                const idx = wordIndices[i];
+                const buffer = await loadAudio(sequence[idx]);
+                if(!buffer) continue;
+
+                await new Promise(resolve => {
+                    const source = audioContext.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(audioContext.destination);
+                    activeSources.push(source);
+
+                    source.onended = () => {
+                        activeSources = activeSources.filter(s => s !== source);
+                        resolve();
+                    };
+
+                    source.start(0);
+                });
+            }
+
+            // Remove highlight
+            wordIndices.forEach(i => sequenceGrid.children[i].classList.remove('active-playing'));
+        }
+
+        async function startPlayback() {
+            if (isPlaying) { 
+                // Instant stop handling
+                isPlaying = false; 
+                stopAllAudio();
+                updatePlayUI(false);
+                document.querySelectorAll('.active-playing').forEach(el => el.classList.remove('active-playing'));
+                return; 
+            }
+            
+            isPlaying = true;
+            initAudioContext();
+            updatePlayUI(true);
+
+            let words = [];
+            let currentWord = [];
+            sequence.forEach((val, idx) => {
+                if (val !== ' ') {
+                    currentWord.push(idx);
+                } else {
+                    if (currentWord.length > 0) words.push([...currentWord]);
+                    currentWord = [];
+                }
+            });
+            if (currentWord.length > 0) words.push(currentWord);
+
+            if (words.length === 0) { isPlaying = false; updatePlayUI(false); return; }
+
+            if (currentMode === 'normal') {
+                for (let i = 0; i < sequence.length; i++) {
+                    if (!isPlaying) break;
+                    if (sequence[i] === ' ') {
+                        await new Promise(r => setTimeout(r, settings.wordGap));
+                        continue;
+                    }
+                    await playLetter(sequence[i], i);
+                    if(isPlaying) await new Promise(r => setTimeout(r, settings.letterGap));
+                }
+            } else {
+                // Segment & Blend
+                for (const wordIdxs of words) {
+                    if (!isPlaying) break;
+                    // Segment
+                    for (const idx of wordIdxs) {
+                        if (!isPlaying) break;
+                        await playLetter(sequence[idx], idx);
+                        if(isPlaying) await new Promise(r => setTimeout(r, settings.letterGap * 2));
+                    }
+                    if(isPlaying) await new Promise(r => setTimeout(r, 400)); 
+                    // Blend (sequential, zero overlap)
+                    if(isPlaying) await playWordBlended(wordIdxs);
+                    if(isPlaying) await new Promise(r => setTimeout(r, settings.wordGap));
+                }
+
+                // Sentence Sweep
+                if (isPlaying) {
+                    await new Promise(r => setTimeout(r, 600)); 
+                    for (const wordIdxs of words) {
+                        if (!isPlaying) break;
+                        await playWordBlended(wordIdxs);
+                        if(isPlaying) await new Promise(r => setTimeout(r, 200));
+                    }
+                }
+            }
+
+            isPlaying = false;
+            updatePlayUI(false);
+        }
+
+        function updatePlayUI(playing) {
+            const btn = document.getElementById('playBtn');
+            if (playing) {
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+                btn.classList.replace('bg-indigo-600', 'bg-red-500');
+            } else {
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>';
+                btn.classList.replace('bg-red-500', 'bg-indigo-600');
+            }
+        }
+
+        // --- UI Rendering ---
+
+        function renderSequence() {
+            sequenceGrid.innerHTML = '';
+            sequence.forEach((val, idx) => {
+                const cell = document.createElement('div');
+                cell.dataset.index = idx;
+                cell.classList.add('sequence-cell', 'text-lg', 'sm:text-xl');
+                if (val && val !== ' ') {
+                    cell.textContent = val;
+                    cell.classList.add('cell-filled');
+                }
+                cell.addEventListener('dragover', (e) => { e.preventDefault(); cell.classList.add('drag-over'); });
+                cell.addEventListener('dragleave', () => cell.classList.remove('drag-over'));
+                cell.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    cell.classList.remove('drag-over');
+                    sequence[idx] = e.dataTransfer.getData('text/plain');
+                    renderSequence();
+                });
+                cell.addEventListener('click', () => { sequence[idx] = ' '; renderSequence(); });
+                sequenceGrid.appendChild(cell);
+            });
+        }
+
+        function setupSourceGrid() {
+            letterSourceGrid.innerHTML = '';
+            alphabet.forEach(letter => {
+                const btn = document.createElement('div');
+                btn.textContent = letter;
+                btn.dataset.value = letter;
+                btn.draggable = true;
+                btn.classList.add('draggable', 'h-12', 'flex', 'items-center', 'justify-center', 'bg-white', 'border-2', 'border-indigo-100', 'text-indigo-600', 'text-xl', 'font-bold', 'rounded-xl', 'shadow-sm', 'hover:border-indigo-300');
+                btn.onclick = () => loadAndPlay(letter);
+                btn.ondragstart = (e) => { e.dataTransfer.setData('text/plain', letter); btn.classList.add('opacity-30'); };
+                btn.ondragend = () => btn.classList.remove('opacity-30');
+                letterSourceGrid.appendChild(btn);
+            });
+
+            const play = document.createElement('button');
+            play.id = 'playBtn';
+            play.classList.add('bg-indigo-600', 'text-white', 'rounded-2xl', 'flex', 'items-center', 'justify-center', 'w-20', 'h-20', 'shadow-xl', 'hover:scale-105', 'transition-all', 'active:scale-95');
+            play.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>';
+            play.onclick = startPlayback;
+            playContainer.appendChild(play);
+        }
+
+        // --- Event Handlers ---
+
+        document.getElementById('openInfo').onclick = () => infoModal.style.display = 'flex';
+        document.getElementById('closeInfo').onclick = () => infoModal.style.display = 'none';
+        document.getElementById('openSettings').onclick = () => settingsModal.style.display = 'flex';
+        document.getElementById('closeSettings').onclick = () => settingsModal.style.display = 'none';
+        document.getElementById('saveSettings').onclick = () => settingsModal.style.display = 'none';
+        
+        document.getElementById('clearSequence').onclick = () => { 
+            sequence = Array(GRID_SIZE).fill(' '); 
+            renderSequence(); 
+            // Also stop audio if it's currently playing when they reset
+            if (isPlaying) {
+                isPlaying = false;
+                stopAllAudio();
+                updatePlayUI(false);
+            }
+        };
+
+        letterGapRange.oninput = (e) => { settings.letterGap = parseInt(e.target.value); letterGapVal.textContent = e.target.value + 'ms'; };
+        wordGapRange.oninput = (e) => { settings.wordGap = parseInt(e.target.value); wordGapVal.textContent = e.target.value + 'ms'; };
+
+        modeNormal.onclick = () => {
+            currentMode = 'normal';
+            modeNormal.className = 'px-4 py-2 rounded-lg text-sm font-bold transition-all bg-white shadow-sm text-indigo-600';
+            modeBlend.className = 'px-4 py-2 rounded-lg text-sm font-bold transition-all text-gray-500 hover:bg-gray-200';
+        };
+        modeBlend.onclick = () => {
+            currentMode = 'blend';
+            modeBlend.className = 'px-4 py-2 rounded-lg text-sm font-bold transition-all bg-white shadow-sm text-indigo-600';
+            modeNormal.className = 'px-4 py-2 rounded-lg text-sm font-bold transition-all text-gray-500 hover:bg-gray-200';
+        };
+
+        window.onclick = (e) => { 
+            if(e.target == infoModal) infoModal.style.display = 'none';
+            if(e.target == settingsModal) settingsModal.style.display = 'none';
+        };
+
+        // --- Init ---
+        setupSourceGrid();
+        renderSequence();
+    </script>
+</body>
+</html>
