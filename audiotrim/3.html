@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoniCrop | Batch Audio Trimmer & FX</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
+    <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+
+        .waveform-container {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 12px;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .animate-modal-enter { animation: modalEnter 0.3s ease-out forwards; }
+        @keyframes modalEnter {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        input[type="range"] {
+            accent-color: #3b82f6;
+        }
+
+        /* Toggle Switch styling */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #334155; transition: .4s; border-radius: 20px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px;
+            background-color: white; transition: .4s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: #3b82f6; }
+        input:checked + .slider:before { transform: translateX(20px); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="p-4 md:p-6 border-b border-slate-800 flex justify-between items-center sticky top-0 bg-slate-900/80 backdrop-blur-md z-40">
+        <div class="flex items-center gap-2">
+            <div class="bg-blue-600 p-2 rounded-lg shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+            </div>
+            <h1 class="text-xl font-bold tracking-tight">SoniCrop</h1>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button id="batchDownloadBtn" class="hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-emerald-900/20">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0L8 8m4-4v12"/></svg>
+                Download All (.zip)
+            </button>
+            <button id="infoBtn" class="p-2 hover:bg-slate-800 rounded-full transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto p-4 max-w-4xl">
+        <div id="dropZone" class="mb-8 p-12 border-2 border-dashed border-slate-700 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer hover:border-blue-500 hover:bg-blue-500/5 transition-all group">
+            <input type="file" id="audioInput" class="hidden" accept="audio/*" multiple>
+            <div class="bg-slate-800 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+            </div>
+            <h2 class="text-lg font-semibold mb-1">Batch Upload Audio</h2>
+            <p class="text-slate-400 text-sm">Now with Noise Gate, Frequency Filters & Peak Normalization.</p>
+        </div>
+
+        <div id="audioList" class="space-y-6"></div>
+
+        <div id="emptyState" class="text-center py-20 text-slate-500">No audio files loaded yet.</div>
+    </main>
+
+    <!-- Info Modal -->
+    <div id="infoModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden">
+        <div class="glass-panel w-full max-w-lg rounded-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex justify-between items-start mb-6">
+                <h2 class="text-2xl font-bold">Advanced Features</h2>
+                <button id="closeInfo" class="text-slate-400 hover:text-white text-3xl leading-none">&times;</button>
+            </div>
+            <div class="space-y-6 text-slate-300 text-sm">
+                <section>
+                    <h3 class="text-blue-400 font-semibold mb-2 uppercase text-xs tracking-wider">Volume Threshold (Gate)</h3>
+                    <p>Removes any audio samples below the specified decibel level. Useful for cleaning up background hiss or silences.</p>
+                    <p class="mt-1 text-blue-300"><strong>Auto-Trim:</strong> Click the "Auto-Trim" button above the Noise Gate slider to automatically snap the blue selection region to the non-silent parts of your audio based on the current threshold.</p>
+                </section>
+                <section>
+                    <h3 class="text-blue-400 font-semibold mb-2 uppercase text-xs tracking-wider">Frequency Filters</h3>
+                    <p><strong>Low Cut:</strong> Removes muddy low frequencies below the Hz value.<br>
+                       <strong>High Cut:</strong> Removes sharp high frequencies above the Hz value.</p>
+                </section>
+                <section>
+                    <h3 class="text-blue-400 font-semibold mb-2 uppercase text-xs tracking-wider">Normalization</h3>
+                    <p>Automatically adjusts the gain of the clip so the loudest peak reaches 0dB. This is <strong>visible on the waveform</strong> and ensures consistent max volume across your batch.</p>
+                </section>
+                <section>
+                    <h3 class="text-blue-400 font-semibold mb-2 uppercase text-xs tracking-wider">Related Files</h3>
+                    <a href="index.html" class="p-3 bg-slate-800/50 rounded-lg flex items-center gap-3 hover:bg-slate-800 border border-slate-700 transition-colors">
+                        <svg class="w-4 h-4 text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/></svg>
+                        <span class="text-sm font-medium">index.html (Current Editor)</span>
+                    </a>
+                </section>
+            </div>
+            <button id="closeInfoBtn" class="w-full mt-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-semibold">Close</button>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 right-6 px-6 py-3 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl translate-y-24 transition-transform duration-300 z-50 flex items-center gap-3">
+        <span id="toastMsg" class="text-sm"></span>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const audioInput = document.getElementById('audioInput');
+        const audioList = document.getElementById('audioList');
+        const emptyState = document.getElementById('emptyState');
+        const infoBtn = document.getElementById('infoBtn');
+        const infoModal = document.getElementById('infoModal');
+        const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+        const closeInfo = document.getElementById('closeInfo');
+        const closeInfoBtn = document.getElementById('closeInfoBtn');
+        const toast = document.getElementById('toast');
+        const toastMsg = document.getElementById('toastMsg');
+
+        let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let audioItems = [];
+
+        // UI Listeners
+        infoBtn.onclick = () => infoModal.classList.remove('hidden');
+        [closeInfo, closeInfoBtn].forEach(el => el.onclick = () => infoModal.classList.add('hidden'));
+        dropZone.onclick = () => audioInput.click();
+        audioInput.onchange = (e) => handleFiles(e.target.files);
+
+        function showToast(msg) {
+            toastMsg.innerText = msg;
+            toast.classList.remove('translate-y-24');
+            setTimeout(() => toast.classList.add('translate-y-24'), 3000);
+        }
+
+        function handleFiles(files) {
+            const audioFiles = Array.from(files).filter(f => f.type.startsWith('audio/'));
+            if (audioFiles.length === 0) return;
+            emptyState.classList.add('hidden');
+            batchDownloadBtn.classList.remove('hidden');
+            audioFiles.forEach(file => createAudioItem(file));
+        }
+
+        async function createAudioItem(file) {
+            const id = 'audio-' + Math.random().toString(36).substr(2, 9);
+            const fileNameNoExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+            
+            const container = document.createElement('div');
+            container.className = 'glass-panel p-4 md:p-6 rounded-2xl animate-modal-enter';
+            container.innerHTML = `
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                    <div class="flex items-center gap-3 overflow-hidden flex-grow">
+                        <input type="text" id="input-${id}" value="${fileNameNoExt}" class="bg-transparent border-b border-slate-700 focus:border-blue-500 text-white font-semibold focus:bg-slate-800/50 px-2 py-1 rounded transition-all truncate w-full">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="play-${id}" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M4.018 14L14.41 10 4.018 6z"/></svg> Preview
+                        </button>
+                        <button id="download-${id}" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                            Download
+                        </button>
+                        <button id="remove-${id}" class="p-2 text-slate-500 hover:text-red-400">
+                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="wave-${id}" class="waveform-container h-24 relative">
+                    <div id="loader-${id}" class="absolute inset-0 flex items-center justify-center bg-slate-900/40 z-10">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+
+                <!-- FX CONTROLS -->
+                <div class="bg-slate-800/30 p-4 rounded-xl border border-slate-700/50 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                             Processing FX
+                        </h4>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] text-slate-500 font-bold uppercase">Normalize Peak</span>
+                            <label class="switch">
+                                <input type="checkbox" id="norm-${id}" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Volume Gate -->
+                        <div>
+                            <div class="flex justify-between mb-2">
+                                <label class="text-[10px] text-slate-400 uppercase font-bold">Noise Gate (dB)</label>
+                                <div class="flex items-center gap-2">
+                                    <button id="autotrim-${id}" class="text-[9px] bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 px-2 py-0.5 rounded uppercase font-bold transition-colors shadow-sm" title="Snap to audio above threshold">Auto-Trim</button>
+                                    <span id="gate-val-${id}" class="text-[10px] text-blue-400 font-mono">-60dB</span>
+                                </div>
+                            </div>
+                            <input type="range" id="gate-${id}" min="-100" max="0" value="-60" class="w-full">
+                        </div>
+
+                        <!-- Low Cut -->
+                        <div>
+                            <div class="flex justify-between mb-2">
+                                <label class="text-[10px] text-slate-400 uppercase font-bold">Low Cut (Hz)</label>
+                                <span id="lowcut-val-${id}" class="text-[10px] text-blue-400 font-mono">20Hz</span>
+                            </div>
+                            <input type="range" id="lowcut-${id}" min="20" max="2000" value="20" class="w-full">
+                        </div>
+
+                        <!-- High Cut -->
+                        <div>
+                            <div class="flex justify-between mb-2">
+                                <label class="text-[10px] text-slate-400 uppercase font-bold">High Cut (Hz)</label>
+                                <span id="highcut-val-${id}" class="text-[10px] text-blue-400 font-mono">20kHz</span>
+                            </div>
+                            <input type="range" id="highcut-${id}" min="2000" max="20000" value="20000" class="w-full">
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            audioList.appendChild(container);
+
+            const ws = WaveSurfer.create({
+                container: `#wave-${id}`,
+                waveColor: '#475569',
+                progressColor: '#3b82f6',
+                height: 96,
+                responsive: true,
+                barWidth: 2
+            });
+
+            const regions = ws.registerPlugin(WaveSurfer.Regions.create());
+            
+            const arrayBuffer = await file.arrayBuffer();
+            const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+            // Store references
+            const itemMetadata = { 
+                id, file, ws, regions, 
+                input: container.querySelector(`#input-${id}`),
+                gateInput: container.querySelector(`#gate-${id}`),
+                lowcutInput: container.querySelector(`#lowcut-${id}`),
+                highcutInput: container.querySelector(`#highcut-${id}`),
+                normToggle: container.querySelector(`#norm-${id}`),
+                originalBuffer: decodedBuffer,
+                currentBuffer: decodedBuffer,
+                savedRegion: null
+            };
+            audioItems.push(itemMetadata);
+
+            itemMetadata.normToggle.onchange = () => {
+                const regs = itemMetadata.regions.getRegions();
+                if (regs.length > 0) {
+                    itemMetadata.savedRegion = { start: regs[0].start, end: regs[0].end };
+                }
+                updateTrackAudio(itemMetadata);
+            };
+
+            // UI Label updates
+            itemMetadata.gateInput.oninput = (e) => document.getElementById(`gate-val-${id}`).innerText = `${e.target.value}dB`;
+            itemMetadata.lowcutInput.oninput = (e) => document.getElementById(`lowcut-val-${id}`).innerText = `${e.target.value}Hz`;
+            itemMetadata.highcutInput.oninput = (e) => {
+                const val = e.target.value;
+                document.getElementById(`highcut-val-${id}`).innerText = val >= 20000 ? '20kHz' : `${val}Hz`;
+            };
+
+            // Auto-Trim Logic
+            document.getElementById(`autotrim-${id}`).onclick = async (e) => {
+                const btn = e.target;
+                btn.innerText = "WAIT...";
+                btn.disabled = true;
+                try {
+                    const audioBuffer = itemMetadata.currentBuffer;
+                    const thresholdDb = parseFloat(itemMetadata.gateInput.value);
+                    const thresholdLin = Math.pow(10, thresholdDb / 20); // Convert dB to linear scale
+                    
+                    const numChannels = audioBuffer.numberOfChannels;
+                    const length = audioBuffer.length;
+                    const channels = [];
+                    for (let c = 0; c < numChannels; c++) channels.push(audioBuffer.getChannelData(c));
+
+                    let startSample = 0;
+                    let endSample = length - 1;
+
+                    // Scan from start to find first sound over threshold
+                    let foundStart = false;
+                    for (let i = 0; i < length; i++) {
+                        for (let c = 0; c < numChannels; c++) {
+                            if (Math.abs(channels[c][i]) > thresholdLin) {
+                                startSample = i; foundStart = true; break;
+                            }
+                        }
+                        if (foundStart) break;
+                    }
+
+                    // Scan from end backwards to find last sound over threshold
+                    let foundEnd = false;
+                    for (let i = length - 1; i >= 0; i--) {
+                        for (let c = 0; c < numChannels; c++) {
+                            if (Math.abs(channels[c][i]) > thresholdLin) {
+                                endSample = i; foundEnd = true; break;
+                            }
+                        }
+                        if (foundEnd) break;
+                    }
+
+                    if (!foundStart || !foundEnd || startSample >= endSample) {
+                         showToast("Audio is entirely below the current threshold!");
+                    } else {
+                         const startTime = startSample / audioBuffer.sampleRate;
+                         const endTime = endSample / audioBuffer.sampleRate;
+                         const region = itemMetadata.regions.getRegions()[0];
+                         region.setOptions({ start: startTime, end: endTime });
+                         showToast("Auto-trimmed to threshold!");
+                    }
+                } catch(err) {
+                    console.error(err);
+                    showToast("Error during auto-trim.");
+                } finally {
+                    btn.innerText = "AUTO-TRIM";
+                    btn.disabled = false;
+                }
+            };
+
+            ws.on('ready', () => {
+                const loader = document.getElementById(`loader-${id}`);
+                if(loader) loader.remove();
+                
+                if (regions.getRegions().length === 0) {
+                    let rStart = 0;
+                    let rEnd = Math.min(10, ws.getDuration());
+                    if (itemMetadata.savedRegion) {
+                        rStart = itemMetadata.savedRegion.start;
+                        rEnd = itemMetadata.savedRegion.end;
+                        itemMetadata.savedRegion = null;
+                    }
+                    regions.addRegion({
+                        start: rStart,
+                        end: rEnd,
+                        color: 'rgba(59, 130, 246, 0.2)',
+                        drag: true, resize: true
+                    });
+                }
+            });
+
+            document.getElementById(`play-${id}`).onclick = () => {
+                const region = regions.getRegions()[0];
+                ws.isPlaying() ? ws.pause() : region.play();
+            };
+
+            document.getElementById(`download-${id}`).onclick = async () => {
+                const region = regions.getRegions()[0];
+                const customName = itemMetadata.input.value || 'audio';
+                showToast(`Applying FX to ${customName}...`);
+                try {
+                    const blob = await processAudioWithFX(itemMetadata, region.start, region.end);
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${customName}.wav`;
+                    a.click();
+                } catch (err) { showToast("Error processing FX."); }
+            };
+
+            document.getElementById(`remove-${id}`).onclick = () => {
+                ws.destroy();
+                container.remove();
+                audioItems = audioItems.filter(item => item.id !== id);
+                if(audioItems.length === 0) { emptyState.classList.remove('hidden'); batchDownloadBtn.classList.add('hidden'); }
+            };
+
+            // Trigger initial render
+            updateTrackAudio(itemMetadata);
+        }
+
+        function updateTrackAudio(item) {
+            let loader = document.getElementById(`loader-${item.id}`);
+            if (!loader) {
+                loader = document.createElement('div');
+                loader.id = `loader-${item.id}`;
+                loader.className = 'absolute inset-0 flex items-center justify-center bg-slate-900/40 z-10';
+                loader.innerHTML = '<div class="spinner"></div>';
+                document.getElementById(`wave-${item.id}`).appendChild(loader);
+            }
+
+            let bufferToLoad = item.originalBuffer;
+            
+            if (item.normToggle.checked) {
+                const offlineCtx = new OfflineAudioContext(bufferToLoad.numberOfChannels, bufferToLoad.length, bufferToLoad.sampleRate);
+                const normalizedBuffer = offlineCtx.createBuffer(bufferToLoad.numberOfChannels, bufferToLoad.length, bufferToLoad.sampleRate);
+                
+                let maxPeak = 0;
+                for (let c = 0; c < bufferToLoad.numberOfChannels; c++) {
+                    const inData = bufferToLoad.getChannelData(c);
+                    const outData = normalizedBuffer.getChannelData(c);
+                    for (let i = 0; i < inData.length; i++) {
+                        outData[i] = inData[i];
+                        const absVal = Math.abs(inData[i]);
+                        if (absVal > maxPeak) maxPeak = absVal;
+                    }
+                }
+
+                if (maxPeak > 0 && maxPeak < 1.0) {
+                    const gain = 1.0 / maxPeak;
+                    for (let c = 0; c < normalizedBuffer.numberOfChannels; c++) {
+                        const outData = normalizedBuffer.getChannelData(c);
+                        for (let i = 0; i < outData.length; i++) {
+                            outData[i] *= gain;
+                        }
+                    }
+                }
+                bufferToLoad = normalizedBuffer;
+            }
+
+            item.currentBuffer = bufferToLoad;
+            const blob = audioBufferToWav(bufferToLoad);
+            item.ws.loadBlob(blob);
+        }
+
+        // Batch Download
+        batchDownloadBtn.onclick = async () => {
+            batchDownloadBtn.disabled = true;
+            batchDownloadBtn.innerText = "Zipping Files...";
+            const zip = new JSZip();
+            try {
+                for (const item of audioItems) {
+                    const region = item.regions.getRegions()[0];
+                    const blob = await processAudioWithFX(item, region.start, region.end);
+                    zip.file(`${item.input.value || 'audio'}.wav`, blob);
+                }
+                const content = await zip.generateAsync({ type: "blob" });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(content);
+                a.download = `SoniCrop_Processed_${Date.now()}.zip`;
+                a.click();
+            } finally {
+                batchDownloadBtn.disabled = false;
+                batchDownloadBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0L8 8m4-4v12"/></svg> Download All (.zip)`;
+            }
+        };
+
+        // --- CORE FX PROCESSING ---
+        async function processAudioWithFX(item, start, end) {
+            const sourceBuffer = item.originalBuffer;
+            
+            const sampleRate = sourceBuffer.sampleRate;
+            const startOffset = Math.floor(start * sampleRate);
+            const endOffset = Math.floor(end * sampleRate);
+            const duration = (endOffset - startOffset) / sampleRate;
+
+            // 1. Create Offline Context for Filters
+            const offlineCtx = new OfflineAudioContext(sourceBuffer.numberOfChannels, endOffset - startOffset, sampleRate);
+            const source = offlineCtx.createBufferSource();
+            source.buffer = sourceBuffer;
+
+            // High Cut (Lowpass)
+            const lp = offlineCtx.createBiquadFilter();
+            lp.type = 'lowpass';
+            lp.frequency.value = parseFloat(item.highcutInput.value);
+
+            // Low Cut (Highpass)
+            const hp = offlineCtx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = parseFloat(item.lowcutInput.value);
+
+            // Connect: Source -> HP -> LP -> Destination
+            source.connect(hp);
+            hp.connect(lp);
+            lp.connect(offlineCtx.destination);
+
+            source.start(0, start, duration);
+            const renderedBuffer = await offlineCtx.startRendering();
+
+            // 2. Post-Process Buffer for Gate and Normalization
+            const thresholdDb = parseFloat(item.gateInput.value);
+            const thresholdLin = Math.pow(10, thresholdDb / 20);
+            const shouldNorm = item.normToggle.checked;
+
+            let maxPeak = 0;
+
+            for (let c = 0; c < renderedBuffer.numberOfChannels; c++) {
+                const data = renderedBuffer.getChannelData(c);
+                for (let i = 0; i < data.length; i++) {
+                    // Apply Noise Gate
+                    if (Math.abs(data[i]) < thresholdLin) {
+                        data[i] = 0;
+                    }
+                    // Track Peak for Normalization
+                    if (shouldNorm) {
+                        const absVal = Math.abs(data[i]);
+                        if (absVal > maxPeak) maxPeak = absVal;
+                    }
+                }
+            }
+
+            // Apply Normalization
+            if (shouldNorm && maxPeak > 0) {
+                const gain = 1.0 / maxPeak;
+                for (let c = 0; c < renderedBuffer.numberOfChannels; c++) {
+                    const data = renderedBuffer.getChannelData(c);
+                    for (let i = 0; i < data.length; i++) {
+                        data[i] *= gain;
+                    }
+                }
+            }
+
+            return audioBufferToWav(renderedBuffer);
+        }
+
+        // WAV Encoding
+        function audioBufferToWav(buffer) {
+            const n = buffer.numberOfChannels;
+            const len = buffer.length * n * 2 + 44;
+            const out = new ArrayBuffer(len);
+            const view = new DataView(out);
+            let pos = 0;
+            const set16 = (d) => { view.setUint16(pos, d, true); pos += 2; };
+            const set32 = (d) => { view.setUint32(pos, d, true); pos += 4; };
+
+            set32(0x46464952); set32(len - 8); set32(0x45564157); // RIFF WAVE
+            set32(0x20746d66); set32(16); set16(1); set16(n); // fmt
+            set32(buffer.sampleRate); set32(buffer.sampleRate * 2 * n); set16(n * 2); set16(16);
+            set32(0x61746164); set32(len - pos - 4); // data
+
+            const chans = [];
+            for (let i = 0; i < n; i++) chans.push(buffer.getChannelData(i));
+
+            let offset = 0;
+            while (pos < len) {
+                for (let i = 0; i < n; i++) {
+                    let s = Math.max(-1, Math.min(1, chans[i][offset]));
+                    view.setInt16(pos, (s < 0 ? s * 0x8000 : s * 0x7FFF), true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return new Blob([out], { type: 'audio/wav' });
+        }
+    </script>
+</body>
+</html>
