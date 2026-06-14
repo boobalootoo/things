@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Primary Phonics Dictionary</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Nunito:wght@400;600;700&display=swap');
+        
+        body {
+            /* Using a friendly, rounded font for readability */
+            font-family: 'Nunito', sans-serif;
+            background-color: #f8fafc;
+        }
+        
+        .word-title {
+            /* Using Comic Neue for the actual words as it mimics handwriting better for kids */
+            font-family: 'Comic Neue', cursive;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-10">
+        <div class="max-w-6xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-100 p-2 rounded-xl text-blue-600">
+                    <i data-lucide="book-open" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 leading-none">Phonics Dictionary</h1>
+                    <p class="text-sm text-slate-500 font-medium">UK Primary Edition</p>
+                </div>
+            </div>
+            
+            <!-- Search Bar -->
+            <div class="relative w-full sm:w-72">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i data-lucide="search" class="w-5 h-5 text-slate-400"></i>
+                </div>
+                <input 
+                    type="text" 
+                    id="searchInput"
+                    placeholder="Search for a word..." 
+                    class="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-full leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all"
+                >
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8 w-full flex flex-col gap-6">
+        
+        <!-- Filters Section -->
+        <section class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 items-center">
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <i data-lucide="filter" class="w-5 h-5 text-slate-500"></i>
+                <span class="font-semibold text-slate-700">Filters:</span>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <!-- Color Band Filter -->
+                <select id="colorFilter" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    <option value="All">All Book Colours</option>
+                    <option value="Red Ditty">Red Ditty</option>
+                    <option value="Green">Green</option>
+                    <option value="Purple">Purple</option>
+                    <option value="Pink">Pink</option>
+                    <option value="Orange">Orange</option>
+                    <option value="Yellow">Yellow</option>
+                    <option value="Blue">Blue</option>
+                    <option value="Grey">Grey</option>
+                </select>
+
+                <!-- Word Type Filter -->
+                <select id="typeFilter" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    <option value="All">All Word Types</option>
+                    <option value="Green Word">Green Words (Decodable)</option>
+                    <option value="Red Word">Red Words (Tricky)</option>
+                </select>
+            </div>
+            
+            <div class="sm:ml-auto text-sm text-slate-500 font-medium" id="resultCount">
+                Showing all words
+            </div>
+        </section>
+
+        <!-- Dictionary Grid -->
+        <section id="wordGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Word cards will be injected here by JavaScript -->
+        </section>
+
+        <!-- Empty State (Hidden by default) -->
+        <div id="emptyState" class="hidden flex-col items-center justify-center py-16 text-center">
+            <div class="bg-slate-100 p-4 rounded-full mb-4">
+                <i data-lucide="ghost" class="w-12 h-12 text-slate-400"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 mb-1">No words found</h3>
+            <p class="text-slate-500">Try adjusting your filters or searching for something else.</p>
+            <button onclick="resetFilters()" class="mt-4 text-blue-600 font-medium hover:text-blue-800 underline">Clear all filters</button>
+        </div>
+
+    </main>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // --- DICTIONARY DATABASE ---
+        // You can expand this array with as many words as you need.
+        const dictionaryData = [
+            { word: "cat", type: "Green Word", level: "Set 1", color: "Red Ditty", def: "A small furry animal with a long tail." },
+            { word: "dog", type: "Green Word", level: "Set 1", color: "Red Ditty", def: "A friendly animal that barks." },
+            { word: "mum", type: "Green Word", level: "Set 1", color: "Red Ditty", def: "Another word for mother." },
+            { word: "the", type: "Red Word", level: "Tricky", color: "Red Ditty", def: "A word used to point to a specific thing." },
+            { word: "said", type: "Red Word", level: "Tricky", color: "Red Ditty", def: "To talk or speak in the past." },
+            { word: "shop", type: "Green Word", level: "Set 1", color: "Green", def: "A place where you buy things." },
+            { word: "play", type: "Green Word", level: "Set 2", color: "Pink", def: "To do things for fun." },
+            { word: "night", type: "Green Word", level: "Set 2", color: "Pink", def: "The time when it is dark and we go to sleep." },
+            { word: "snow", type: "Green Word", level: "Set 2", color: "Pink", def: "Soft, white pieces of frozen water that fall from the sky." },
+            { word: "book", type: "Green Word", level: "Set 2", color: "Orange", def: "Pages fastened together that you can read." },
+            { word: "look", type: "Green Word", level: "Set 2", color: "Orange", def: "To use your eyes to see something." },
+            { word: "they", type: "Red Word", level: "Tricky", color: "Yellow", def: "Used to talk about a group of people or things." },
+            { word: "colour", type: "Red Word", level: "Tricky", color: "Blue", def: "Red, blue, green, and yellow are all examples of this." },
+            { word: "treasure", type: "Green Word", level: "Set 3", color: "Blue", def: "Hidden gold, silver, or jewels." },
+            { word: "knight", type: "Green Word", level: "Set 3", color: "Grey", def: "A soldier from long ago who wore metal armour." },
+            { word: "favourite", type: "Red Word", level: "Tricky", color: "Grey", def: "The one you like the most out of all the others." },
+            { word: "friend", type: "Red Word", level: "Tricky", color: "Grey", def: "Someone you like and enjoy spending time with." },
+            { word: "maths", type: "Green Word", level: "Set 1", color: "Purple", def: "Learning about numbers, shapes, and counting." }
+        ];
+
+        // --- COLOR BAND STYLING MAPPING ---
+        const colorStyles = {
+            "Red Ditty": "bg-red-100 text-red-800 border-red-200",
+            "Green": "bg-emerald-100 text-emerald-800 border-emerald-200",
+            "Purple": "bg-purple-100 text-purple-800 border-purple-200",
+            "Pink": "bg-pink-100 text-pink-800 border-pink-200",
+            "Orange": "bg-orange-100 text-orange-800 border-orange-200",
+            "Yellow": "bg-yellow-100 text-yellow-800 border-yellow-200",
+            "Blue": "bg-blue-100 text-blue-800 border-blue-200",
+            "Grey": "bg-gray-200 text-gray-800 border-gray-300"
+        };
+
+        // --- DOM ELEMENTS ---
+        const searchInput = document.getElementById('searchInput');
+        const colorFilter = document.getElementById('colorFilter');
+        const typeFilter = document.getElementById('typeFilter');
+        const wordGrid = document.getElementById('wordGrid');
+        const emptyState = document.getElementById('emptyState');
+        const resultCount = document.getElementById('resultCount');
+
+        // --- CORE FUNCTIONS ---
+
+        // Function to read the word out loud (UK English)
+        function speakWord(word) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(word);
+                // Force British English voice
+                utterance.lang = 'en-GB'; 
+                // Speak slightly slower for kids
+                utterance.rate = 0.85; 
+                window.speechSynthesis.speak(utterance);
+            } else {
+                alert("Sorry, your browser doesn't support reading words out loud.");
+            }
+        }
+
+        // Render the UI
+        function renderWords() {
+            const searchTerm = searchInput.value.toLowerCase();
+            const selectedColor = colorFilter.value;
+            const selectedType = typeFilter.value;
+
+            // Filter logic
+            const filteredWords = dictionaryData.filter(item => {
+                const matchesSearch = item.word.toLowerCase().includes(searchTerm);
+                const matchesColor = selectedColor === "All" || item.color === selectedColor;
+                const matchesType = selectedType === "All" || item.type === selectedType;
+                return matchesSearch && matchesColor && matchesType;
+            });
+
+            // Sort alphabetically
+            filteredWords.sort((a, b) => a.word.localeCompare(b.word));
+
+            // Update UI Count
+            resultCount.textContent = `Showing ${filteredWords.length} word${filteredWords.length !== 1 ? 's' : ''}`;
+
+            // Clear current grid
+            wordGrid.innerHTML = '';
+
+            if (filteredWords.length === 0) {
+                wordGrid.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                wordGrid.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+
+                filteredWords.forEach(item => {
+                    const badgeClass = colorStyles[item.color] || "bg-slate-100 text-slate-800 border-slate-200";
+                    const typeIcon = item.type === "Red Word" ? `<span class="inline-flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100"><i data-lucide="alert-circle" class="w-3 h-3"></i>Tricky Red</span>` : `<span class="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100"><i data-lucide="check-circle-2" class="w-3 h-3"></i>Green Word</span>`;
+
+                    const card = document.createElement('div');
+                    card.className = "bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow relative overflow-hidden group";
+                    card.innerHTML = `
+                        <!-- Color Band Tab on Left side -->
+                        <div class="absolute left-0 top-0 bottom-0 w-2 ${badgeClass.split(' ')[0]} opacity-50 group-hover:opacity-100 transition-opacity"></div>
+                        
+                        <div class="pl-2">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="flex flex-wrap gap-2 mb-2">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${badgeClass}">
+                                        ${item.color} Band
+                                    </span>
+                                    ${typeIcon}
+                                </div>
+                                <button onclick="speakWord('${item.word.replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-blue-600 focus:outline-none bg-slate-50 hover:bg-blue-50 p-2 rounded-full transition-colors" title="Listen to word">
+                                    <i data-lucide="volume-2" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                            
+                            <h2 class="word-title text-4xl font-bold text-slate-900 mb-3 tracking-wide">${item.word}</h2>
+                            <p class="text-slate-600 text-lg leading-relaxed">${item.def}</p>
+                            
+                            ${item.type === "Green Word" ? `<p class="mt-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Phonics: ${item.level}</p>` : ''}
+                        </div>
+                    `;
+                    wordGrid.appendChild(card);
+                });
+                
+                // Re-initialize icons for newly added DOM elements
+                lucide.createIcons();
+            }
+        }
+
+        function resetFilters() {
+            searchInput.value = '';
+            colorFilter.value = 'All';
+            typeFilter.value = 'All';
+            renderWords();
+        }
+
+        // --- EVENT LISTENERS ---
+        searchInput.addEventListener('input', renderWords);
+        colorFilter.addEventListener('change', renderWords);
+        typeFilter.addEventListener('change', renderWords);
+
+        // Initial render
+        renderWords();
+
+    </script>
+</body>
+</html>
