@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic PDF Highlighter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        
+        /* PDF specific styles */
+        .pdf-page-container {
+            position: relative;
+            margin: 0 auto 24px auto;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            background-color: white;
+        }
+        .textLayer {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            line-height: 1;
+            white-space: pre;
+        }
+        .textLayer span {
+            color: transparent;
+            position: absolute;
+            transform-origin: 0% 0%;
+            cursor: text;
+        }
+        .highlight-box {
+            position: absolute;
+            mix-blend-mode: multiply;
+            cursor: pointer;
+            border-radius: 2px;
+            transition: opacity 0.2s;
+        }
+        .highlight-box:hover {
+            opacity: 0.8;
+        }
+        
+        /* Resizer and Sidebar */
+        .resizer {
+            width: 4px;
+            cursor: col-resize;
+            background-color: #e2e8f0;
+            transition: background-color 0.2s;
+        }
+        .resizer:hover, .resizer:active {
+            background-color: #94a3b8;
+        }
+        .sidebar-resizing {
+            transition: none !important;
+            user-select: none;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-slate-800">
+
+    <!-- JSON Data Store for the Quine functionality -->
+    <script id="embedded-state" type="application/json">null</script>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0 z-10 shadow-sm">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-highlighter text-blue-500"></i> AcaNotes
+            </h1>
+            
+            <div class="h-6 w-px bg-slate-200 mx-2"></div>
+            
+            <!-- Dynamic Category Key -->
+            <div id="category-key" class="flex items-center gap-2 overflow-x-auto pb-1">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <!-- Mode Toggles -->
+            <div class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 mr-2">
+                <button id="mode-highlight" onclick="setInteractionMode('highlight')" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-white shadow-sm text-blue-600 transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-highlighter"></i> Highlight
+                </button>
+                <button id="mode-select" onclick="setInteractionMode('select')" class="px-3 py-1.5 rounded-md text-xs font-semibold text-slate-500 hover:text-slate-700 transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-i-cursor"></i> Copy
+                </button>
+            </div>
+
+            <button onclick="toggleModal('info-modal')" class="w-9 h-9 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 transition-colors" title="Information">
+                <i class="fa-solid fa-circle-info text-lg"></i>
+            </button>
+            <div class="h-6 w-px bg-slate-200"></div>
+            <label id="btn-upload" class="cursor-pointer bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+                <i class="fa-solid fa-file-arrow-up"></i> Upload PDF(s)
+                <input type="file" id="file-upload" accept="application/pdf" multiple class="hidden" />
+            </label>
+            <button onclick="exportToHTML()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+                <i class="fa-solid fa-download"></i> Save as HTML
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex overflow-hidden relative bg-slate-100">
+        
+        <!-- PDF Viewer Container -->
+        <div id="pdf-container" class="flex-1 overflow-y-auto p-6 relative">
+            
+            <!-- Empty State -->
+            <div id="initial-state" class="h-full flex flex-col items-center justify-center text-slate-400">
+                <i class="fa-regular fa-file-pdf text-6xl mb-4 text-slate-300"></i>
+                <h2 class="text-xl font-semibold text-slate-600 mb-2">No PDF Loaded</h2>
+                <p class="text-sm">Upload a PDF using the button in the top right to begin taking notes.</p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="h-full hidden flex-col items-center justify-center text-slate-400">
+                <i class="fa-solid fa-spinner fa-spin text-4xl mb-4 text-blue-500"></i>
+                <p class="text-sm font-medium text-slate-600">Processing Document...</p>
+            </div>
+            
+            <!-- PDF Pages will be injected here -->
+        </div>
+
+        <!-- Resizer Component -->
+        <div class="resizer" id="resizer"></div>
+
+        <!-- Sidebar Layout -->
+        <aside id="sidebar" class="bg-white border-l border-slate-200 flex flex-col shrink-0 transition-all duration-300" style="width: 400px;">
+            
+            <!-- Sidebar Tabs -->
+            <div class="flex border-b border-slate-200 bg-slate-50 shrink-0 overflow-x-auto">
+                <button id="tab-library" onclick="switchTab('library')" class="flex-1 py-3 px-2 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors whitespace-nowrap"><i class="fa-solid fa-book mr-1"></i> Library</button>
+                <button id="tab-annotations" onclick="switchTab('annotations')" class="flex-1 py-3 px-2 text-sm font-semibold border-b-2 border-blue-500 text-blue-600 transition-colors whitespace-nowrap">Annotations</button>
+                <button id="tab-structure" onclick="switchTab('structure')" class="flex-1 py-3 px-2 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors whitespace-nowrap">Paper Structure</button>
+            </div>
+
+            <!-- Library Panel -->
+            <div id="panel-library" class="hidden flex-1 flex-col overflow-hidden bg-slate-50">
+                <div class="p-3 border-b border-slate-200 bg-white shrink-0">
+                    <div class="relative">
+                        <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-sm"></i>
+                        <input type="text" id="global-search" oninput="performSearch(this.value)" placeholder="Search all papers & notes..." class="w-full text-sm border border-slate-300 rounded-lg pl-8 pr-3 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                    </div>
+                </div>
+                <div id="library-list" class="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+                    <!-- Injected via JS -->
+                </div>
+                <div id="search-results" class="hidden flex-1 overflow-y-auto p-3 flex-col gap-3">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+            
+            <!-- Annotations Panel -->
+            <div id="panel-annotations" class="flex-1 flex flex-col overflow-hidden">
+                <div class="p-3 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+                    <div class="text-sm font-medium text-slate-600">Current Page: <span id="current-page-display" class="font-bold text-blue-600">1</span></div>
+                    <div class="flex gap-2">
+                        <button onclick="exportToCSV()" class="text-xs bg-white border border-slate-300 hover:bg-slate-50 px-2 py-1.5 rounded text-slate-600 flex items-center gap-1 transition-colors" title="Export Table as CSV">
+                            <i class="fa-solid fa-file-csv"></i> CSV
+                        </button>
+                        <button onclick="addPageNote()" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1.5 rounded flex items-center gap-1 font-medium transition-colors shadow-sm">
+                            <i class="fa-solid fa-plus"></i> Page Note
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4" id="highlights-list">
+                    <div class="text-center text-sm text-slate-400 mt-10" id="empty-highlights">
+                        Select text on the PDF to highlight, or add a page note.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Structure Panel -->
+            <div id="panel-structure" class="hidden flex-1 flex-col overflow-hidden">
+                 <div class="p-3 border-b border-slate-100 bg-white shrink-0 flex justify-between items-center">
+                     <p class="text-xs text-slate-500">Document overall structure and link pages.</p>
+                 </div>
+                 <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4" id="structure-list">
+                    <!-- Injected via JS -->
+                 </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Info Modal -->
+    <div id="info-modal" class="fixed inset-0 bg-slate-900/50 hidden items-center justify-center z-50 opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col transform scale-95 transition-transform duration-300">
+            <div class="p-6 overflow-y-auto">
+                <h2 class="text-2xl font-bold text-slate-800 mb-4">Welcome to AcaNotes <i class="fa-solid fa-graduation-cap text-blue-500 ml-2"></i></h2>
+                <div class="space-y-4 text-slate-600 text-sm">
+                    <p>AcaNotes is a self-contained environment for deeply analyzing academic papers.</p>
+                    
+                    <h3 class="text-base font-bold text-slate-800 mt-4 border-b pb-1">How it Works</h3>
+                    <ul class="list-disc pl-5 space-y-2">
+                        <li><strong>Upload a PDF:</strong> Load any academic paper. The file stays completely on your device.</li>
+                        <li><strong>Highlight & Categorize:</strong> Select a category (e.g., Methodology) from the top bar, then select text on the PDF. If you highlight the same text with multiple categories, it will become striped!</li>
+                        <li><strong>Page & Structure Notes:</strong> Use the sidebar to add specific notes to your highlights, create general page notes, or document the paper's overarching structure.</li>
+                        <li><strong>Save as HTML:</strong> Click this to download a standalone copy of this app with your PDF and notes baked inside. You can open it later without an internet connection!</li>
+                    </ul>
+
+                    <div class="mt-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 class="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider"><i class="fa-regular fa-folder-open mr-1"></i> Example Local Organization</h4>
+                        <p class="text-xs text-slate-500 mb-3">When you download your annotated HTML files, you can store them locally to build a library.</p>
+                        <div class="font-mono text-xs text-slate-600 bg-white p-3 rounded border border-slate-200">
+                            📁 Literature_Review/<br>
+                            &nbsp;&nbsp;📄 <a href="#" class="text-blue-500 hover:underline">Smith_2023_Analysis.html</a><br>
+                            &nbsp;&nbsp;📄 <a href="#" class="text-blue-500 hover:underline">Johnson_Neural_Nets.html</a><br>
+                            &nbsp;&nbsp;📄 <a href="#" class="text-blue-500 hover:underline">Wu_Data_Structures.html</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-5 border-t border-slate-100 bg-slate-50 rounded-b-xl flex justify-end">
+                <button onclick="toggleModal('info-modal')" class="bg-slate-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-slate-700 transition-colors">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Modal -->
+    <div id="category-modal" class="fixed inset-0 bg-slate-900/50 hidden items-center justify-center z-50 opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col transform scale-95 transition-transform duration-300">
+            <div class="flex justify-between items-center p-5 border-b border-slate-100">
+                <h2 class="text-lg font-bold text-slate-800">Manage Categories</h2>
+                <button onclick="toggleModal('category-modal'); initUI();" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-1 bg-slate-50" id="category-edit-list">
+                <!-- Generated dynamically -->
+            </div>
+            <div class="p-4 border-t border-slate-100 bg-white flex justify-between items-center">
+                <button onclick="addNewCategory()" class="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"><i class="fa-solid fa-plus"></i> Add Category</button>
+                <button onclick="toggleModal('category-modal'); initUI();" class="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700 transition-colors shadow-sm">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Setup PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // Custom alert function to replace native window.alert
+        function customAlert(message) {
+            let alertBox = document.getElementById('custom-alert-box');
+            if (!alertBox) {
+                alertBox = document.createElement('div');
+                alertBox.id = 'custom-alert-box';
+                alertBox.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-xl z-[9999] transition-all duration-300 flex items-center gap-3 text-sm font-medium opacity-0 pointer-events-none translate-y-[-20px]';
+                alertBox.innerHTML = '<i class="fa-solid fa-circle-exclamation text-red-400"></i> <span id="custom-alert-msg"></span>';
+                document.body.appendChild(alertBox);
+            }
+            document.getElementById('custom-alert-msg').innerText = message;
+            
+            // Animate in
+            alertBox.classList.remove('opacity-0', 'translate-y-[-20px]');
+            
+            // Animate out after 3 seconds
+            setTimeout(() => {
+                alertBox.classList.add('opacity-0', 'translate-y-[-20px]');
+            }, 3000);
+        }
+
+        // --- GLOBAL STATE ---
+        let CATEGORIES = [
+            { id: 'c1', name: 'Methodology', color: '#fca5a5' }, // Red
+            { id: 'c2', name: 'Results', color: '#93c5fd' },     // Blue
+            { id: 'c3', name: 'Important', color: '#fde047' },   // Yellow
+            { id: 'c4', name: 'Reference', color: '#86efac' },   // Green
+            { id: 'c5', name: 'Critique', color: '#d8b4fe' }     // Purple
+        ];
+
+        let activeCategory = CATEGORIES[2].id; // Default Yellow
+        let interactionMode = 'highlight'; // 'highlight' or 'select'
+        let copyTooltip = null;
+        
+        const defaultSectionNotes = [
+            { id: 'abstract', title: 'Abstract', pages: '', text: '' },
+            { id: 'intro', title: 'Introduction', pages: '', text: '' },
+            { id: 'lit', title: 'Literature Review', pages: '', text: '' },
+            { id: 'methods', title: 'Methodology', pages: '', text: '' },
+            { id: 'results', title: 'Results', pages: '', text: '' },
+            { id: 'discussion', title: 'Discussion', pages: '', text: '' },
+            { id: 'conclusion', title: 'Conclusion', pages: '', text: '' }
+        ];
+
+        let documents = []; // Array of { id, name, data, highlights, pageNotes, sectionNotes, textCache }
+        let activeDocId = null;
+
+        let currentPdfData = null; // Base64 string of PDF
+        let pdfDocument = null;
+        let highlights = []; // { id, text, categories:[], pageNum, rects:[], note: '' }
+        let pageNotes = [];  // { id, pageNum, note: '' }
+        let sectionNotes = JSON.parse(JSON.stringify(defaultSectionNotes));
+        
+        let currentPageNum = 1;
+        const SCALE = 1.3; 
+
+        // --- BOOTSTRAP & STATE LOADING ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initUI();
+            setupResizer();
+            
+            const stateScript = document.getElementById('embedded-state');
+            let stateStr = stateScript ? stateScript.textContent.trim() : 'null';
+            
+            if (stateStr && stateStr !== 'null') {
+                try {
+                    // It's safely loaded because JSON.parse unescapes \u003c back to <
+                    const state = JSON.parse(stateStr);
+                    
+                    if (state.categories) CATEGORIES = state.categories;
+
+                    // Migrate old state (single document) to new state (multi-document)
+                    if (state.pdfData && !state.documents) {
+                        documents = [{
+                            id: 'doc_' + Date.now(),
+                            name: 'Imported Document.pdf',
+                            data: state.pdfData,
+                            highlights: state.highlights || [],
+                            pageNotes: state.pageNotes || [],
+                            sectionNotes: state.sectionNotes || JSON.parse(JSON.stringify(defaultSectionNotes))
+                        }];
+                        activeDocId = documents[0].id;
+                        extractTextBackground(documents[0]);
+                    } else if (state.documents) {
+                        documents = state.documents;
+                        activeDocId = state.activeDocId || documents[0].id;
+                    }
+
+                    if (documents.length > 0) {
+                        const activeDoc = documents.find(d => d.id === activeDocId) || documents[0];
+                        activeDocId = activeDoc.id;
+                        currentPdfData = activeDoc.data;
+                        highlights = activeDoc.highlights || [];
+                        pageNotes = activeDoc.pageNotes || [];
+                        sectionNotes = activeDoc.sectionNotes || JSON.parse(JSON.stringify(defaultSectionNotes));
+                        
+                        if (!CATEGORIES.find(c => c.id === activeCategory)) {
+                            activeCategory = CATEGORIES[0].id;
+                        }
+
+                        document.getElementById('initial-state').classList.add('hidden');
+                        const loading = document.getElementById('loading-state');
+                        loading.classList.remove('hidden');
+                        loading.classList.add('flex');
+                        
+                        initUI(); 
+                        renderLibrary();
+                        renderSectionNotes();
+                        loadPDF(currentPdfData);
+                    }
+                } catch (e) {
+                    console.error("Failed to parse embedded state:", e);
+                }
+            } else {
+                renderSectionNotes();
+                setTimeout(() => toggleModal('info-modal'), 500);
+            }
+        });
+
+        function initUI() {
+            const keyContainer = document.getElementById('category-key');
+            keyContainer.innerHTML = '<span class="text-sm font-medium text-slate-500 mr-2">Key:</span>';
+            
+            CATEGORIES.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.className = `flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold border-2 transition-all ${activeCategory === cat.id ? 'border-slate-800 shadow-sm bg-slate-50' : 'border-transparent hover:bg-slate-100'}`;
+                btn.onclick = () => setActiveCategory(cat.id);
+                
+                const dot = document.createElement('div');
+                dot.className = 'w-3 h-3 rounded-full border border-black/10';
+                dot.style.backgroundColor = cat.color;
+                
+                const label = document.createElement('span');
+                label.innerText = cat.name;
+                
+                btn.appendChild(dot);
+                btn.appendChild(label);
+                keyContainer.appendChild(btn);
+            });
+
+            const gearBtn = document.createElement('button');
+            gearBtn.className = 'text-slate-400 hover:text-slate-700 ml-2 text-sm bg-slate-50 w-7 h-7 rounded flex items-center justify-center border border-slate-200 shadow-sm';
+            gearBtn.title = 'Manage Categories';
+            gearBtn.innerHTML = '<i class="fa-solid fa-gear"></i>';
+            gearBtn.onclick = () => { renderCategoryManager(); toggleModal('category-modal'); };
+            keyContainer.appendChild(gearBtn);
+        }
+
+        function setActiveCategory(id) {
+            activeCategory = id;
+            initUI(); 
+        }
+
+        function renderCategoryManager() {
+            const list = document.getElementById('category-edit-list');
+            list.innerHTML = '';
+            CATEGORIES.forEach(cat => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-3 mb-3 bg-white p-3 rounded shadow-sm border border-slate-100';
+                
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                colorInput.value = cat.color;
+                colorInput.className = 'w-8 h-8 rounded cursor-pointer border-0 p-0';
+                colorInput.onchange = (e) => { 
+                    cat.color = e.target.value; 
+                    updateCategoryColor(); 
+                };
+
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.value = cat.name;
+                nameInput.className = 'flex-1 text-sm border border-slate-200 rounded px-2 py-1 outline-none focus:border-blue-500';
+                nameInput.onchange = (e) => { cat.name = e.target.value; };
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'text-red-400 hover:text-red-600 px-2';
+                delBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+                delBtn.onclick = () => {
+                    if(CATEGORIES.length <= 1) return customAlert("You need at least one category.");
+                    CATEGORIES = CATEGORIES.filter(c => c.id !== cat.id);
+                    if(activeCategory === cat.id) activeCategory = CATEGORIES[0].id;
+                    renderCategoryManager();
+                };
+
+                row.appendChild(colorInput);
+                row.appendChild(nameInput);
+                row.appendChild(delBtn);
+                list.appendChild(row);
+            });
+        }
+
+        function addNewCategory() {
+            const newId = 'c' + Date.now();
+            const colors = ['#fca5a5', '#93c5fd', '#fde047', '#86efac', '#d8b4fe', '#fdba74', '#f9a8d4', '#5eead4'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            CATEGORIES.push({ id: newId, name: 'New Category', color: randomColor });
+            renderCategoryManager();
+        }
+
+        function updateCategoryColor() {
+            document.querySelectorAll('.pdf-page-container').forEach(container => {
+                const pageNum = parseInt(container.dataset.pageNum);
+                drawHighlightsForPage(pageNum, container); 
+            });
+            renderSidebar();
+        }
+
+        function setInteractionMode(mode) {
+            interactionMode = mode;
+            const btnHighlight = document.getElementById('mode-highlight');
+            const btnSelect = document.getElementById('mode-select');
+            
+            if (mode === 'highlight') {
+                btnHighlight.className = "px-3 py-1.5 rounded-md text-xs font-semibold bg-white shadow-sm text-blue-600 transition-all flex items-center gap-1.5";
+                btnSelect.className = "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-500 hover:text-slate-700 transition-all flex items-center gap-1.5";
+            } else {
+                btnSelect.className = "px-3 py-1.5 rounded-md text-xs font-semibold bg-white shadow-sm text-blue-600 transition-all flex items-center gap-1.5";
+                btnHighlight.className = "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-500 hover:text-slate-700 transition-all flex items-center gap-1.5";
+            }
+            if (copyTooltip) { copyTooltip.remove(); copyTooltip = null; }
+        }
+
+        function toggleModal(id) {
+            const modal = document.getElementById(id);
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                setTimeout(() => { modal.classList.remove('opacity-0'); modal.firstElementChild.classList.remove('scale-95'); }, 10);
+            } else {
+                modal.classList.add('opacity-0');
+                modal.firstElementChild.classList.add('scale-95');
+                setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 300);
+            }
+        }
+
+        function saveActiveDocState() {
+            if (!activeDocId) return;
+            const doc = documents.find(d => d.id === activeDocId);
+            if (doc) {
+                doc.highlights = highlights;
+                doc.pageNotes = pageNotes;
+                doc.sectionNotes = sectionNotes;
+            }
+        }
+
+        async function switchDocument(docId) {
+            if (activeDocId === docId) return;
+            
+            saveActiveDocState();
+            activeDocId = docId;
+            const doc = documents.find(d => d.id === docId);
+            if (!doc) return;
+
+            currentPdfData = doc.data;
+            highlights = doc.highlights || [];
+            pageNotes = doc.pageNotes || [];
+            sectionNotes = doc.sectionNotes || JSON.parse(JSON.stringify(defaultSectionNotes));
+
+            renderLibrary();
+            renderSidebar();
+            renderSectionNotes();
+
+            document.getElementById('initial-state').classList.add('hidden');
+            const loadingState = document.getElementById('loading-state');
+            loadingState.classList.remove('hidden');
+            loadingState.classList.add('flex');
+
+            await loadPDF(currentPdfData);
+        }
+
+        async function extractTextBackground(doc) {
+            if (doc.textCache || !doc.data || typeof doc.data !== 'string') return;
+            try {
+                const parts = doc.data.split(',');
+                if (parts.length < 2) return;
+                const base64Part = parts[1];
+                const binaryString = window.atob(base64Part);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) { bytes[i] = binaryString.charCodeAt(i); }
+                const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+                let textCache = {};
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    textCache[i] = textContent.items.map(item => item.str).join(' ');
+                }
+                doc.textCache = textCache;
+            } catch(e) { console.error("Text extraction failed for", doc.name, e); }
+        }
+
+        document.getElementById('file-upload').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+            
+            document.getElementById('initial-state').classList.add('hidden');
+            const loading = document.getElementById('loading-state');
+            loading.classList.remove('hidden');
+            loading.classList.add('flex');
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const reader = new FileReader();
+                
+                // Read files sequentially using a Promise
+                await new Promise((resolve) => {
+                    reader.onload = async (event) => {
+                        const newDoc = {
+                            id: 'doc_' + Date.now() + '_' + i,
+                            name: file.name,
+                            data: event.target.result,
+                            highlights: [],
+                            pageNotes: [],
+                            sectionNotes: JSON.parse(JSON.stringify(defaultSectionNotes))
+                        };
+                        documents.push(newDoc);
+                        extractTextBackground(newDoc); // Run text extraction silently
+                        resolve();
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            // Switch to the first newly uploaded file
+            const docToLoad = documents[documents.length - files.length];
+            if (!activeDocId) {
+                switchTab('library');
+            }
+            await switchDocument(docToLoad.id);
+            if (activeDocId === docToLoad.id) {
+                // If it was already active, force re-render
+                renderLibrary();
+            }
+            
+            // Clear input so same file can be uploaded again if needed
+            e.target.value = '';
+        });
+
+        async function loadPDF(base64Data) {
+            try {
+                if (!base64Data || typeof base64Data !== 'string' || !base64Data.includes(',')) {
+                    throw new Error("Invalid PDF data format");
+                }
+                const base64Part = base64Data.split(',')[1];
+                const binaryString = window.atob(base64Part);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                const loadingTask = pdfjsLib.getDocument({ data: bytes });
+                pdfDocument = await loadingTask.promise;
+
+                const container = document.getElementById('pdf-container');
+                const loadingState = document.getElementById('loading-state');
+                
+                loadingState.classList.add('hidden');
+                loadingState.classList.remove('flex');
+                
+                // Clear existing pages if reloading
+                container.querySelectorAll('.pdf-page-container').forEach(p => p.remove());
+
+                for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+                    await renderPage(pageNum, container);
+                }
+                
+                container.addEventListener('scroll', handleScroll);
+                handleScroll(); 
+                renderSidebar();
+
+            } catch (error) {
+                console.error("Error loading PDF:", error);
+                customAlert("Failed to load PDF. It may be corrupt or encrypted.");
+            }
+        }
+
+        async function renderPage(pageNum, container) {
+            const page = await pdfDocument.getPage(pageNum);
+            const viewport = page.getViewport({ scale: SCALE });
+
+            const pageDiv = document.createElement('div');
+            pageDiv.className = 'pdf-page-container';
+            pageDiv.style.width = `${viewport.width}px`;
+            pageDiv.style.height = `${viewport.height}px`;
+            pageDiv.dataset.pageNum = pageNum;
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.style.width = `${viewport.width}px`;
+            canvas.style.height = `${viewport.height}px`;
+
+            pageDiv.appendChild(canvas);
+
+            const textLayerDiv = document.createElement('div');
+            textLayerDiv.className = 'textLayer';
+            textLayerDiv.style.width = `${viewport.width}px`;
+            textLayerDiv.style.height = `${viewport.height}px`;
+            textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
+            pageDiv.appendChild(textLayerDiv);
+
+            container.appendChild(pageDiv);
+
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+            const textContent = await page.getTextContent();
+            pdfjsLib.renderTextLayer({
+                textContentSource: textContent, // Updated parameter to fix deprecation warning
+                container: textLayerDiv,
+                viewport: viewport,
+                textDivs: []
+            });
+
+            drawHighlightsForPage(pageNum, pageDiv);
+        }
+
+        document.getElementById('pdf-container').addEventListener('mouseup', (e) => {
+            const selection = window.getSelection();
+            if (!selection.isCollapsed && selection.toString().trim().length > 0) {
+                if (interactionMode === 'highlight') {
+                    handleSelection(selection);
+                } else if (interactionMode === 'select') {
+                    showCopyTooltip(e, selection.toString().trim());
+                }
+            } else {
+                if (copyTooltip) { copyTooltip.remove(); copyTooltip = null; }
+            }
+        });
+
+        function showCopyTooltip(e, text) {
+            if (copyTooltip) copyTooltip.remove();
+            copyTooltip = document.createElement('div');
+            copyTooltip.className = 'absolute bg-slate-800 text-white px-3 py-1.5 rounded shadow-lg text-xs font-bold flex items-center gap-2 cursor-pointer z-50 hover:bg-slate-700 transition-colors';
+            copyTooltip.innerHTML = '<i class="fa-solid fa-copy"></i> Copy';
+            
+            const container = document.getElementById('pdf-container');
+            const containerRect = container.getBoundingClientRect();
+            copyTooltip.style.left = `${e.clientX - containerRect.left + container.scrollLeft}px`;
+            copyTooltip.style.top = `${e.clientY - containerRect.top + container.scrollTop - 40}px`;
+            
+            copyTooltip.onclick = (event) => {
+                event.stopPropagation();
+                // Copy to clipboard safely
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try { document.execCommand('copy'); } catch (err) {}
+                document.body.removeChild(textArea);
+                
+                copyTooltip.innerHTML = '<i class="fa-solid fa-check text-green-400"></i> Copied!';
+                setTimeout(() => { if (copyTooltip) { copyTooltip.remove(); copyTooltip = null; } }, 1500);
+            };
+            container.appendChild(copyTooltip);
+        }
+
+        function handleSelection(selection) {
+            const range = selection.getRangeAt(0);
+            
+            // Determine if the selection is within our PDF text layer
+            let textLayer = null;
+            if (range.commonAncestorContainer.nodeType === 3) {
+                textLayer = range.commonAncestorContainer.parentElement.closest('.textLayer');
+            } else {
+                textLayer = range.commonAncestorContainer.closest('.textLayer');
+            }
+
+            if (!textLayer) return;
+
+            const pageDiv = textLayer.closest('.pdf-page-container');
+            const pageNum = parseInt(pageDiv.dataset.pageNum);
+            
+            const rects = Array.from(range.getClientRects());
+            const pageRect = pageDiv.getBoundingClientRect();
+            
+            // Calculate coordinates relative to the page div
+            const relativeRects = rects.map(r => ({
+                top: r.top - pageRect.top,
+                left: r.left - pageRect.left,
+                width: r.width,
+                height: r.height
+            }));
+
+            const selectedText = selection.toString().trim();
+            if (!selectedText) return;
+
+            // Check if selection intersects with an existing highlight
+            let overlappedHighlight = null;
+            const pageHighlights = highlights.filter(h => h.pageNum === pageNum);
+            
+            for (let hl of pageHighlights) {
+                const r1 = relativeRects[0];
+                for (let r2 of hl.rects) {
+                    if (r1.left < r2.left + r2.width &&
+                        r1.left + r1.width > r2.left &&
+                        r1.top < r2.top + r2.height &&
+                        r1.top + r1.height > r2.top) {
+                        overlappedHighlight = hl;
+                        break;
+                    }
+                }
+                if (overlappedHighlight) break;
+            }
+
+            if (overlappedHighlight) {
+                if (!overlappedHighlight.categories.includes(activeCategory)) {
+                    overlappedHighlight.categories.push(activeCategory);
+                }
+            } else {
+                highlights.push({
+                    id: 'hl' + Date.now(),
+                    pageNum: pageNum,
+                    rects: relativeRects,
+                    categories: [activeCategory],
+                    text: selectedText,
+                    note: ''
+                });
+            }
+
+            selection.removeAllRanges();
+            drawHighlightsForPage(pageNum, pageDiv);
+            renderSidebar();
+        }
+
+        function drawHighlightsForPage(pageNum, pageDiv) {
+            if (!pageDiv) return;
+            
+            // Remove existing highlight overlays
+            pageDiv.querySelectorAll('.highlight-box').forEach(el => el.remove());
+
+            const pageHighlights = highlights.filter(h => h.pageNum === pageNum);
+
+            pageHighlights.forEach(hl => {
+                hl.rects.forEach(rect => {
+                    const div = document.createElement('div');
+                    div.className = 'highlight-box shadow-sm';
+                    div.style.top = `${rect.top}px`;
+                    div.style.left = `${rect.left}px`;
+                    div.style.width = `${rect.width}px`;
+                    div.style.height = `${rect.height}px`;
+
+                    if (hl.categories.length === 1) {
+                        const cat = CATEGORIES.find(c => c.id === hl.categories[0]);
+                        div.style.backgroundColor = cat ? cat.color : '#fde047';
+                    } else {
+                        div.style.background = generateStripedGradient(hl.categories);
+                    }
+
+                    pageDiv.appendChild(div);
+                });
+            });
+        }
+
+        function generateStripedGradient(categoryIds) {
+            const colors = categoryIds.map(id => {
+                const cat = CATEGORIES.find(c => c.id === id);
+                return cat ? cat.color : '#fff';
+            });
+            const stripeWidth = 10;
+            let stops = [];
+            for (let i = 0; i < colors.length; i++) {
+                const start = i * stripeWidth;
+                const end = (i + 1) * stripeWidth;
+                stops.push(`${colors[i]} ${start}px`, `${colors[i]} ${end}px`);
+            }
+            return `repeating-linear-gradient(45deg, ${stops.join(', ')})`;
+        }
+
+        function setupResizer() {
+            const resizer = document.getElementById('resizer');
+            const sidebar = document.getElementById('sidebar');
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                document.body.style.cursor = 'col-resize';
+                sidebar.classList.add('sidebar-resizing');
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                const newWidth = document.body.clientWidth - e.clientX;
+                if (newWidth > 250 && newWidth < 600) {
+                    sidebar.style.width = `${newWidth}px`;
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    document.body.style.cursor = 'default';
+                    sidebar.classList.remove('sidebar-resizing');
+                }
+            });
+        }
+
+        function handleScroll() {
+            const container = document.getElementById('pdf-container');
+            const pages = container.querySelectorAll('.pdf-page-container');
+            let topPageNum = 1;
+            const containerRect = container.getBoundingClientRect();
+            
+            for (let page of pages) {
+                const rect = page.getBoundingClientRect();
+                if (rect.top < containerRect.top + (containerRect.height / 2)) {
+                    topPageNum = parseInt(page.dataset.pageNum);
+                }
+            }
+            
+            if (currentPageNum !== topPageNum) {
+                currentPageNum = topPageNum;
+                document.getElementById('current-page-display').innerText = currentPageNum;
+            }
+        }
+
+        function renderLibrary() {
+            const list = document.getElementById('library-list');
+            if (!list) return;
+            list.innerHTML = '';
+            
+            if (documents.length === 0) {
+                list.innerHTML = '<div class="text-sm text-slate-400 text-center mt-6">No documents uploaded.</div>';
+                return;
+            }
+
+            documents.forEach(doc => {
+                const isActive = doc.id === activeDocId;
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-lg border cursor-pointer transition-colors flex items-center gap-3 ${isActive ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white border-slate-200 hover:border-blue-300'}`;
+                card.onclick = () => switchDocument(doc.id);
+                
+                card.innerHTML = `
+                    <div class="flex-shrink-0 w-8 h-8 rounded bg-red-100 text-red-500 flex items-center justify-center">
+                        <i class="fa-regular fa-file-pdf"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-slate-800 truncate">${doc.name}</p>
+                        <p class="text-xs text-slate-500">${(doc.highlights?.length || 0) + (doc.pageNotes?.length || 0)} annotations</p>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function performSearch(query) {
+            const resultsContainer = document.getElementById('search-results');
+            const listContainer = document.getElementById('library-list');
+            
+            if (!query.trim()) {
+                resultsContainer.classList.add('hidden');
+                resultsContainer.classList.remove('flex');
+                listContainer.classList.remove('hidden');
+                listContainer.classList.add('flex');
+                return;
+            }
+            
+            query = query.toLowerCase();
+            resultsContainer.innerHTML = '';
+            resultsContainer.classList.remove('hidden');
+            resultsContainer.classList.add('flex');
+            listContainer.classList.add('hidden');
+            listContainer.classList.remove('flex');
+
+            let results = [];
+            
+            // Search all documents
+            documents.forEach(doc => {
+                // Search extracted text
+                if (doc.textCache) {
+                    Object.entries(doc.textCache).forEach(([pageNumStr, text]) => {
+                        const pageNum = parseInt(pageNumStr);
+                        if (text.toLowerCase().includes(query)) {
+                            const idx = text.toLowerCase().indexOf(query);
+                            const snippetStart = Math.max(0, idx - 40);
+                            const snippetEnd = Math.min(text.length, idx + query.length + 40);
+                            const snippet = text.substring(snippetStart, snippetEnd).replace(new RegExp(query, 'gi'), match => `<mark class="bg-yellow-200 font-bold">${match}</mark>`);
+                            results.push({ docId: doc.id, docName: doc.name, pageNum: pageNum, type: 'Text Content', text: `...${snippet}...` });
+                        }
+                    });
+                }
+                
+                // Search highlights
+                (doc.highlights || []).forEach(hl => {
+                    if (hl.text.toLowerCase().includes(query) || (hl.note && hl.note.toLowerCase().includes(query))) {
+                        const matchText = hl.text.replace(new RegExp(query, 'gi'), m => `<mark class="bg-yellow-200 font-bold">${m}</mark>`);
+                        const matchNote = hl.note ? hl.note.replace(new RegExp(query, 'gi'), m => `<mark class="bg-yellow-200 font-bold">${m}</mark>`) : '';
+                        results.push({ docId: doc.id, docName: doc.name, pageNum: hl.pageNum, type: 'Highlight', text: matchText + (matchNote ? `<br><span class="text-xs text-slate-500 mt-1 block">Note: ${matchNote}</span>` : '') });
+                    }
+                });
+
+                // Search page notes
+                (doc.pageNotes || []).forEach(pn => {
+                    if (pn.note && pn.note.toLowerCase().includes(query)) {
+                        const matchNote = pn.note.replace(new RegExp(query, 'gi'), m => `<mark class="bg-yellow-200 font-bold">${m}</mark>`);
+                        results.push({ docId: doc.id, docName: doc.name, pageNum: pn.pageNum, type: 'Page Note', text: matchNote });
+                    }
+                });
+            });
+
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<div class="text-sm text-slate-500 text-center mt-4">No matching results.</div>';
+                return;
+            }
+
+            // --- NEW: Calculate and Render Summary Table ---
+            let matchCounts = {};
+            results.forEach(res => {
+                matchCounts[res.docId] = (matchCounts[res.docId] || 0) + 1;
+            });
+
+            let summaryHTML = `
+                <div class="bg-slate-50 border border-slate-200 rounded-lg overflow-hidden mb-1 shadow-sm shrink-0">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-200/50 text-slate-600 border-b border-slate-200">
+                            <tr>
+                                <th class="py-1.5 px-3 font-semibold">Document</th>
+                                <th class="py-1.5 px-3 text-center font-semibold">Matches</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            Object.keys(matchCounts).forEach(docId => {
+                const docName = documents.find(d => d.id === docId)?.name || 'Unknown';
+                summaryHTML += `
+                            <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-100 cursor-pointer transition-colors" onclick="switchDocument('${docId}')">
+                                <td class="py-1.5 px-3 text-slate-700 truncate max-w-[180px]" title="${docName}">${docName}</td>
+                                <td class="py-1.5 px-3 text-center font-bold text-blue-600">${matchCounts[docId]}</td>
+                            </tr>
+                `;
+            });
+            
+            summaryHTML += `
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 mt-2">Specific Results</div>
+            `;
+            resultsContainer.innerHTML = summaryHTML;
+            // --- END NEW ---
+
+            results.forEach(res => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-3 rounded border border-slate-200 shadow-sm cursor-pointer hover:border-blue-400 transition-colors text-sm shrink-0';
+                card.onclick = async () => {
+                    await switchDocument(res.docId);
+                    switchTab('annotations');
+                    // Scroll to page
+                    setTimeout(() => {
+                        const container = document.getElementById('pdf-container');
+                        const pageEl = container.querySelector(`.pdf-page-container[data-page-num="${res.pageNum}"]`);
+                        if (pageEl) container.scrollTo({ top: pageEl.offsetTop - 20, behavior: 'smooth' });
+                    }, 500);
+                };
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">${res.type}</span>
+                        <span class="text-xs text-slate-500 font-medium">Pg ${res.pageNum}</span>
+                    </div>
+                    <div class="text-slate-700 italic text-xs mb-1">${res.text}</div>
+                    <div class="text-[10px] text-slate-400 truncate mt-1"><i class="fa-regular fa-file-pdf mr-1 text-red-400"></i> ${res.docName}</div>
+                `;
+                resultsContainer.appendChild(card);
+            });
+        }
+
+        function switchTab(tabId) {
+            const btnLib = document.getElementById('tab-library');
+            const btnAnn = document.getElementById('tab-annotations');
+            const btnStr = document.getElementById('tab-structure');
+            const panelLib = document.getElementById('panel-library');
+            const panelAnn = document.getElementById('panel-annotations');
+            const panelStr = document.getElementById('panel-structure');
+
+            // Reset all
+            [btnLib, btnAnn, btnStr].forEach(btn => btn.className = "flex-1 py-3 px-2 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors whitespace-nowrap");
+            [panelLib, panelAnn, panelStr].forEach(panel => { panel.classList.add('hidden'); panel.classList.remove('flex', 'flex-col'); });
+
+            if (tabId === 'library') {
+                btnLib.className = "flex-1 py-3 px-2 text-sm font-semibold border-b-2 border-blue-500 text-blue-600 transition-colors whitespace-nowrap";
+                btnLib.innerHTML = '<i class="fa-solid fa-book mr-1"></i> Library';
+                panelLib.classList.remove('hidden');
+                panelLib.classList.add('flex', 'flex-col');
+            } else if (tabId === 'annotations') {
+                btnAnn.className = "flex-1 py-3 px-2 text-sm font-semibold border-b-2 border-blue-500 text-blue-600 transition-colors whitespace-nowrap";
+                panelAnn.classList.remove('hidden');
+                panelAnn.classList.add('flex');
+            } else {
+                btnStr.className = "flex-1 py-3 px-2 text-sm font-semibold border-b-2 border-blue-500 text-blue-600 transition-colors whitespace-nowrap";
+                panelStr.classList.remove('hidden');
+                panelStr.classList.add('flex', 'flex-col');
+            }
+        }
+
+        function addPageNote() {
+            if (!currentPdfData) return customAlert("Upload a PDF first.");
+            pageNotes.push({ id: 'p' + Date.now().toString(), pageNum: currentPageNum, note: '' });
+            switchTab('annotations'); 
+            renderSidebar();
+        }
+
+        function renderSidebar() {
+            const list = document.getElementById('highlights-list');
+            const empty = document.getElementById('empty-highlights');
+            
+            if (highlights.length === 0 && pageNotes.length === 0) {
+                list.innerHTML = '';
+                list.appendChild(empty);
+                empty.style.display = 'block';
+                return;
+            }
+
+            list.innerHTML = ''; 
+
+            const allItems = [
+                ...highlights.map(h => ({ ...h, type: 'highlight' })),
+                ...pageNotes.map(p => ({ ...p, type: 'pageNote' }))
+            ].sort((a, b) => a.pageNum - b.pageNum);
+
+            allItems.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-slate-200 rounded-lg p-3 mb-3 shadow-sm text-sm flex flex-col gap-2 relative group';
+                
+                const topBar = document.createElement('div');
+                topBar.className = 'flex justify-between items-start mb-1 pr-6'; 
+
+                const badgeContainer = document.createElement('div');
+                badgeContainer.className = 'flex flex-wrap gap-1';
+                
+                if (item.type === 'highlight') {
+                    item.categories.forEach(catId => {
+                        const cat = CATEGORIES.find(c => c.id === catId);
+                        if (!cat) return;
+                        const badge = document.createElement('span');
+                        badge.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded border border-black/10';
+                        badge.style.backgroundColor = cat.color + '40';
+                        badge.style.color = '#334155';
+                        badge.innerText = cat.name;
+                        badgeContainer.appendChild(badge);
+                    });
+                } else {
+                    const badge = document.createElement('span');
+                    badge.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 flex items-center gap-1';
+                    badge.innerHTML = '<i class="fa-solid fa-file-lines"></i> Page Note';
+                    badgeContainer.appendChild(badge);
+                }
+                
+                const meta = document.createElement('div');
+                meta.className = 'text-xs font-semibold text-slate-500 bg-slate-100 px-1.5 rounded';
+                meta.innerText = `Pg ${item.pageNum}`;
+
+                topBar.appendChild(badgeContainer);
+                topBar.appendChild(meta);
+                card.appendChild(topBar);
+
+                if (item.type === 'highlight') {
+                    const textEl = document.createElement('div');
+                    textEl.className = 'text-slate-700 italic border-l-2 pl-2 border-slate-300 line-clamp-4 hover:line-clamp-none cursor-ns-resize';
+                    textEl.innerText = `"${item.text}"`;
+                    card.appendChild(textEl);
+                }
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'absolute top-2 right-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded px-1';
+                delBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+                delBtn.onclick = () => {
+                    if (item.type === 'highlight') {
+                        highlights = highlights.filter(hl => hl.id !== item.id);
+                        const container = document.querySelector(`.pdf-page-container[data-page-num="${item.pageNum}"]`);
+                        if(container) drawHighlightsForPage(item.pageNum, container);
+                    } else {
+                        pageNotes = pageNotes.filter(p => p.id !== item.id);
+                    }
+                    renderSidebar();
+                };
+                card.appendChild(delBtn);
+
+                const noteInput = document.createElement('textarea');
+                noteInput.className = 'w-full text-xs mt-1 border border-slate-200 rounded p-1.5 outline-none focus:border-blue-400 bg-slate-50 resize-y';
+                noteInput.placeholder = item.type === 'highlight' ? 'Add note to this quote...' : 'Type note for this page...';
+                noteInput.rows = item.type === 'pageNote' || item.note ? 2 : 1;
+                noteInput.value = item.note || '';
+                noteInput.onchange = (e) => {
+                    if (item.type === 'highlight') {
+                        const target = highlights.find(h => h.id === item.id);
+                        if(target) target.note = e.target.value;
+                    } else {
+                        const target = pageNotes.find(p => p.id === item.id);
+                        if(target) target.note = e.target.value;
+                    }
+                };
+                card.appendChild(noteInput);
+
+                list.appendChild(card);
+            });
+        }
+
+        function renderSectionNotes() {
+            const list = document.getElementById('structure-list');
+            list.innerHTML = '';
+            
+            sectionNotes.forEach(sec => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-50 border border-slate-200 rounded-lg p-3 shadow-sm flex flex-col gap-2 relative group hover:border-slate-300 transition-all';
+                
+                const header = document.createElement('div');
+                header.className = 'flex justify-between items-center gap-2';
+                
+                const titleInp = document.createElement('input');
+                titleInp.type = 'text';
+                titleInp.value = sec.title;
+                titleInp.className = 'text-sm font-bold text-slate-700 bg-transparent border-b border-transparent focus:bg-white focus:border-blue-500 outline-none flex-1 truncate pb-0.5 transition-all';
+                titleInp.onchange = (e) => {
+                    sec.title = e.target.value;
+                };
+                
+                const pagesInputContainer = document.createElement('div');
+                pagesInputContainer.className = 'flex items-center gap-1.5 text-xs text-slate-500 shrink-0';
+                pagesInputContainer.innerHTML = '<span>Pg(s):</span>';
+                
+                const pagesInput = document.createElement('input');
+                pagesInput.type = 'text';
+                pagesInput.className = 'w-12 border border-slate-200 focus:border-blue-500 rounded px-1.5 py-0.5 outline-none text-slate-700 bg-white text-center font-bold text-[10px]';
+                pagesInput.placeholder = 'e.g. 1-3';
+                pagesInput.value = sec.pages;
+                pagesInput.onchange = (e) => {
+                    sec.pages = e.target.value;
+                };
+                
+                pagesInputContainer.appendChild(pagesInput);
+
+                const trashSec = document.createElement('button');
+                trashSec.className = 'text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1';
+                trashSec.innerHTML = '<i class="fa-solid fa-trash-can text-[11px]"></i>';
+                trashSec.onclick = () => {
+                    sectionNotes = sectionNotes.filter(s => s.id !== sec.id);
+                    renderSectionNotes();
+                };
+                
+                header.appendChild(titleInp);
+                header.appendChild(pagesInputContainer);
+                header.appendChild(trashSec);
+                
+                const noteArea = document.createElement('textarea');
+                noteArea.className = 'w-full text-sm border border-slate-200 rounded p-2 outline-none focus:border-blue-500 min-h-[80px] resize-y bg-white text-slate-800';
+                noteArea.placeholder = `Notes for ${sec.title}...`;
+                noteArea.value = sec.text;
+                noteArea.onchange = (e) => { sec.text = e.target.value; };
+                
+                card.appendChild(header);
+                card.appendChild(noteArea);
+                list.appendChild(card);
+            });
+
+            const addSectionBtn = document.createElement('button');
+            addSectionBtn.className = 'w-full py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50 transition-colors text-sm font-semibold mt-2 flex items-center justify-center gap-1.5';
+            addSectionBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add Structural Section';
+            addSectionBtn.onclick = () => {
+                sectionNotes.push({ id: 'sec_' + Date.now(), title: 'New Part', pages: '', text: '' });
+                renderSectionNotes();
+            };
+            list.appendChild(addSectionBtn);
+        }
+
+        function exportToCSV() {
+            saveActiveDocState(); // Ensure latest notes are saved
+
+            if (documents.length === 0) {
+                customAlert("No documents to export.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Document,Context,Type,Page(s),Categories,Quote,User Note\n";
+
+            documents.forEach(doc => {
+                const safeDocName = `"${doc.name.replace(/"/g, '""')}"`;
+
+                const allItems = [
+                    ...(doc.highlights || []).map(h => ({ ...h, type: 'Highlight' })),
+                    ...(doc.pageNotes || []).map(p => ({ ...p, type: 'Page Note' }))
+                ].sort((a, b) => a.pageNum - b.pageNum);
+
+                allItems.forEach(item => {
+                    const cats = item.categories ? item.categories.map(cId => {
+                        const cat = CATEGORIES.find(c => c.id === cId);
+                        return cat ? cat.name : '';
+                    }).join(' & ') : '';
+                    
+                    const safeQuote = item.text ? `"${item.text.replace(/"/g, '""')}"` : '""';
+                    const safeNote = item.note ? `"${item.note.replace(/"/g, '""')}"` : '""';
+                    csvContent += `${safeDocName},Annotation,${item.type},${item.pageNum},"${cats}",${safeQuote},${safeNote}\n`;
+                });
+
+                (doc.sectionNotes || []).forEach(sec => {
+                    if (sec.text || sec.pages) {
+                        const safeNote = sec.text ? `"${sec.text.replace(/"/g, '""')}"` : '""';
+                        const safePages = sec.pages ? `"${sec.pages.replace(/"/g, '""')}"` : '""';
+                        csvContent += `${safeDocName},Structure,Section Note,${safePages},"${sec.title}","None",${safeNote}\n`;
+                    }
+                });
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "AcaNotes_Export.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function exportToHTML() {
+            saveActiveDocState();
+
+            if (documents.length === 0) {
+                customAlert("Please upload at least one PDF first.");
+                return;
+            }
+
+            // Create the state object using the new multiple document structure
+            const state = {
+                documents: documents,
+                activeDocId: activeDocId,
+                categories: CATEGORIES
+            };
+
+            // Deep clone the DOM so we can modify it safely without affecting current user session
+            const docClone = document.documentElement.cloneNode(true);
+            
+            // Format state as JSON, carefully replacing specific characters to prevent HTML parser errors
+            const safeStateString = JSON.stringify(state).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+            const scriptTag = docClone.querySelector('#embedded-state');
+            scriptTag.textContent = safeStateString;
+
+            // Reset UI state in the clone so it boots cleanly
+            docClone.querySelector('#pdf-container').innerHTML = `
+                <div id="initial-state" class="h-full flex flex-col items-center justify-center text-slate-400">
+                    <i class="fa-regular fa-file-pdf text-6xl mb-4 text-slate-300"></i>
+                    <h2 class="text-xl font-semibold text-slate-600 mb-2">No PDF Loaded</h2>
+                    <p class="text-sm">Upload a PDF using the button in the top right to begin taking notes.</p>
+                </div>
+                <div id="loading-state" class="h-full hidden flex-col items-center justify-center text-slate-400">
+                    <i class="fa-solid fa-spinner fa-spin text-4xl mb-4 text-blue-500"></i>
+                    <p class="text-sm font-medium text-slate-600">Processing Document...</p>
+                </div>`;
+                
+            docClone.querySelector('#highlights-list').innerHTML = `
+                <div class="text-center text-sm text-slate-400 mt-10" id="empty-highlights">
+                    Select text on the PDF to highlight, or add a page note.
+                </div>`;
+                
+            docClone.querySelector('#structure-list').innerHTML = '';
+            
+            // Clear library UI state
+            const libraryList = docClone.querySelector('#library-list');
+            if(libraryList) libraryList.innerHTML = '';
+            const searchResults = docClone.querySelector('#search-results');
+            if(searchResults) searchResults.innerHTML = '';
+            const globalSearch = docClone.querySelector('#global-search');
+            if(globalSearch) globalSearch.value = '';
+            
+            // Reconstruct full HTML string safely
+            const finalHTML = `<!DOCTYPE html>\n<html lang="en">\n${docClone.innerHTML}\n</html>`;
+
+            // Trigger Download
+            const blob = new Blob([finalHTML], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "AcaNotes_Annotated.html";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
