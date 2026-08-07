@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mech Keeb Simulator Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Import a variety of fonts for legends and screens */
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=VT323&family=Courier+Prime&family=Lora&family=Comic+Neue:wght@700&family=Pacifico&display=swap');
+
+        :root {
+            --key-travel: 4px;
+            --workbench-height: 80px;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling, app is full screen */
+            touch-action: none; /* Crucial for custom touch handling/stamping */
+            background-color: #1e293b;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* --- App Layout --- */
+        #app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+            transition: background-color 0.3s;
+        }
+
+        /* Global Stickers Layer (Behind UI, over background) */
+        #global-stickers {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none; /* Let clicks pass through to background/keys */
+            z-index: 1;
+            overflow: hidden;
+        }
+
+        .global-sticker {
+            position: absolute;
+            pointer-events: auto; /* Allow dragging if implemented, or just clicking */
+            transform: translate(-50%, -50%);
+        }
+
+        /* --- Screen Area (Portrait / App environments) --- */
+        #screen-environment {
+            display: none;
+            flex: 1;
+            z-index: 5;
+            position: relative;
+            padding: 1rem;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @media screen and (orientation: portrait) {
+            #screen-environment { display: flex; }
+            #keyboard-container { flex: 1.2; padding-bottom: calc(var(--workbench-height) + 10px); }
+        }
+        @media screen and (orientation: landscape) {
+            #keyboard-container { flex: 1; height: 100vh; padding-bottom: calc(var(--workbench-height) + 10px); }
+        }
+
+        .device-frame {
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 4/3;
+            border-radius: 1rem 1rem 0 0;
+            padding: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden; /* Clip stickers on screen edge */
+        }
+        .device-screen {
+            width: 100%; height: 100%;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            box-sizing: border-box;
+            overflow-y: auto;
+            position: relative;
+        }
+        #screen-text {
+            white-space: pre-wrap;
+            word-break: break-all;
+            position: relative;
+            z-index: 10; /* Above screen stickers */
+        }
+        .cursor {
+            display: inline-block; width: 10px; height: 1em;
+            background-color: currentColor;
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* Screen Themes */
+        .theme-terminal { background: #333; }
+        .theme-terminal .device-screen { background: #000; color: #4ade80; font-family: 'VT323', monospace; }
+        .theme-word { background: #cbd5e1; }
+        .theme-word .device-screen { background: #fff; color: #000; font-family: 'Lora', serif; box-shadow: inset 0 0 10px rgba(0,0,0,0.1); }
+        .theme-code { background: #475569; }
+        .theme-code .device-screen { background: #1e1e1e; color: #d4d4d4; font-family: 'Courier Prime', monospace; }
+
+        /* --- Keyboard Layout & Structural Mechanics --- */
+        #keyboard-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            gap: 0.5rem;
+            z-index: 10;
+            position: relative;
+        }
+
+        .keyboard-row {
+            display: flex;
+            justify-content: center;
+            gap: 0.25rem;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        /* The Key Wrapper maintains layout size */
+        .key-wrapper {
+            flex: 1;
+            min-width: 0;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 1rem 0;
+            /* Flex overrides for special keys */
+        }
+        .key-space { flex: 5; }
+        .key-backspace, .key-enter { flex: 1.5; }
+        .key-shift { flex: 1.8; }
+
+        /* Layers inside the wrapper */
+        .pcb-socket {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 100%;
+            background: #111; border-radius: 0.25rem;
+            border: 2px solid #333;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .pcb-socket::after { content: ''; width: 40%; height: 40%; border-radius: 50%; background: #000; box-shadow: inset 0 2px 5px rgba(0,0,0,1); }
+
+        .switch-body {
+            position: absolute; bottom: 4px; left: 10%; right: 10%; height: 80%;
+            border-radius: 0.25rem;
+            box-shadow: 0 4px 0 #222, 0 6px 10px rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.05s;
+        }
+        .switch-stem {
+            width: 30%; height: 30%; background: currentColor; border-radius: 2px;
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.3);
+        }
+
+        /* The Cap holds the color, stickers, and text */
+        .keycap {
+            position: absolute; bottom: 8px; left: 0; right: 0; height: 100%;
+            border-radius: 0.5rem;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            overflow: hidden; /* Clips stickers to the cap edges */
+            transition: transform 0.05s ease, box-shadow 0.05s ease;
+        }
+        
+        .key-wrapper.active .keycap {
+            transform: translateY(var(--key-travel));
+            box-shadow: 0 0 0 rgba(0,0,0,0.5) !important; /* Managed by JS inline styles */
+        }
+        .key-wrapper.active .switch-body {
+            transform: translateY(2px);
+        }
+
+        .key-legend {
+            position: relative;
+            z-index: 20; /* Above cap stickers */
+            pointer-events: none;
+        }
+
+        .cap-sticker {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* --- Immersive Workbench UI --- */
+        #workbench {
+            position: fixed; bottom: -100%; left: 0; right: 0;
+            height: var(--workbench-height);
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid #334155;
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            z-index: 100;
+            transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 0 1rem;
+            overflow-x: auto;
+        }
+        #workbench.active { bottom: 0; }
+
+        .tool-btn {
+            width: 50px; height: 50px; border-radius: 0.5rem;
+            background: #1e293b; border: 2px solid transparent;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: #94a3b8; font-size: 0.7rem; cursor: pointer; transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .tool-btn:hover { background: #334155; }
+        .tool-btn.selected { border-color: #3b82f6; color: #3b82f6; background: #1e293b; transform: translateY(-3px); }
+        .tool-icon { font-size: 1.2rem; margin-bottom: 2px; }
+
+        /* Custom Cursors based on tool */
+        body.tool-typing { cursor: default; }
+        body.tool-pull-cap { cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23ff4444" stroke-width="2"><path d="M12 2v20M8 6h8M8 18h8"/></svg>') 12 12, pointer; }
+        body.tool-pull-sw { cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2344ff44" stroke-width="2"><path d="M12 2v10M8 12h8M8 22h8M12 12v10"/></svg>') 12 12, pointer; }
+        body.tool-paint { cursor: crosshair; }
+        body.tool-sticker { cursor: crosshair; }
+
+        /* --- Modals --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+            display: none; justify-content: center; align-items: center; z-index: 200;
+        }
+        .modal-content {
+            background: #1e293b; color: #f8fafc; padding: 2rem; border-radius: 1rem;
+            max-width: 90%; width: 500px; max-height: 90vh; overflow-y: auto;
+            border: 1px solid #334155;
+        }
+        .close-btn { float: right; cursor: pointer; font-size: 1.5rem; line-height: 1; }
+
+        /* Common UI Elements */
+        .btn { padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer; transition: opacity 0.2s; border: none; }
+        .btn:hover { opacity: 0.8; }
+        .btn-blue { background: #3b82f6; color: white; }
+        .btn-green { background: #22c55e; color: white; }
+        .btn-red { background: #ef4444; color: white; }
+        .btn-dark { background: #334155; color: white; }
+        
+        select, input[type="text"], input[type="color"] { background: #0f172a; color: white; border: 1px solid #334155; border-radius: 0.25rem; padding: 0.5rem; width: 100%; }
+
+        /* Sticker Book / Inventory UI */
+        .grid-select { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 0.5rem; margin-top: 1rem; }
+        .grid-item { 
+            aspect-ratio: 1; background: #0f172a; border: 2px solid #334155; border-radius: 0.5rem;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; font-size: 2rem;
+        }
+        .grid-item:hover { border-color: #3b82f6; }
+        .grid-item.active { border-color: #22c55e; background: #1e293b; }
+
+    </style>
+</head>
+<body class="tool-typing" id="app-body">
+
+<div id="app-container" class="theme-terminal">
+    <!-- Global Stickers layer -->
+    <div id="global-stickers"></div>
+
+    <!-- Top UI -->
+    <div class="absolute top-0 left-0 w-full p-2 flex justify-between items-start z-50 pointer-events-none">
+        <div class="flex gap-2">
+            <button onclick="openModal('menu-modal')" class="pointer-events-auto bg-slate-800/80 backdrop-blur text-white p-2 rounded shadow font-bold text-sm">
+                ⚙️ Menu
+            </button>
+            <button onclick="toggleBuildMode()" id="btn-build-mode" class="pointer-events-auto bg-blue-600/80 backdrop-blur text-white p-2 rounded shadow font-bold text-sm">
+                🛠️ Build Mode
+            </button>
+        </div>
+        <div id="save-indicator" class="hidden pointer-events-auto bg-green-500/90 text-white px-2 py-1 rounded text-xs font-bold shadow">Saved</div>
+    </div>
+
+    <!-- Screen Environment (Portrait) -->
+    <div id="screen-environment" onclick="handleGlobalClick(event)">
+        <div class="device-frame" id="device-frame">
+            <div class="device-screen">
+                <div id="screen-text"><span class="cursor"></span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard -->
+    <div id="keyboard-container" onclick="handleGlobalClick(event)">
+        <!-- Injected by JS -->
+    </div>
+</div>
+
+<!-- Immersive Workbench (Bottom Bar) -->
+<div id="workbench">
+    <div class="tool-btn selected" id="tool-type" onclick="selectTool('typing')">
+        <span class="tool-icon">⌨️</span>Type
+    </div>
+    <div class="w-px h-8 bg-slate-700 mx-1"></div>
+    <div class="tool-btn" id="tool-pull-cap" onclick="selectTool('pull-cap')">
+        <span class="tool-icon">🧲</span>Pull Cap
+    </div>
+    <div class="tool-btn" id="tool-pull-sw" onclick="selectTool('pull-sw')">
+        <span class="tool-icon">🥢</span>Pull Sw
+    </div>
+    <div class="w-px h-8 bg-slate-700 mx-1"></div>
+    <div class="tool-btn" id="tool-place-sw" onclick="openInventory('switches')">
+        <span class="tool-icon">📦</span>Switches
+    </div>
+    <div class="tool-btn" id="tool-paint" onclick="openInventory('paint')">
+        <span class="tool-icon">🎨</span>Paint Cap
+    </div>
+    <div class="tool-btn" id="tool-legend" onclick="openInventory('legends')">
+        <span class="tool-icon">A</span>Legends
+    </div>
+    <div class="w-px h-8 bg-slate-700 mx-1"></div>
+    <div class="tool-btn" id="tool-sticker" onclick="openInventory('stickers')">
+        <span class="tool-icon">⭐</span>Stickers
+    </div>
+</div>
+
+<!-- --- Modals --- -->
+
+<!-- Main Menu Modal -->
+<div id="menu-modal" class="modal-overlay">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeModals()">&times;</span>
+        <h2 class="text-2xl font-bold mb-4">Settings & Designs</h2>
+        
+        <div class="space-y-4">
+            <!-- Screen Setup -->
+            <div class="bg-slate-800 p-3 rounded">
+                <h3 class="font-bold mb-2">Screen Environment</h3>
+                <select id="env-select" onchange="changeEnvironment(this.value)" class="mb-2">
+                    <option value="terminal">Command Line (Terminal)</option>
+                    <option value="word">Word Document</option>
+                    <option value="code">Code Editor</option>
+                </select>
+                <div class="flex gap-2">
+                    <input type="number" id="env-size" value="24" onchange="changeEnvFont()" class="w-20" placeholder="Size px">
+                    <input type="color" id="env-color" onchange="changeEnvFont()" class="w-full">
+                </div>
+            </div>
+
+            <!-- Persistence -->
+            <div class="bg-slate-800 p-3 rounded">
+                <h3 class="font-bold mb-2">Save / Load Designs</h3>
+                <div class="flex gap-2 mb-2">
+                    <input type="text" id="save-name" placeholder="Design Name..." class="flex-1">
+                    <button onclick="saveDesign()" class="btn btn-green">Save</button>
+                </div>
+                <select id="load-select" class="mb-2">
+                    <option value="">-- Select Saved Design --</option>
+                </select>
+                <div class="flex gap-2">
+                    <button onclick="loadDesign()" class="btn btn-blue flex-1">Load</button>
+                    <button onclick="deleteDesign()" class="btn btn-red flex-1">Delete</button>
+                </div>
+                <button onclick="resetBoard()" class="btn btn-dark w-full mt-2 border border-red-500 text-red-500">Nuclear Reset (Clear All)</button>
+            </div>
+
+            <!-- Info -->
+            <div class="text-xs text-slate-400 mt-4 pt-4 border-t border-slate-700">
+                <p><b>How to use:</b> Toggle Build Mode to customize. Use tools to remove caps/switches. Place new switches from the box. Paint caps. Place stickers anywhere (they clip inside keys!).</p>
+                <p class="mt-2 text-blue-400">Related Files: <a href="./index.html" class="underline">index.html</a>, <a href="./README.md" class="underline">README.md</a>, <a href="./assets/" class="underline">assets/</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inventory/Tool Modals -->
+<div id="inventory-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close-btn" onclick="closeModals()">&times;</span>
+        <h2 id="inv-title" class="text-2xl font-bold mb-2">Inventory</h2>
+        <p id="inv-desc" class="text-sm text-slate-400 mb-4"></p>
+        
+        <!-- Dynamic Content Area -->
+        <div id="inv-content"></div>
+
+        <div class="mt-4 flex justify-end">
+            <button onclick="closeModals()" class="btn btn-dark">Close Book</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    /* =========================================
+       STATE MANAGEMENT & DATA
+       ========================================= */
+    const QWERTY = [
+        ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+        ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+        ['Shift', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', 'Back'],
+        ['Space']
+    ];
+
+    // Extensive Switch Database
+    const SWITCH_TYPES = {
+        'linear': { name: 'Linear (Red)', color: '#ef4444', stem: '#f87171', desc: 'Smooth travel from top to bottom without any bump. Quiet thock.' },
+        'tactile': { name: 'Tactile (Brown)', color: '#854d0e', stem: '#a16207', desc: 'A noticeable physical bump in the middle of the press. Moderate clack.' },
+        'clicky': { name: 'Clicky (Blue)', color: '#3b82f6', stem: '#60a5fa', desc: 'A tactile bump accompanied by a loud, sharp clicking sound.' },
+        'silent_linear': { name: 'Silent Linear', color: '#ec4899', stem: '#f472b6', desc: 'Smooth travel with internal sound dampeners for near-silent typing.' },
+        'speed_silver': { name: 'Speed Silver', color: '#94a3b8', stem: '#cbd5e1', desc: 'Smooth travel with a shorter distance to actuate (ideal for gaming).' },
+        'heavy_tactile': { name: 'Heavy Tactile', color: '#4f46e5', stem: '#818cf8', desc: 'A very pronounced, round bump and heavier spring weight.' },
+        'clickbar': { name: 'Clickbar (Box Jade)', color: '#10b981', stem: '#34d399', desc: 'A distinct, crisp double-click sound using a metal clickbar mechanism.' },
+        'buckling': { name: 'Buckling Spring', color: '#475569', stem: '#e2e8f0', desc: 'Vintage heavy feel with a metallic twang on release.' }
+    };
+
+    // Pre-built SVG stickers (Emojis/Shapes)
+    const PRESET_STICKERS = [
+        '⭐', '❤️', '🔥', '💀', '👽', '🍕', '🌸', '✨', '⚡', '💧',
+        '🐱', '🐶', '🐸', '🤖', '👾', '🚀', '🎸', '🎮', '🌈', '🍒'
+    ];
+
+    // Available Fonts for Legends
+    const FONTS = ['Fredoka', 'VT323', 'Courier Prime', 'Lora', 'Comic Neue', 'Pacifico'];
+
+    // Default Key State Template
+    const DEFAULT_KEY = {
+        hasSwitch: true,
+        switchType: 'tactile',
+        hasCap: true,
+        capColor: '#e2e8f0', // default light gray
+        font: 'Fredoka',
+        fontColor: '#475569',
+        stickers: [] // { id, charOrSrc, x, y, size, rotation }
+    };
+
+    // Main Application State
+    let state = {
+        buildMode: false,
+        activeTool: 'typing', // typing, pull-cap, pull-sw, place-sw, paint, legend, sticker
+        
+        // Data to be persisted
+        design: {
+            name: 'My Board',
+            environment: 'terminal', // terminal, word, code
+            envFontSize: 24,
+            envFontColor: '#4ade80', // overwritten by theme defaults usually
+            keys: {}, // Map of char -> key state
+            globalStickers: []
+        },
+        
+        // Ephemeral Build State
+        selectedSwitchType: 'linear',
+        selectedPaintColor: '#3b82f6',
+        selectedFont: 'Fredoka',
+        selectedFontColor: '#000000',
+        selectedSticker: '⭐',
+        recentColors: ['#e2e8f0', '#3b82f6', '#ef4444', '#22c55e', '#facc15', '#0f172a'],
+        
+        typedText: "",
+        audioCtx: null
+    };
+
+    // Initialize Key Map based on layout
+    function initDefaultKeys() {
+        QWERTY.flat().forEach(char => {
+            state.design.keys[char] = JSON.parse(JSON.stringify(DEFAULT_KEY));
+        });
+    }
+
+    /* =========================================
+       AUDIO & HAPTICS ENGINE
+       ========================================= */
+    function getAudioCtx() {
+        if (!state.audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            state.audioCtx = new AudioContext();
+        }
+        if (state.audioCtx.state === 'suspended') state.audioCtx.resume();
+        return state.audioCtx;
+    }
+
+    function playSound(type, subtype = 'default') {
+        const ctx = getAudioCtx();
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        // Tool Sounds
+        if (type === 'tool') {
+            if (subtype === 'pop') { // Pull cap
+                osc.type = 'sine'; osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(800, t + 0.1);
+                gain.gain.setValueAtTime(0.5, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.start(t); osc.stop(t + 0.1);
+            } else if (subtype === 'scratch') { // Pull switch
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, t); osc.frequency.linearRampToValueAtTime(50, t + 0.05);
+                gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
+                osc.start(t); osc.stop(t + 0.05);
+            } else if (subtype === 'page') { // Sticker book flip
+                // Noise burst
+                const buf = ctx.createBuffer(1, ctx.sampleRate * 0.1, ctx.sampleRate);
+                for(let i=0; i<buf.getChannelData(0).length; i++) buf.getChannelData(0)[i] = Math.random()*2-1;
+                const noise = ctx.createBufferSource(); noise.buffer = buf;
+                const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 1000;
+                noise.connect(filter); filter.connect(gain);
+                gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t+0.1);
+                noise.start(t);
+            } else if (subtype === 'squish') { // Paint
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(200, t); osc.frequency.exponentialRampToValueAtTime(50, t + 0.1);
+                gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.start(t); osc.stop(t + 0.1);
+            }
+            return;
+        }
+
+        // Switch Sounds (The core typing experience)
+        if (type === 'switch') {
+            const config = subtype; // subtype is 'linear', 'clicky', etc.
+            
+            // Base parameters
+            let oscType = 'triangle', startFreq = 150, endFreq = 40, dur = 0.05, vol = 0.5;
+            let needsNoise = false, noiseHighpass = 2000, noiseDur = 0.04, noiseVol = 0.5;
+            let filterLowpass = null;
+
+            switch(config) {
+                case 'linear': // Thock
+                    oscType = 'triangle'; startFreq = 120; endFreq = 40; dur = 0.06; vol = 0.6;
+                    break;
+                case 'tactile': // Clack
+                    oscType = 'square'; startFreq = 250; endFreq = 80; dur = 0.05; vol = 0.4;
+                    filterLowpass = 800;
+                    break;
+                case 'clicky': // Click
+                    oscType = 'square'; startFreq = 400; endFreq = 150; dur = 0.04; vol = 0.3;
+                    needsNoise = true;
+                    break;
+                case 'silent_linear': // Muted thock
+                    oscType = 'sine'; startFreq = 100; endFreq = 40; dur = 0.04; vol = 0.2;
+                    break;
+                case 'speed_silver': // High pitch clack
+                    oscType = 'triangle'; startFreq = 300; endFreq = 100; dur = 0.03; vol = 0.5;
+                    break;
+                case 'heavy_tactile': // Deep bump
+                    oscType = 'square'; startFreq = 180; endFreq = 60; dur = 0.07; vol = 0.7;
+                    filterLowpass = 500;
+                    break;
+                case 'clickbar': // Sharp double click (simulate with high noise burst)
+                    oscType = 'sawtooth'; startFreq = 500; endFreq = 200; dur = 0.03; vol = 0.2;
+                    needsNoise = true; noiseHighpass = 3000; noiseDur = 0.02; noiseVol = 0.8;
+                    break;
+                case 'buckling': // Metallic twang
+                    oscType = 'sawtooth'; startFreq = 200; endFreq = 200; dur = 0.1; vol = 0.3;
+                    // Add a slight frequency modulation for "spring" sound
+                    osc.frequency.linearRampToValueAtTime(150, t + 0.05);
+                    osc.frequency.linearRampToValueAtTime(200, t + 0.1);
+                    break;
+            }
+
+            // Apply base oscillator
+            osc.type = oscType;
+            osc.frequency.setValueAtTime(startFreq, t);
+            if(config !== 'buckling') osc.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
+            
+            let finalOutput = gain;
+            if (filterLowpass) {
+                const filter = ctx.createBiquadFilter();
+                filter.type = 'lowpass'; filter.frequency.value = filterLowpass;
+                gain.disconnect(); gain.connect(filter); filter.connect(ctx.destination);
+                finalOutput = filter;
+            }
+
+            gain.gain.setValueAtTime(vol, t);
+            gain.gain.exponentialRampToValueAtTime(0.01, t + dur);
+            osc.start(t); osc.stop(t + dur);
+
+            // Apply noise if needed (Clicks)
+            if (needsNoise) {
+                const bufSize = ctx.sampleRate * noiseDur;
+                const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+                for (let i = 0; i < bufSize; i++) buf.getChannelData(0)[i] = Math.random() * 2 - 1;
+                
+                const noise = ctx.createBufferSource(); noise.buffer = buf;
+                const nFilter = ctx.createBiquadFilter(); nFilter.type = 'highpass'; nFilter.frequency.value = noiseHighpass;
+                const nGain = ctx.createGain();
+                
+                nGain.gain.setValueAtTime(noiseVol, t);
+                nGain.gain.exponentialRampToValueAtTime(0.01, t + noiseDur);
+                
+                noise.connect(nFilter); nFilter.connect(nGain); nGain.connect(ctx.destination);
+                noise.start(t);
+            }
+        }
+    }
+
+    function doHaptic(type) {
+        if (!navigator.vibrate) return;
+        try {
+            switch(type) {
+                case 'linear': case 'speed_silver': navigator.vibrate(5); break;
+                case 'tactile': navigator.vibrate([10, 10, 5]); break;
+                case 'heavy_tactile': navigator.vibrate([15, 20, 15]); break;
+                case 'clicky': case 'clickbar': navigator.vibrate(15); break;
+                case 'buckling': navigator.vibrate([10, 5, 20]); break;
+                case 'tool-pop': navigator.vibrate(20); break;
+                case 'tool-scratch': navigator.vibrate([5, 10, 5]); break;
+            }
+        } catch(e){}
+    }
+
+
+    /* =========================================
+       DOM RENDERING (Keyboard & Stickers)
+       ========================================= */
+    
+    // Hex to darker shade for 3D shadow
+    function getShadowColor(hex) {
+        if(hex.length === 4) hex = '#' + hex[1]+hex[1]+hex[2]+hex[2]+hex[3]+hex[3];
+        let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+        return `rgb(${Math.max(0,r-50)}, ${Math.max(0,g-50)}, ${Math.max(0,b-50)})`;
+    }
+
+    function renderKeyboard() {
+        const container = document.getElementById('keyboard-container');
+        container.innerHTML = '';
+
+        QWERTY.forEach(row => {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'keyboard-row';
+            
+            row.forEach(char => {
+                const keyData = state.design.keys[char];
+                
+                // Outer Wrapper
+                const wrapper = document.createElement('div');
+                wrapper.className = 'key-wrapper';
+                if (char === 'Space') wrapper.classList.add('key-space');
+                if (char === 'Back') wrapper.classList.add('key-backspace');
+                if (char === 'Shift') wrapper.classList.add('key-shift');
+                wrapper.id = `key-${char}`;
+                wrapper.dataset.char = char;
+
+                // PCB Socket (Base layer)
+                const pcb = document.createElement('div');
+                pcb.className = 'pcb-socket';
+                wrapper.appendChild(pcb);
+
+                // Switch (Middle layer)
+                if (keyData.hasSwitch) {
+                    const sw = document.createElement('div');
+                    sw.className = 'switch-body';
+                    sw.style.backgroundColor = SWITCH_TYPES[keyData.switchType].color;
+                    
+                    const stem = document.createElement('div');
+                    stem.className = 'switch-stem';
+                    stem.style.backgroundColor = SWITCH_TYPES[keyData.switchType].stem;
+                    sw.appendChild(stem);
+                    wrapper.appendChild(sw);
+                }
+
+                // Keycap (Top layer, clippable)
+                if (keyData.hasCap) {
+                    const cap = document.createElement('div');
+                    cap.className = 'keycap';
+                    cap.style.backgroundColor = keyData.capColor;
+                    cap.style.boxShadow = `0 var(--key-travel) 0 ${getShadowColor(keyData.capColor)}, 0 5px 10px rgba(0,0,0,0.3)`;
+                    
+                    // Legend
+                    const legend = document.createElement('span');
+                    legend.className = 'key-legend';
+                    legend.innerText = char.toUpperCase();
+                    legend.style.fontFamily = keyData.font;
+                    legend.style.color = keyData.fontColor;
+                    
+                    // Size adjustments
+                    if (char.length > 1) legend.style.fontSize = '0.7rem';
+                    else legend.style.fontSize = '1.2rem';
+
+                    // Stickers on this key
+                    keyData.stickers.forEach(stk => {
+                        const sEl = document.createElement('div');
+                        sEl.className = 'cap-sticker';
+                        sEl.style.left = stk.x + '%';
+                        sEl.style.top = stk.y + '%';
+                        sEl.style.fontSize = stk.size + 'px';
+                        sEl.style.transform = `translate(-50%, -50%) rotate(${stk.rotation}deg)`;
+                        sEl.innerHTML = stk.isImg ? `<img src="${stk.src}" style="width:100%;height:100%">` : stk.char;
+                        cap.appendChild(sEl);
+                    });
+
+                    cap.appendChild(legend);
+                    wrapper.appendChild(cap);
+                }
+
+                // Event Listeners for Interaction
+                wrapper.addEventListener('mousedown', (e) => handleKeyAction(e, char, wrapper));
+                wrapper.addEventListener('touchstart', (e) => { e.preventDefault(); handleKeyAction(e, char, wrapper); }, {passive:false});
+                
+                // Release mechanics for visual pop-up
+                const releaseHandler = () => {
+                    if (wrapper.classList.contains('active')) {
+                        wrapper.classList.remove('active');
+                        // Restore 3D shadow if cap exists
+                        if (keyData.hasCap) {
+                            const cap = wrapper.querySelector('.keycap');
+                            if(cap) cap.style.boxShadow = `0 var(--key-travel) 0 ${getShadowColor(keyData.capColor)}, 0 5px 10px rgba(0,0,0,0.3)`;
+                        }
+                    }
+                };
+                wrapper.addEventListener('mouseup', releaseHandler);
+                wrapper.addEventListener('mouseleave', releaseHandler);
+                wrapper.addEventListener('touchend', releaseHandler);
+
+                rowDiv.appendChild(wrapper);
+            });
+            container.appendChild(rowDiv);
+        });
+    }
+
+    function renderGlobalStickers() {
+        const container = document.getElementById('global-stickers');
+        container.innerHTML = '';
+        state.design.globalStickers.forEach(stk => {
+            const sEl = document.createElement('div');
+            sEl.className = 'global-sticker';
+            sEl.style.left = stk.x + 'px';
+            sEl.style.top = stk.y + 'px';
+            sEl.style.fontSize = stk.size + 'px';
+            sEl.style.transform = `translate(-50%, -50%) rotate(${stk.rotation}deg)`;
+            sEl.innerHTML = stk.isImg ? `<img src="${stk.src}" style="width:100%;height:100%">` : stk.char;
+            container.appendChild(sEl);
+        });
+    }
+
+    function applyScreenTheme() {
+        const app = document.getElementById('app-container');
+        app.className = `theme-${state.design.environment}`;
+        
+        const screenText = document.getElementById('screen-text');
+        screenText.style.fontSize = state.design.envFontSize + 'px';
+        screenText.style.color = state.design.envFontColor;
+    }
+
+
+    /* =========================================
+       INTERACTION LOGIC (Typing & Building)
+       ========================================= */
+    
+    function handleKeyAction(e, char, wrapperEl) {
+        const keyData = state.design.keys[char];
+        
+        if (!state.buildMode || state.activeTool === 'typing') {
+            // NORMAL TYPING MODE
+            if (!keyData.hasSwitch) return; // Can't type without a switch!
+            
+            // Visual Push Down
+            wrapperEl.classList.add('active');
+            
+            // Audio/Haptic based on switch
+            playSound('switch', keyData.switchType);
+            doHaptic(keyData.switchType);
+
+            // Logic
+            let printChar = char;
+            if (char === 'Space') printChar = ' ';
+            else if (char === 'Back') printChar = 'BACKSPACE';
+            else if (char === 'Shift') printChar = '';
+
+            if (printChar === 'BACKSPACE') state.typedText = state.typedText.slice(0, -1);
+            else state.typedText += printChar;
+
+            // Update Screen
+            const screenEl = document.getElementById('screen-text');
+            screenEl.innerHTML = state.typedText + '<span class="cursor"></span>';
+            screenEl.parentElement.scrollTop = screenEl.parentElement.scrollHeight;
+            return;
+        }
+
+        // BUILD MODE TOOLS
+        e.stopPropagation(); // Prevent global sticker drop
+        
+        if (state.activeTool === 'pull-cap') {
+            if (keyData.hasCap) {
+                keyData.hasCap = false;
+                playSound('tool', 'pop'); doHaptic('tool-pop');
+                renderKeyboard();
+            }
+        } 
+        else if (state.activeTool === 'pull-sw') {
+            if (!keyData.hasCap && keyData.hasSwitch) {
+                keyData.hasSwitch = false;
+                playSound('tool', 'scratch'); doHaptic('tool-scratch');
+                renderKeyboard();
+            }
+        }
+        else if (state.activeTool === 'place-sw') {
+            if (!keyData.hasCap && !keyData.hasSwitch) {
+                keyData.hasSwitch = true;
+                keyData.switchType = state.selectedSwitchType;
+                playSound('tool', 'scratch'); doHaptic('tool-scratch'); // reuse sound
+                renderKeyboard();
+            }
+        }
+        else if (state.activeTool === 'paint') {
+            if (keyData.hasCap) {
+                keyData.capColor = state.selectedPaintColor;
+                playSound('tool', 'squish'); doHaptic('tool-pop');
+                
+                // Add to recent colors if new
+                if(!state.recentColors.includes(state.selectedPaintColor)) {
+                    state.recentColors.unshift(state.selectedPaintColor);
+                    if(state.recentColors.length > 10) state.recentColors.pop();
+                }
+                renderKeyboard();
+            } else if (!keyData.hasCap && keyData.hasSwitch) {
+                // Placing a new cap implicitly
+                keyData.hasCap = true;
+                keyData.capColor = state.selectedPaintColor;
+                playSound('tool', 'pop'); doHaptic('tool-pop');
+                renderKeyboard();
+            }
+        }
+        else if (state.activeTool === 'legend') {
+            if (keyData.hasCap) {
+                keyData.font = state.selectedFont;
+                keyData.fontColor = state.selectedFontColor;
+                playSound('tool', 'page');
+                renderKeyboard();
+            }
+        }
+        else if (state.activeTool === 'sticker') {
+            if (keyData.hasCap) {
+                // Calculate relative position within the keycap
+                const rect = wrapperEl.getBoundingClientRect();
+                // ClientX/Y works for mouse, touches[0] for touch
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                
+                const xPct = ((clientX - rect.left) / rect.width) * 100;
+                const yPct = ((clientY - rect.top) / rect.height) * 100;
+
+                keyData.stickers.push({
+                    char: state.selectedSticker.char,
+                    isImg: state.selectedSticker.isImg,
+                    src: state.selectedSticker.src,
+                    x: xPct,
+                    y: yPct,
+                    size: state.selectedSticker.isImg ? 30 : 24, // default sizes
+                    rotation: Math.random() * 40 - 20 // Slight random rotation
+                });
+                playSound('tool', 'squish');
+                renderKeyboard();
+            }
+        }
+    }
+
+    // Global Click for Background Stickers
+    function handleGlobalClick(e) {
+        if (state.buildMode && state.activeTool === 'sticker') {
+            // Don't place if clicking on a UI element like workbench
+            if(e.target.closest('#workbench') || e.target.closest('.modal-overlay')) return;
+
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+            state.design.globalStickers.push({
+                char: state.selectedSticker.char,
+                isImg: state.selectedSticker.isImg,
+                src: state.selectedSticker.src,
+                x: clientX,
+                y: clientY,
+                size: state.selectedSticker.isImg ? 50 : 40,
+                rotation: Math.random() * 360
+            });
+            playSound('tool', 'squish');
+            renderGlobalStickers();
+        }
+    }
+
+    // Physical Keyboard Routing
+    window.addEventListener('keydown', (e) => {
+        if (state.buildMode) return; // Disable hardware typing in build mode
+        
+        let keyMap = e.key.toUpperCase();
+        if (e.key === 'Backspace') keyMap = 'Back';
+        if (e.key === ' ') keyMap = 'Space';
+        
+        const wrapperEl = document.getElementById(`key-${keyMap}`);
+        if (wrapperEl && !wrapperEl.classList.contains('active')) {
+            handleKeyAction(null, keyMap, wrapperEl);
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (state.buildMode) return;
+        let keyMap = e.key.toUpperCase();
+        if (e.key === 'Backspace') keyMap = 'Back';
+        if (e.key === ' ') keyMap = 'Space';
+        
+        const wrapperEl = document.getElementById(`key-${keyMap}`);
+        if (wrapperEl) {
+            wrapperEl.classList.remove('active');
+            const keyData = state.design.keys[keyMap];
+            if (keyData && keyData.hasCap) {
+                const cap = wrapperEl.querySelector('.keycap');
+                if(cap) cap.style.boxShadow = `0 var(--key-travel) 0 ${getShadowColor(keyData.capColor)}, 0 5px 10px rgba(0,0,0,0.3)`;
+            }
+        }
+    });
+
+
+    /* =========================================
+       UI & MENUS (Inventory, Modals)
+       ========================================= */
+
+    function toggleBuildMode() {
+        state.buildMode = !state.buildMode;
+        const wb = document.getElementById('workbench');
+        const btn = document.getElementById('btn-build-mode');
+        
+        if (state.buildMode) {
+            wb.classList.add('active');
+            btn.classList.replace('bg-blue-600/80', 'bg-red-600/80');
+            btn.innerText = "🛑 Exit Build Mode";
+            selectTool('pull-cap'); // Default tool
+        } else {
+            wb.classList.remove('active');
+            btn.classList.replace('bg-red-600/80', 'bg-blue-600/80');
+            btn.innerText = "🛠️ Build Mode";
+            selectTool('typing');
+            closeModals();
+        }
+    }
+
+    function selectTool(toolId) {
+        state.activeTool = toolId;
+        // UI updates
+        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('selected'));
+        const btn = document.getElementById(`tool-${toolId}`);
+        if(btn) btn.classList.add('selected');
+
+        // Cursor updates
+        document.body.className = `tool-${toolId.split('-')[0]}`; // tool-pull, tool-paint, etc.
+        if (toolId === 'pull-cap' || toolId === 'pull-sw') {
+            document.body.className = `tool-${toolId}`; // specific custom cursors
+        }
+    }
+
+    function openModal(id) {
+        document.getElementById(id).style.display = 'flex';
+        if(id === 'menu-modal') updateLoadSelect();
+    }
+    function closeModals() {
+        document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none');
+    }
+
+    function openInventory(category) {
+        playSound('tool', 'page');
+        const modal = document.getElementById('inventory-modal');
+        const content = document.getElementById('inv-content');
+        const title = document.getElementById('inv-title');
+        const desc = document.getElementById('inv-desc');
+        
+        content.innerHTML = '';
+
+        if (category === 'switches') {
+            title.innerText = "Switch Box";
+            desc.innerText = "Select a switch type to place into empty PCBs.";
+            selectTool('place-sw');
+            
+            const list = document.createElement('div');
+            list.className = 'flex flex-col gap-3 mt-4 max-h-[60vh] overflow-y-auto pr-2';
+            
+            Object.entries(SWITCH_TYPES).forEach(([id, data]) => {
+                const item = document.createElement('div');
+                item.className = `p-3 rounded-lg flex items-center gap-4 cursor-pointer border-2 transition-colors ${state.selectedSwitchType === id ? 'border-green-500 bg-slate-800' : 'border-slate-700 bg-slate-900 hover:border-blue-500'}`;
+                
+                // Draw a mini switch
+                const visual = `<div style="width:50px;height:50px;flex-shrink:0;background:${data.color};border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 -3px 0 rgba(0,0,0,0.4);"><div style="width:25px;height:25px;background:${data.stem};border-radius:2px;"></div></div>`;
+                
+                // Text details
+                const textDetails = `<div class="flex-1"><h4 class="font-bold text-slate-100 text-lg">${data.name}</h4><p class="text-xs text-slate-400 leading-tight mt-1">${data.desc}</p></div>`;
+                
+                item.innerHTML = visual + textDetails;
+                
+                item.onclick = () => {
+                    state.selectedSwitchType = id;
+                    closeModals();
+                };
+                list.appendChild(item);
+            });
+            content.appendChild(list);
+        }
+        else if (category === 'paint') {
+            title.innerText = "Paint Pot";
+            desc.innerText = "Choose a color. Click a switch to place a new cap, or click a cap to repaint it.";
+            selectTool('paint');
+
+            content.innerHTML = `
+                <div class="mb-4">
+                    <label class="block mb-2 font-bold">Pick Color:</label>
+                    <input type="color" id="paint-picker" value="${state.selectedPaintColor}" class="h-16">
+                    <button class="btn btn-blue w-full mt-2" onclick="setPaintColor(document.getElementById('paint-picker').value)">Apply Custom Color</button>
+                </div>
+                <div>
+                    <label class="block mb-2 font-bold">Recent Colors:</label>
+                    <div class="flex gap-2 flex-wrap" id="recent-colors-container"></div>
+                </div>
+            `;
+            
+            const rcCont = content.querySelector('#recent-colors-container');
+            state.recentColors.forEach(c => {
+                const sw = document.createElement('div');
+                sw.style.width = '40px'; sw.style.height = '40px'; sw.style.borderRadius = '50%';
+                sw.style.backgroundColor = c; sw.style.cursor = 'pointer'; sw.style.border = '2px solid #334155';
+                sw.onclick = () => setPaintColor(c);
+                rcCont.appendChild(sw);
+            });
+        }
+        else if (category === 'legends') {
+            title.innerText = "Legend Book";
+            desc.innerText = "Choose font and color for keycap letters.";
+            selectTool('legend');
+
+            const fontGrid = document.createElement('div');
+            fontGrid.className = 'grid gap-2 mb-4';
+            FONTS.forEach(f => {
+                const btn = document.createElement('button');
+                btn.className = `btn btn-dark text-left text-xl ${state.selectedFont === f ? 'border-blue-500 border-2' : ''}`;
+                btn.style.fontFamily = f;
+                btn.innerText = `A a B b C c - ${f}`;
+                btn.onclick = () => { state.selectedFont = f; openInventory('legends'); }; // refresh
+                fontGrid.appendChild(btn);
+            });
+
+            content.innerHTML = `
+                <label class="block mb-2 font-bold">Legend Color:</label>
+                <input type="color" id="legend-color-picker" value="${state.selectedFontColor}" onchange="state.selectedFontColor = this.value" class="mb-4 h-12">
+                <label class="block mb-2 font-bold">Select Font:</label>
+            `;
+            content.appendChild(fontGrid);
+        }
+        else if (category === 'stickers') {
+            title.innerText = "Sticker Book";
+            desc.innerText = "Select a sticker and stamp it on keys or the background. Upload custom images!";
+            selectTool('sticker');
+
+            // Custom Upload Area
+            const uploadDiv = document.createElement('div');
+            uploadDiv.className = 'bg-slate-800 p-4 rounded mb-4 text-center border-2 border-dashed border-slate-600';
+            uploadDiv.innerHTML = `
+                <label class="cursor-pointer text-blue-400 hover:text-blue-300 font-bold">
+                    + Upload Custom Image (Sticker)
+                    <input type="file" accept="image/*" class="hidden" id="custom-sticker-upload">
+                </label>
+                <p class="text-xs text-slate-500 mt-1">PNG with transparency works best.</p>
+            `;
+            content.appendChild(uploadDiv);
+
+            // Presets Grid
+            const grid = document.createElement('div');
+            grid.className = 'grid-select';
+            
+            PRESET_STICKERS.forEach(char => {
+                const item = document.createElement('div');
+                item.className = `grid-item ${state.selectedSticker.char === char ? 'active' : ''}`;
+                item.innerText = char;
+                item.onclick = () => {
+                    state.selectedSticker = { char: char, isImg: false, src: null };
+                    closeModals();
+                };
+                grid.appendChild(item);
+            });
+            content.appendChild(grid);
+
+            // Handle Upload
+            setTimeout(() => {
+                document.getElementById('custom-sticker-upload').addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(event) {
+                            state.selectedSticker = { char: null, isImg: true, src: event.target.result };
+                            closeModals();
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            }, 0);
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    function setPaintColor(color) {
+        state.selectedPaintColor = color;
+        closeModals();
+    }
+
+
+    /* =========================================
+       PERSISTENCE (Save/Load/Screen Settings)
+       ========================================= */
+
+    function changeEnvironment(env) {
+        state.design.environment = env;
+        
+        // Auto-set decent colors based on env to help user
+        const cInp = document.getElementById('env-color');
+        if(env === 'terminal') state.design.envFontColor = '#4ade80';
+        else if(env === 'word') state.design.envFontColor = '#000000';
+        else if(env === 'code') state.design.envFontColor = '#d4d4d4';
+        
+        cInp.value = state.design.envFontColor;
+        applyScreenTheme();
+    }
+
+    function changeEnvFont() {
+        state.design.envFontSize = document.getElementById('env-size').value;
+        state.design.envFontColor = document.getElementById('env-color').value;
+        applyScreenTheme();
+    }
+
+    function showSaveToast() {
+        const toast = document.getElementById('save-indicator');
+        toast.classList.remove('hidden');
+        setTimeout(() => toast.classList.add('hidden'), 2000);
+    }
+
+    // LocalStorage keys
+    const LS_KEY = 'mechKeebSimulator_designs';
+
+    function getSavedDesigns() {
+        return JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    }
+
+    function saveDesign() {
+        const name = document.getElementById('save-name').value.trim() || 'My Board';
+        state.design.name = name;
+        
+        const saves = getSavedDesigns();
+        saves[name] = state.design;
+        localStorage.setItem(LS_KEY, JSON.stringify(saves));
+        
+        updateLoadSelect();
+        showSaveToast();
+    }
+
+    function loadDesign() {
+        const name = document.getElementById('load-select').value;
+        if (!name) return;
+        
+        const saves = getSavedDesigns();
+        if (saves[name]) {
+            state.design = saves[name];
+            
+            // Sync UI Settings
+            document.getElementById('env-select').value = state.design.environment;
+            document.getElementById('env-size').value = state.design.envFontSize;
+            document.getElementById('env-color').value = state.design.envFontColor;
+            
+            applyScreenTheme();
+            renderKeyboard();
+            renderGlobalStickers();
+            closeModals();
+            showSaveToast();
+        }
+    }
+
+    function deleteDesign() {
+        const name = document.getElementById('load-select').value;
+        if (!name) return;
+        
+        if (confirm(`Delete design "${name}"?`)) {
+            const saves = getSavedDesigns();
+            delete saves[name];
+            localStorage.setItem(LS_KEY, JSON.stringify(saves));
+            updateLoadSelect();
+        }
+    }
+
+    function updateLoadSelect() {
+        const select = document.getElementById('load-select');
+        select.innerHTML = '<option value="">-- Select Saved Design --</option>';
+        const saves = getSavedDesigns();
+        Object.keys(saves).forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.innerText = name;
+            select.appendChild(opt);
+        });
+    }
+
+    function resetBoard() {
+        if(confirm("Are you sure? This will wipe the current board configuration (saved designs are kept).")) {
+            initDefaultKeys();
+            state.design.globalStickers = [];
+            state.design.environment = 'terminal';
+            state.design.envFontSize = 24;
+            state.design.envFontColor = '#4ade80';
+            
+            applyScreenTheme();
+            renderKeyboard();
+            renderGlobalStickers();
+            closeModals();
+        }
+    }
+
+    // Auto-load last state or init fresh
+    window.onload = () => {
+        const saves = getSavedDesigns();
+        const keys = Object.keys(saves);
+        
+        // Setup initial UI data
+        document.getElementById('env-select').value = 'terminal';
+        
+        if (keys.length > 0) {
+            // Load the most recently modified/saved (we just grab the last key for simplicity)
+            state.design = saves[keys[keys.length - 1]];
+            
+            // Sync initial UI
+            document.getElementById('env-select').value = state.design.environment;
+            document.getElementById('env-size').value = state.design.envFontSize || 24;
+            document.getElementById('env-color').value = state.design.envFontColor || '#4ade80';
+        } else {
+            initDefaultKeys();
+        }
+
+        applyScreenTheme();
+        renderKeyboard();
+        renderGlobalStickers();
+        updateLoadSelect();
+    };
+
+</script>
+</body>
+</html>
