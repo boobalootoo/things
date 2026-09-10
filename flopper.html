@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ragdoll Joint Control - 2 Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #111827; /* Tailwind gray-900 */
+            color: white;
+            font-family: 'Inter', sans-serif;
+            touch-action: none; /* Prevent zooming/scrolling on mobile */
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            background: radial-gradient(circle at center, #1f2937 0%, #111827 100%);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #scoreboard {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.8);
+            border: 2px solid #334155;
+            padding: 10px 30px;
+            border-radius: 16px;
+            font-size: 2.5rem;
+            font-weight: 900;
+            display: flex;
+            gap: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        #score-p1 { color: #fbbf24; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+        #score-p2 { color: #e2e8f0; text-shadow: 0 0 10px rgba(226, 232, 240, 0.5); }
+        
+        .controls-panel {
+            position: absolute;
+            bottom: 20px;
+            background: rgba(15, 19, 26, 0.85);
+            padding: 15px;
+            border-radius: 16px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            pointer-events: auto;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #p1-controls { left: 20px; }
+        #p2-controls { right: 20px; }
+        
+        .joint-indicator {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .key-badge {
+            background-color: #374151;
+            color: white;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 6px;
+            border: none;
+            /* Dynamic border color set via JS */
+            border-bottom: 4px solid var(--joint-color, #4b5563); 
+            transition: all 0.1s;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .key-badge:active {
+            transform: translateY(4px);
+            border-bottom-width: 0px;
+            margin-bottom: 10px;
+        }
+        
+        .key-badge.unlocked {
+            background-color: var(--joint-color, #ef4444);
+            color: #000;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.5);
+            box-shadow: 0 0 15px var(--joint-color, #ef4444);
+        }
+
+        .joint-name {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            line-height: 1.1;
+            text-align: center;
+        }
+        
+        #info-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            font-size: 22px;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+            z-index: 10;
+        }
+        
+        #info-btn:hover { transform: scale(1.1); }
+
+        .top-btn {
+            background: #374151;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            pointer-events: auto;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border-bottom: 3px solid #1f2937;
+        }
+        .top-btn:active { transform: translateY(3px); border-bottom-width: 0; }
+        
+        #reset-btn { position: absolute; top: 20px; left: 20px; }
+        #toggle-controls-btn { position: absolute; top: 20px; left: 160px; }
+
+        #info-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 50;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        #info-content {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 16px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid #334155;
+        }
+
+        .close-btn {
+            background: #ef4444; color: white; border: none;
+            padding: 12px; border-radius: 8px; cursor: pointer;
+            font-weight: bold; width: 100%; margin-top: 15px;
+        }
+
+        .hidden-ui { display: none !important; }
+
+        /* Scoring celebration flash */
+        @keyframes flashGold { 0% { background: rgba(251, 191, 36, 0); } 50% { background: rgba(251, 191, 36, 0.3); } 100% { background: rgba(251, 191, 36, 0); } }
+        @keyframes flashSilver { 0% { background: rgba(226, 232, 240, 0); } 50% { background: rgba(226, 232, 240, 0.3); } 100% { background: rgba(226, 232, 240, 0); } }
+        .score-flash-p1 { animation: flashGold 1s ease-out; }
+        .score-flash-p2 { animation: flashSilver 1s ease-out; }
+
+        @media (max-width: 768px) {
+            .key-badge { width: 38px; height: 38px; font-size: 1rem; }
+            .controls-panel { gap: 8px; padding: 10px; max-width: 48vw; }
+            #scoreboard { top: 70px; font-size: 1.8rem; padding: 5px 20px; }
+            #info-btn, #reset-btn, #toggle-controls-btn { transform: scale(0.85); top: 10px; }
+            #reset-btn { left: 10px; }
+            #toggle-controls-btn { left: 130px; }
+            #info-btn { right: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="ui-layer">
+            <button id="reset-btn" class="top-btn" onclick="resetPositions()">Reset Round</button>
+            <button id="toggle-controls-btn" class="top-btn" onclick="toggleControls()">Hide UI</button>
+            <button id="info-btn" onclick="toggleInfo()">i</button>
+            
+            <div id="scoreboard">
+                <span id="score-p1">0</span>
+                <span class="text-gray-500">-</span>
+                <span id="score-p2">0</span>
+            </div>
+            
+            <!-- Player 1 (Gold) Controls -->
+            <div id="p1-controls" class="controls-panel"></div>
+            <!-- Player 2 (Silver) Controls -->
+            <div id="p2-controls" class="controls-panel"></div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="info-modal">
+        <div id="info-content" class="text-gray-200">
+            <h2 class="text-2xl font-bold text-blue-400 mb-4">How to Play</h2>
+            <p class="mb-2"><strong>Goal:</strong> Drag or wiggle your stick figure to touch the <strong>opponent's colored wall</strong> to score a point!</p>
+            <ul class="list-disc pl-5 mb-4 space-y-1">
+                <li><span class="text-yellow-400 font-bold">Gold Player (Left):</span> Use letters to unlock joints. Touch the Silver wall (Right) to score.</li>
+                <li><span class="text-gray-300 font-bold">Silver Player (Right):</span> Use numbers to unlock joints. Touch the Gold wall (Left) to score.</li>
+            </ul>
+            <p class="mb-2"><strong>Mechanics:</strong></p>
+            <ul class="list-disc pl-5 mb-4 space-y-1 text-sm">
+                <li>All joints start completely frozen (solid).</li>
+                <li>Press a key or <strong>tap a colored button</strong> to unlock a joint, letting it fall freely.</li>
+                <li>Tap again to instantly <strong>freeze the joint in place</strong> at its current angle.</li>
+                <li>Drag characters with your mouse/finger.</li>
+            </ul>
+            <hr class="border-gray-600 my-4">
+            <h3 class="text-lg font-bold text-gray-400 mb-2">Related Files (GitHub Pages)</h3>
+            <p class="text-xs text-gray-400 mb-2">Host this single file on GitHub Pages to play anywhere.</p>
+            <ul class="text-sm text-blue-400">
+                <li><a href="index.html" class="hover:underline">index.html</a> (Current App)</li>
+            </ul>
+            <button class="close-btn" onclick="toggleInfo()">Let's Play!</button>
+        </div>
+    </div>
+
+    <script>
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Body = Matter.Body,
+              Composite = Matter.Composite,
+              Constraint = Matter.Constraint,
+              Mouse = Matter.Mouse,
+              MouseConstraint = Matter.MouseConstraint,
+              Events = Matter.Events,
+              Vector = Matter.Vector,
+              Sleeping = Matter.Sleeping;
+
+        let engine, render, runner;
+        let ground, wallLeft, wallRight, ceiling, mouseConstraint;
+        
+        let p1Parts = [];
+        let p2Parts = [];
+        
+        let scoreP1 = 0;
+        let scoreP2 = 0;
+        let roundActive = true;
+
+        const STIFFNESS_LOCKED = 1;
+        const DAMPING_LOCKED = 0.5;
+        const STIFFNESS_UNLOCKED = 0;
+        
+        // Universal color coding for joint types
+        const jointColors = {
+            'Neck': '#d946ef',       // Fuchsia
+            'LShoulder': '#3b82f6',  // Blue
+            'RShoulder': '#0ea5e9',  // Sky
+            'LElbow': '#8b5cf6',     // Violet
+            'RElbow': '#10b981',     // Emerald
+            'LHip': '#f59e0b',       // Amber
+            'RHip': '#ef4444',       // Red
+            'LKnee': '#84cc16',      // Lime
+            'RKnee': '#f97316'       // Orange
+        };
+
+        const p1Config = {
+            'N': { type: 'Neck', name: 'Neck' },
+            'L': { type: 'LShoulder', name: 'L Sh' },
+            'R': { type: 'RShoulder', name: 'R Sh' },
+            'E': { type: 'LElbow', name: 'L Elb' },
+            'W': { type: 'RElbow', name: 'R Elb' },
+            'A': { type: 'LHip', name: 'L Hip' },
+            'D': { type: 'RHip', name: 'R Hip' },
+            'Z': { type: 'LKnee', name: 'L Knee' },
+            'C': { type: 'RKnee', name: 'R Knee' }
+        };
+
+        const p2Config = {
+            '1': { type: 'Neck', name: 'Neck' },
+            '2': { type: 'LShoulder', name: 'L Sh' },
+            '3': { type: 'RShoulder', name: 'R Sh' },
+            '4': { type: 'LElbow', name: 'L Elb' },
+            '5': { type: 'RElbow', name: 'R Elb' },
+            '6': { type: 'LHip', name: 'L Hip' },
+            '7': { type: 'RHip', name: 'R Hip' },
+            '8': { type: 'LKnee', name: 'L Knee' },
+            '9': { type: 'RKnee', name: 'R Knee' }
+        };
+
+        let p1State = {};
+        let p2State = {};
+
+        // Dynamic Textures
+        let goldPattern = null;
+        let silverGradient = null;
+
+        function generateTextures(ctx) {
+            // Generate Hyperrealistic Gold Glitter
+            const gCanvas = document.createElement('canvas');
+            gCanvas.width = 256; gCanvas.height = 256;
+            const gCtx = gCanvas.getContext('2d');
+            
+            // Base Gold
+            gCtx.fillStyle = '#DAA520'; 
+            gCtx.fillRect(0, 0, 256, 256);
+            
+            // Generate glitter noise
+            for(let i = 0; i < 20000; i++) {
+                const rand = Math.random();
+                if (rand > 0.8) gCtx.fillStyle = '#FFFFFF'; // Bright highlight
+                else if (rand > 0.5) gCtx.fillStyle = '#FFDF00'; // Pure gold
+                else gCtx.fillStyle = '#B8860B'; // Dark goldenrod shadow
+                
+                gCtx.globalAlpha = Math.random();
+                gCtx.fillRect(Math.random() * 256, Math.random() * 256, Math.random() * 2.5, Math.random() * 2.5);
+            }
+            gCtx.globalAlpha = 1.0;
+            goldPattern = ctx.createPattern(gCanvas, 'repeat');
+        }
+
+        function buildUI() {
+            const buildPad = (config, containerId, playerPrefix) => {
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                for (const [key, joint] of Object.entries(config)) {
+                    const color = jointColors[joint.type];
+                    const div = document.createElement('div');
+                    div.className = 'joint-indicator';
+                    div.innerHTML = `
+                        <button class="key-badge" id="badge-${playerPrefix}-${key}" 
+                                style="--joint-color: ${color};"
+                                onclick="toggleJoint('${playerPrefix}', '${key}')">${key}</button>
+                        <div class="joint-name">${joint.name}</div>
+                    `;
+                    container.appendChild(div);
+                    
+                    // Initialize state
+                    const stateObj = playerPrefix === 'p1' ? p1State : p2State;
+                    stateObj[key] = {
+                        unlocked: false,
+                        primaryConstraint: null,
+                        angleConstraint: null,
+                        type: joint.type
+                    };
+                }
+            };
+
+            buildPad(p1Config, 'p1-controls', 'p1');
+            buildPad(p2Config, 'p2-controls', 'p2');
+        }
+
+        function init() {
+            buildUI();
+
+            engine = Engine.create({ enableSleeping: true });
+            engine.positionIterations = 64; // High accuracy for perfect rigidity
+            engine.velocityIterations = 48;
+            
+            render = Render.create({
+                element: document.getElementById('game-container'),
+                engine: engine,
+                options: {
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    wireframes: false,
+                    background: 'transparent',
+                    pixelRatio: window.devicePixelRatio
+                }
+            });
+
+            // Target walls are tinted with the color of the player meant to hit them
+            const wallOptions = { isStatic: true, restitution: 0.5 };
+            ground = Bodies.rectangle(window.innerWidth / 2, window.innerHeight + 50, window.innerWidth * 2, 100, { ...wallOptions, render: { fillStyle: '#1e293b' }});
+            ceiling = Bodies.rectangle(window.innerWidth / 2, -50, window.innerWidth * 2, 100, { ...wallOptions, render: { fillStyle: '#1e293b' }});
+            // Left wall is targeted by P2 (Silver)
+            wallLeft = Bodies.rectangle(-25, window.innerHeight/2, 50, window.innerHeight * 2, { ...wallOptions, render: { fillStyle: '#94a3b8' }});
+            // Right wall is targeted by P1 (Gold)
+            wallRight = Bodies.rectangle(window.innerWidth + 25, window.innerHeight/2, 50, window.innerHeight * 2, { ...wallOptions, render: { fillStyle: '#fbbf24' }});
+
+            Composite.add(engine.world, [ground, wallLeft, wallRight, ceiling]);
+
+            const mouse = Mouse.create(render.canvas);
+            mouseConstraint = MouseConstraint.create(engine, {
+                mouse: mouse,
+                constraint: { stiffness: 0.1, render: { visible: false } }
+            });
+            render.mouse = mouse;
+            Composite.add(engine.world, mouseConstraint);
+
+            // Handle Resizing
+            window.addEventListener('resize', () => {
+                render.canvas.width = window.innerWidth;
+                render.canvas.height = window.innerHeight;
+                Render.setPixelRatio(render, window.devicePixelRatio);
+                
+                Body.setPosition(ground, { x: window.innerWidth / 2, y: window.innerHeight + 50 });
+                Body.setPosition(wallLeft, { x: -25, y: window.innerHeight / 2 });
+                Body.setPosition(wallRight, { x: window.innerWidth + 25, y: window.innerHeight / 2 });
+                Body.setPosition(ceiling, { x: window.innerWidth / 2, y: -50 });
+                
+                // Force gradient recreation on next frame
+                silverGradient = null; 
+            });
+
+            spawnPlayers();
+            setupRenderHooks();
+            setupCollisions();
+
+            Render.run(render);
+            runner = Runner.create();
+            Runner.run(runner, engine);
+
+            // Keyboard controls
+            window.addEventListener('keydown', (e) => {
+                let key = e.key.toUpperCase();
+                
+                // Explicitly support Numpad keys regardless of NumLock state
+                if (e.code && e.code.startsWith('Numpad')) {
+                    const numpadVal = e.code.replace('Numpad', '');
+                    if (/^[1-9]$/.test(numpadVal)) {
+                        key = numpadVal;
+                    }
+                }
+
+                if (p1Config[key]) toggleJoint('p1', key);
+                if (p2Config[key]) toggleJoint('p2', key);
+            });
+        }
+
+        function spawnPlayers() {
+            // Remove old bodies
+            [...p1Parts, ...p2Parts].forEach(body => {
+                Composite.remove(engine.world, body);
+            });
+            // Remove old constraints (by clearing all and re-adding walls/mouse, or just safely dropping them)
+            // Safest way is to clear and rebuild world to avoid floating constraints
+            Composite.clear(engine.world);
+            Composite.add(engine.world, [ground, wallLeft, wallRight, ceiling, mouseConstraint]);
+
+            p1Parts = [];
+            p2Parts = [];
+
+            // Spawn P1 (Left) and P2 (Right)
+            createRagdoll(window.innerWidth * 0.3, 'p1');
+            createRagdoll(window.innerWidth * 0.7, 'p2');
+        }
+
+        function createRagdoll(xPos, playerPrefix) {
+            const s = 1.0; 
+            const groundY = window.innerHeight;
+            const torsoY = groundY - (115 * s) - (25 * s) - 50; // Slight offset so they drop onto floor
+            
+            // Different collision groups so they don't tangle with themselves, but can hit the other player
+            const group = Body.nextGroup(true); 
+            
+            const partOptions = {
+                collisionFilter: { group: group }, // Parts of same ragdoll won't collide
+                friction: 0.8,
+                frictionAir: 0.01,
+                restitution: 0.2,
+                chamfer: { radius: 8 },
+            };
+
+            const head = Bodies.circle(xPos, torsoY - 65 * s, 25 * s, partOptions);
+            const torso = Bodies.rectangle(xPos, torsoY, 30 * s, 80 * s, partOptions);
+            const leftUpperArm = Bodies.rectangle(xPos - 15 * s, torsoY - 10 * s, 15 * s, 40 * s, partOptions);
+            const leftLowerArm = Bodies.rectangle(xPos - 15 * s, torsoY + 30 * s, 12 * s, 40 * s, partOptions);
+            const rightUpperArm = Bodies.rectangle(xPos + 15 * s, torsoY - 10 * s, 15 * s, 40 * s, partOptions);
+            const rightLowerArm = Bodies.rectangle(xPos + 15 * s, torsoY + 30 * s, 12 * s, 40 * s, partOptions);
+            const leftUpperLeg = Bodies.rectangle(xPos - 10 * s, torsoY + 65 * s, 18 * s, 50 * s, partOptions);
+            const leftLowerLeg = Bodies.rectangle(xPos - 10 * s, torsoY + 115 * s, 15 * s, 50 * s, partOptions);
+            const rightUpperLeg = Bodies.rectangle(xPos + 10 * s, torsoY + 65 * s, 18 * s, 50 * s, partOptions);
+            const rightLowerLeg = Bodies.rectangle(xPos + 10 * s, torsoY + 115 * s, 15 * s, 50 * s, partOptions);
+
+            const parts = [head, torso, leftUpperArm, leftLowerArm, rightUpperArm, rightLowerArm, leftUpperLeg, leftLowerLeg, rightUpperLeg, rightLowerLeg];
+            if (playerPrefix === 'p1') p1Parts = parts; else p2Parts = parts;
+
+            const stateObj = playerPrefix === 'p1' ? p1State : p2State;
+            const configObj = playerPrefix === 'p1' ? p1Config : p2Config;
+
+            const connect = (bodyA, bodyB, pointA, pointB, expectedType) => {
+                // Find which key corresponds to this joint type
+                let mappedKey = null;
+                for (const [k, v] of Object.entries(configObj)) {
+                    if (v.type === expectedType) { mappedKey = k; break; }
+                }
+
+                const primary = Constraint.create({
+                    bodyA, pointA, bodyB, pointB,
+                    stiffness: STIFFNESS_LOCKED, damping: DAMPING_LOCKED,
+                    length: 0, render: { visible: false }
+                });
+
+                // Anti-rotation rigid lock
+                const offsetA = { x: pointA.x, y: pointA.y - 60 };
+                const offsetB = { x: pointB.x, y: pointB.y + 60 };
+                const wOffsetA = Vector.add(bodyA.position, Vector.rotate(offsetA, bodyA.angle));
+                const wOffsetB = Vector.add(bodyB.position, Vector.rotate(offsetB, bodyB.angle));
+                const currentDist = Math.max(1, Vector.magnitude(Vector.sub(wOffsetA, wOffsetB)));
+
+                const angle = Constraint.create({
+                    bodyA, pointA: offsetA, bodyB, pointB: offsetB,
+                    stiffness: STIFFNESS_LOCKED, damping: DAMPING_LOCKED,
+                    length: currentDist, render: { visible: false }
+                });
+
+                if (mappedKey) {
+                    stateObj[mappedKey].primaryConstraint = primary;
+                    stateObj[mappedKey].angleConstraint = angle;
+                    stateObj[mappedKey].unlocked = false;
+                    updateUI(playerPrefix, mappedKey);
+                }
+
+                return [primary, angle];
+            };
+
+            const allConstraints = [
+                ...connect(head, torso, { x: 0, y: 25 * s }, { x: 0, y: -40 * s }, 'Neck'),
+                ...connect(torso, leftUpperArm, { x: -15 * s, y: -30 * s }, { x: 0, y: -20 * s }, 'LShoulder'),
+                ...connect(torso, rightUpperArm, { x: 15 * s, y: -30 * s }, { x: 0, y: -20 * s }, 'RShoulder'),
+                ...connect(leftUpperArm, leftLowerArm, { x: 0, y: 20 * s }, { x: 0, y: -20 * s }, 'LElbow'),
+                ...connect(rightUpperArm, rightLowerArm, { x: 0, y: 20 * s }, { x: 0, y: -20 * s }, 'RElbow'),
+                ...connect(torso, leftUpperLeg, { x: -10 * s, y: 40 * s }, { x: 0, y: -25 * s }, 'LHip'),
+                ...connect(torso, rightUpperLeg, { x: 10 * s, y: 40 * s }, { x: 0, y: -25 * s }, 'RHip'),
+                ...connect(leftUpperLeg, leftLowerLeg, { x: 0, y: 25 * s }, { x: 0, y: -25 * s }, 'LKnee'),
+                ...connect(rightUpperLeg, rightLowerLeg, { x: 0, y: 25 * s }, { x: 0, y: -25 * s }, 'RKnee')
+            ];
+
+            Composite.add(engine.world, parts);
+            Composite.add(engine.world, allConstraints);
+            
+            // Sleep perfectly statue-like initially
+            parts.forEach(part => Sleeping.set(part, true));
+        }
+
+        function toggleJoint(player, key) {
+            const state = player === 'p1' ? p1State : p2State;
+            const parts = player === 'p1' ? p1Parts : p2Parts;
+            
+            if (state[key]) {
+                const joint = state[key];
+                if (!joint.angleConstraint) return;
+
+                // Wake parts up when interacting
+                parts.forEach(part => Sleeping.set(part, false));
+
+                joint.unlocked = !joint.unlocked;
+                
+                if (joint.unlocked) {
+                    joint.angleConstraint.stiffness = STIFFNESS_UNLOCKED;
+                } else {
+                    const a = joint.angleConstraint.bodyA;
+                    const b = joint.angleConstraint.bodyB;
+                    const pA = joint.angleConstraint.pointA;
+                    const pB = joint.angleConstraint.pointB;
+                    
+                    const posA = Vector.add(a.position, Vector.rotate(pA, a.angle));
+                    const posB = Vector.add(b.position, Vector.rotate(pB, b.angle));
+                    joint.angleConstraint.length = Math.max(1, Vector.magnitude(Vector.sub(posA, posB)));
+                    joint.angleConstraint.stiffness = STIFFNESS_LOCKED;
+                }
+                
+                updateUI(player, key);
+            }
+        }
+
+        function updateUI(player, key) {
+            const badge = document.getElementById(`badge-${player}-${key}`);
+            if (badge) {
+                if ((player === 'p1' ? p1State : p2State)[key].unlocked) {
+                    badge.classList.add('unlocked');
+                } else {
+                    badge.classList.remove('unlocked');
+                }
+            }
+        }
+
+        function setupRenderHooks() {
+            Events.on(render, 'beforeRender', () => {
+                const ctx = render.context;
+                if (!ctx) return;
+                
+                if (!goldPattern) generateTextures(ctx);
+                
+                // Create dynamic screen-space linear gradient for Liquid Metal
+                if (!silverGradient) {
+                    silverGradient = ctx.createLinearGradient(0, 0, 0, window.innerHeight);
+                    silverGradient.addColorStop(0, '#475569');
+                    silverGradient.addColorStop(0.3, '#f8fafc');
+                    silverGradient.addColorStop(0.5, '#94a3b8');
+                    silverGradient.addColorStop(0.7, '#ffffff');
+                    silverGradient.addColorStop(1, '#1e293b');
+                }
+
+                // Apply skins to bodies
+                p1Parts.forEach(p => p.render.fillStyle = goldPattern || '#fbbf24');
+                p2Parts.forEach(p => p.render.fillStyle = silverGradient || '#e2e8f0');
+            });
+
+            Events.on(render, 'afterRender', () => {
+                const ctx = render.context;
+                
+                const drawJoints = (stateObj, configObj, playerLabel) => {
+                    for (const key in configObj) {
+                        const joint = stateObj[key];
+                        if (!joint || !joint.primaryConstraint || !joint.primaryConstraint.bodyA) continue;
+                        
+                        const color = jointColors[joint.type];
+                        const bodyA = joint.primaryConstraint.bodyA;
+                        const pointA = joint.primaryConstraint.pointA;
+                        const pivot = Vector.add(bodyA.position, Vector.rotate(pointA, bodyA.angle));
+
+                        ctx.beginPath();
+                        ctx.arc(pivot.x, pivot.y, 14, 0, 2 * Math.PI);
+                        
+                        // Fill is bright color if unlocked, dark/transparent if locked
+                        ctx.fillStyle = joint.unlocked ? color : 'rgba(30, 30, 30, 0.8)';
+                        ctx.fill();
+                        
+                        ctx.lineWidth = 3;
+                        ctx.strokeStyle = color;
+                        ctx.stroke();
+
+                        ctx.font = 'bold 13px Inter, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillStyle = joint.unlocked ? '#000' : '#fff';
+                        ctx.fillText(key, pivot.x, pivot.y + 1);
+                    }
+                };
+
+                drawJoints(p1State, p1Config, 'p1');
+                drawJoints(p2State, p2Config, 'p2');
+            });
+        }
+
+        function setupCollisions() {
+            Events.on(engine, 'collisionStart', (event) => {
+                if (!roundActive) return;
+                
+                let scoreOccurred = false;
+
+                event.pairs.forEach(pair => {
+                    const a = pair.bodyA;
+                    const b = pair.bodyB;
+
+                    // P1 (Gold) touches Right Wall
+                    if ((p1Parts.includes(a) && b === wallRight) || (p1Parts.includes(b) && a === wallRight)) {
+                        scoreP1++;
+                        document.getElementById('score-p1').innerText = scoreP1;
+                        document.getElementById('game-container').classList.add('score-flash-p1');
+                        scoreOccurred = true;
+                    }
+
+                    // P2 (Silver) touches Left Wall
+                    if ((p2Parts.includes(a) && b === wallLeft) || (p2Parts.includes(b) && a === wallLeft)) {
+                        scoreP2++;
+                        document.getElementById('score-p2').innerText = scoreP2;
+                        document.getElementById('game-container').classList.add('score-flash-p2');
+                        scoreOccurred = true;
+                    }
+                });
+
+                if (scoreOccurred) {
+                    roundActive = false;
+                    setTimeout(() => {
+                        document.getElementById('game-container').className = '';
+                        resetPositions(); // Just resets bodies, keeps score
+                        roundActive = true;
+                    }, 1200); // Cooldown before next round starts
+                }
+            });
+        }
+
+        function resetPositions() {
+            spawnPlayers();
+        }
+
+        function toggleInfo() {
+            const modal = document.getElementById('info-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        function toggleControls() {
+            const p1 = document.getElementById('p1-controls');
+            const p2 = document.getElementById('p2-controls');
+            const btn = document.getElementById('toggle-controls-btn');
+            
+            if (p1.classList.contains('hidden-ui')) {
+                p1.classList.remove('hidden-ui');
+                p2.classList.remove('hidden-ui');
+                btn.innerText = 'Hide UI';
+            } else {
+                p1.classList.add('hidden-ui');
+                p2.classList.add('hidden-ui');
+                btn.innerText = 'Show UI';
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
