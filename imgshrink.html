@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Space Saver Collage Maker</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        primary: '#4f46e5',
+                        secondary: '#10b981',
+                        dark: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; overflow: hidden; }
+        .canvas-container { margin: 0 auto; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        #app-container { height: 100vh; display: flex; flex-direction: column; }
+        #main-workspace { flex: 1; overflow: hidden; display: flex; }
+        @media (max-width: 768px) { #main-workspace { flex-direction: column; overflow-y: auto; } }
+        
+        .tool-btn.active { background-color: #4f46e5; color: white; border-color: #4f46e5; }
+        .format-card.active { border-color: #4f46e5; background-color: #eef2ff; }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div id="app-container">
+        <!-- Header -->
+        <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center shadow-sm z-10 shrink-0">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-compress text-primary text-xl"></i>
+                <h1 class="font-bold text-lg md:text-xl text-slate-800">SpaceSaver Collage</h1>
+            </div>
+            <button onclick="toggleModal('info-modal')" class="text-slate-500 hover:text-primary transition-colors flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-slate-100">
+                <i class="fa-solid fa-circle-info"></i>
+                <span class="hidden sm:inline font-medium">How to Use</span>
+            </button>
+        </header>
+
+        <!-- Info Modal -->
+        <div id="info-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar transform scale-95 transition-transform duration-300">
+                <div class="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                    <h2 class="text-2xl font-bold text-slate-800">How to Use SpaceSaver Collage</h2>
+                    <button onclick="toggleModal('info-modal')" class="text-slate-400 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-6 space-y-6">
+                    <section>
+                        <h3 class="font-semibold text-lg text-primary mb-2"><i class="fa-solid fa-1 mr-2"></i>Upload Photos</h3>
+                        <p class="text-slate-600 text-sm">Use the upload box in the sidebar to select multiple images. They will be automatically arranged into a grid on the canvas.</p>
+                    </section>
+                    <section>
+                        <h3 class="font-semibold text-lg text-primary mb-2"><i class="fa-solid fa-2 mr-2"></i>Edit & Arrange</h3>
+                        <p class="text-slate-600 text-sm">Click and drag images to move them. Use the corner handles to resize or rotate. Use the top toolbar to add text annotations or draw freely on your collage.</p>
+                    </section>
+                    <section>
+                        <h3 class="font-semibold text-lg text-primary mb-2"><i class="fa-solid fa-3 mr-2"></i>Reduce Size</h3>
+                        <p class="text-slate-600 text-sm">Choose a Preset (like "Max Space Saving") or manually adjust the Canvas Scale and Image Quality sliders. Watch the "Size Comparison" panel to see exactly how much space you are saving before you download.</p>
+                    </section>
+                    <section>
+                        <h3 class="font-semibold text-lg text-primary mb-2"><i class="fa-solid fa-4 mr-2"></i>Exporting & Layers</h3>
+                        <p class="text-slate-600 text-sm">Choose your final format. JPEG and WEBP are great for photos. Standard image formats flatten your layers. To keep photos as separate layers for future editing, export as a <strong>Collage Project (.json)</strong>.</p>
+                    </section>
+                    
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 mt-6">
+                        <h3 class="font-bold text-slate-700 mb-3 border-b border-slate-200 pb-2"><i class="fa-regular fa-folder-open mr-2"></i>Related Files</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="./index.html" class="text-primary hover:underline flex items-center gap-2"><i class="fa-solid fa-file-code text-slate-400"></i> index.html (Current Workspace)</a></li>
+                            <li class="text-slate-500 text-xs italic mt-2">Note: Any exported .json project files will be saved to your local downloads folder.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <main id="main-workspace">
+            <!-- Sidebar Controls -->
+            <aside class="w-full md:w-80 lg:w-96 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 z-0">
+                <div class="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-6">
+                    
+                    <!-- Upload Section -->
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">1. Add Photos</h3>
+                        <label class="block w-full border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:bg-slate-50 hover:border-primary transition-all group">
+                            <input type="file" id="file-input" multiple accept="image/*" class="hidden">
+                            <i class="fa-solid fa-images text-3xl text-slate-400 group-hover:text-primary mb-2 transition-colors"></i>
+                            <p class="text-sm font-medium text-slate-700">Click or Drag photos here</p>
+                            <p class="text-xs text-slate-500 mt-1">Select multiple files at once</p>
+                        </label>
+                    </div>
+
+                    <!-- Size Comparison -->
+                    <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                        <h3 class="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-scale-balanced text-primary"></i> Size Comparison
+                        </h3>
+                        <div class="flex justify-between items-end mb-2">
+                            <div>
+                                <p class="text-xs text-slate-500 font-medium">Original Total</p>
+                                <p class="font-bold text-slate-700" id="original-size">0 KB</p>
+                            </div>
+                            <div class="text-slate-300 text-xl"><i class="fa-solid fa-arrow-right"></i></div>
+                            <div class="text-right">
+                                <p class="text-xs text-slate-500 font-medium">New Size (Est.)</p>
+                                <p class="font-bold text-secondary text-lg" id="new-size">0 KB</p>
+                            </div>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-2.5 mt-2">
+                            <div id="savings-bar" class="bg-secondary h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-2 text-center" id="savings-text">Add photos to see savings</p>
+                    </div>
+
+                    <!-- Optimization Settings -->
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">2. Optimize Size</h3>
+                        
+                        <div class="mb-4">
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Quick Presets</label>
+                            <select id="preset-select" class="w-full text-sm border border-slate-300 rounded-md p-2 bg-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="custom">Custom Settings</option>
+                                <option value="balanced" selected>Balanced (Good Quality & Size)</option>
+                                <option value="high-quality">High Quality (Larger File)</option>
+                                <option value="max-space">Maximum Space Saving (Low Quality)</option>
+                            </select>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <label class="text-xs font-medium text-slate-600">Canvas Scale (Resolution)</label>
+                                    <span id="scale-val" class="text-xs font-bold text-primary">100%</span>
+                                </div>
+                                <input type="range" id="scale-slider" min="10" max="100" value="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                                <p class="text-[10px] text-slate-400 mt-1">Reduces overall pixel dimensions.</p>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <label class="text-xs font-medium text-slate-600">Image Quality</label>
+                                    <span id="quality-val" class="text-xs font-bold text-primary">80%</span>
+                                </div>
+                                <input type="range" id="quality-slider" min="1" max="100" value="80" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                                <p class="text-[10px] text-slate-400 mt-1">Applies to JPEG and WEBP formats.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Export Settings -->
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">3. Export Format</h3>
+                        <div class="space-y-2">
+                            <!-- WEBP -->
+                            <div class="format-card active border border-slate-200 rounded-lg p-3 cursor-pointer transition-colors relative" data-format="webp" onclick="selectFormat('webp')">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h4 class="font-bold text-sm text-slate-800">WEBP <span class="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded font-bold ml-1">BEST FOR SPACE</span></h4>
+                                        <p class="text-xs text-slate-500 mt-1">Modern format, maximum compression.</p>
+                                    </div>
+                                    <i class="fa-brands fa-google text-slate-400 text-xs" title="Supported by Google Photos"></i>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-2"><i class="fa-solid fa-check text-green-500 mr-1"></i> Google Photos Compatible</p>
+                            </div>
+                            
+                            <!-- JPEG -->
+                            <div class="format-card border border-slate-200 rounded-lg p-3 cursor-pointer transition-colors hover:bg-slate-50" data-format="jpeg" onclick="selectFormat('jpeg')">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h4 class="font-bold text-sm text-slate-800">JPEG</h4>
+                                        <p class="text-xs text-slate-500 mt-1">Standard photo format, lossy compression.</p>
+                                    </div>
+                                    <i class="fa-brands fa-google text-slate-400 text-xs" title="Supported by Google Photos"></i>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-2"><i class="fa-solid fa-check text-green-500 mr-1"></i> Google Photos Compatible</p>
+                            </div>
+
+                            <!-- PNG -->
+                            <div class="format-card border border-slate-200 rounded-lg p-3 cursor-pointer transition-colors hover:bg-slate-50" data-format="png" onclick="selectFormat('png')">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h4 class="font-bold text-sm text-slate-800">PNG</h4>
+                                        <p class="text-xs text-slate-500 mt-1">Lossless, good for drawings/text. Large size.</p>
+                                    </div>
+                                    <i class="fa-brands fa-google text-slate-400 text-xs" title="Supported by Google Photos"></i>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-2"><i class="fa-solid fa-check text-green-500 mr-1"></i> Google Photos Compatible</p>
+                            </div>
+
+                            <!-- JSON PROJECT -->
+                            <div class="format-card border border-slate-200 rounded-lg p-3 cursor-pointer transition-colors hover:bg-slate-50" data-format="json" onclick="selectFormat('json')">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h4 class="font-bold text-sm text-slate-800">Collage Project (.json) <span class="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-bold ml-1">LAYERS</span></h4>
+                                        <p class="text-xs text-slate-500 mt-1">Preserves images as separate editable layers.</p>
+                                    </div>
+                                </div>
+                                <p class="text-[10px] text-red-400 mt-2"><i class="fa-solid fa-xmark mr-1"></i> Not for Google Photos (For re-editing here)</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Download Button -->
+                <div class="p-4 border-t border-slate-200 bg-slate-50">
+                    <button id="download-btn" class="w-full bg-primary hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-download"></i> Download Collage
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Canvas Area -->
+            <section class="flex-1 bg-slate-200/50 flex flex-col relative">
+                <!-- Toolbar -->
+                <div class="bg-white border-b border-slate-200 p-2 flex flex-wrap gap-2 justify-center items-center shadow-sm z-10 shrink-0">
+                    <div class="flex bg-slate-100 p-1 rounded-md gap-1">
+                        <button class="tool-btn active px-3 py-1.5 rounded text-sm font-medium border border-transparent text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-2" data-tool="select">
+                            <i class="fa-solid fa-arrow-pointer"></i> <span class="hidden sm:inline">Select/Move</span>
+                        </button>
+                        <button class="tool-btn px-3 py-1.5 rounded text-sm font-medium border border-transparent text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-2" data-tool="draw">
+                            <i class="fa-solid fa-paintbrush"></i> <span class="hidden sm:inline">Draw</span>
+                        </button>
+                    </div>
+                    
+                    <div class="h-6 w-px bg-slate-300 mx-2 hidden sm:block"></div>
+                    
+                    <button id="add-text-btn" class="px-3 py-1.5 rounded text-sm font-medium bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-t"></i> <span class="hidden sm:inline">Add Text</span>
+                    </button>
+
+                    <div class="h-6 w-px bg-slate-300 mx-2 hidden sm:block"></div>
+
+                    <button id="clear-btn" class="px-3 py-1.5 rounded text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-trash-can"></i> <span class="hidden sm:inline">Clear All</span>
+                    </button>
+                </div>
+
+                <!-- Drawing Controls (Hidden by default) -->
+                <div id="drawing-controls" class="hidden bg-white border-b border-slate-200 p-2 flex justify-center items-center gap-4 text-sm z-10">
+                    <div class="flex items-center gap-2">
+                        <label class="text-slate-600">Color:</label>
+                        <input type="color" id="draw-color" value="#ff0000" class="w-6 h-6 rounded cursor-pointer">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-slate-600">Thickness:</label>
+                        <input type="range" id="draw-width" min="1" max="50" value="5" class="w-24 accent-primary">
+                    </div>
+                </div>
+
+                <!-- Canvas Wrapper -->
+                <div id="canvas-wrapper" class="flex-1 overflow-auto custom-scrollbar flex items-center justify-center p-4 relative bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+PHBhdGggZmlsbD0iI2U1ZTdlYiIgZD0iTTAgMGgyMHYyMEgwem0xMCAwaDEwdjEwSDEwem0wIDEwSDB2MTBoMTB6Ii8+PC9zdmc+')]">
+                    <div id="canvas-container" class="bg-white shadow-xl rounded-sm transition-transform duration-200 transform-origin-top-left">
+                        <canvas id="collage-canvas"></canvas>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // State Management
+        const State = {
+            originalTotalBytes: 0,
+            estimatedNewBytes: 0,
+            format: 'webp',
+            scale: 1, // 1.0 = 100%
+            quality: 0.8, // 0.8 = 80%
+            currentTool: 'select',
+            canvasBaseWidth: 1080,
+            canvasBaseHeight: 1080,
+            updateTimeout: null
+        };
+
+        // Initialize Fabric.js Canvas
+        const canvas = new fabric.Canvas('collage-canvas', {
+            width: State.canvasBaseWidth,
+            height: State.canvasBaseHeight,
+            backgroundColor: '#ffffff',
+            preserveObjectStacking: true // Keep objects in order when selecting
+        });
+
+        // Setup Drawing Brush
+        canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+        canvas.freeDrawingBrush.color = '#ff0000';
+        canvas.freeDrawingBrush.width = 5;
+
+        // UI Elements Cache
+        const DOM = {
+            fileInput: document.getElementById('file-input'),
+            originalSize: document.getElementById('original-size'),
+            newSize: document.getElementById('new-size'),
+            savingsBar: document.getElementById('savings-bar'),
+            savingsText: document.getElementById('savings-text'),
+            presetSelect: document.getElementById('preset-select'),
+            scaleSlider: document.getElementById('scale-slider'),
+            scaleVal: document.getElementById('scale-val'),
+            qualitySlider: document.getElementById('quality-slider'),
+            qualityVal: document.getElementById('quality-val'),
+            downloadBtn: document.getElementById('download-btn'),
+            toolBtns: document.querySelectorAll('.tool-btn'),
+            drawingControls: document.getElementById('drawing-controls'),
+            drawColor: document.getElementById('draw-color'),
+            drawWidth: document.getElementById('draw-width'),
+            addTextBtn: document.getElementById('add-text-btn'),
+            clearBtn: document.getElementById('clear-btn'),
+            formatCards: document.querySelectorAll('.format-card'),
+            canvasWrapper: document.getElementById('canvas-wrapper'),
+            canvasContainer: document.getElementById('canvas-container')
+        };
+
+        function formatBytes(bytes, decimals = 2) {
+            if (!+bytes) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
+
+        function toggleModal(id) {
+            const modal = document.getElementById(id);
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                // Trigger reflow to apply opacity transition
+                void modal.offsetWidth;
+                modal.classList.remove('opacity-0');
+                modal.querySelector('div').classList.remove('scale-95');
+            } else {
+                modal.classList.add('opacity-0');
+                modal.querySelector('div').classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+        }
+
+        // Make canvas responsive visually without changing export resolution
+        function resizeCanvasView() {
+            const wrapper = DOM.canvasWrapper;
+            const container = DOM.canvasContainer;
+            
+            // Calculate scale to fit canvas in wrapper nicely
+            const padding = 40;
+            const availableWidth = wrapper.clientWidth - padding;
+            const availableHeight = wrapper.clientHeight - padding;
+            
+            const scaleX = availableWidth / canvas.width;
+            const scaleY = availableHeight / canvas.height;
+            const minScale = Math.min(scaleX, scaleY, 1); // Don't scale up past 100% visually
+            
+            container.style.transform = `scale(${minScale})`;
+        }
+
+        window.addEventListener('resize', resizeCanvasView);
+
+        DOM.fileInput.addEventListener('change', handleFiles);
+
+        function handleFiles(e) {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            // Load special JSON project
+            if (files.length === 1 && files[0].name.endsWith('.json')) {
+                const reader = new FileReader();
+                reader.onload = function(f) {
+                    canvas.loadFromJSON(f.target.result, function() {
+                        canvas.renderAll();
+                        State.originalTotalBytes = files[0].size;
+                        DOM.originalSize.innerText = formatBytes(State.originalTotalBytes);
+                        resizeCanvasView();
+                        triggerSizeEstimate();
+                    });
+                };
+                reader.readAsText(files[0]);
+                return;
+            }
+
+            // Calculate new total original size
+            let newBytes = files.reduce((acc, file) => acc + file.size, 0);
+            State.originalTotalBytes += newBytes;
+            DOM.originalSize.innerText = formatBytes(State.originalTotalBytes);
+
+            // Load standard images
+            const loaders = files.map(file => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (f) => {
+                        fabric.Image.fromURL(f.target.result, (img) => {
+                            resolve(img);
+                        });
+                    };
+                    reader.readAsDataURL(file);
+                });
+            });
+
+            Promise.all(loaders).then(images => {
+                arrangeImages(images);
+                triggerSizeEstimate();
+            });
+            
+            // Clear input so same files can be selected again if needed
+            DOM.fileInput.value = '';
+        }
+
+        function arrangeImages(images) {
+            if (images.length === 0) return;
+
+            // Simple Auto-Grid Arrangement
+            const count = images.length + canvas.getObjects('image').length;
+            const cols = Math.ceil(Math.sqrt(count));
+            const rows = Math.ceil(count / cols);
+            
+            const cellW = State.canvasBaseWidth / cols;
+            const cellH = State.canvasBaseHeight / rows;
+
+            let currentIndex = canvas.getObjects('image').length;
+
+            images.forEach(img => {
+                const row = Math.floor(currentIndex / cols);
+                const col = currentIndex % cols;
+
+                // Scale image to fit cell with some padding
+                const padding = 20;
+                const scaleX = (cellW - padding) / img.width;
+                const scaleY = (cellH - padding) / img.height;
+                const scale = Math.min(scaleX, scaleY);
+
+                img.set({
+                    scaleX: scale,
+                    scaleY: scale,
+                    left: (col * cellW) + (cellW / 2),
+                    top: (row * cellH) + (cellH / 2),
+                    originX: 'center',
+                    originY: 'center',
+                    cornerColor: '#4f46e5',
+                    cornerStrokeColor: '#ffffff',
+                    transparentCorners: false,
+                    cornerStyle: 'circle'
+                });
+
+                canvas.add(img);
+                currentIndex++;
+            });
+
+            canvas.renderAll();
+            resizeCanvasView();
+        }
+
+        function triggerSizeEstimate() {
+            clearTimeout(State.updateTimeout);
+            State.updateTimeout = setTimeout(estimateNewSize, 500); // Debounce
+        }
+
+        canvas.on('object:modified', triggerSizeEstimate);
+        canvas.on('object:added', triggerSizeEstimate);
+        canvas.on('object:removed', triggerSizeEstimate);
+
+        function estimateNewSize() {
+            if (canvas.getObjects().length === 0) {
+                DOM.newSize.innerText = '0 KB';
+                updateSavingsUI(0, 0);
+                return;
+            }
+
+            if (State.format === 'json') {
+                const jsonStr = JSON.stringify(canvas.toJSON());
+                const size = new Blob([jsonStr]).size;
+                updateSavingsUI(State.originalTotalBytes, size);
+                return;
+            }
+
+            // Create a temporary canvas for scaling
+            const tempCanvas = document.createElement('canvas');
+            const targetWidth = State.canvasBaseWidth * State.scale;
+            const targetHeight = State.canvasBaseHeight * State.scale;
+            tempCanvas.width = targetWidth;
+            tempCanvas.height = targetHeight;
+            const ctx = tempCanvas.getContext('2d');
+
+            // Draw current fabric canvas to scaled temp canvas
+            const mainCanvasEl = document.getElementById('collage-canvas');
+            ctx.drawImage(mainCanvasEl, 0, 0, mainCanvasEl.width, mainCanvasEl.height, 0, 0, targetWidth, targetHeight);
+
+            // Get Blob size
+            const mimeType = `image/${State.format}`;
+            tempCanvas.toBlob((blob) => {
+                if (blob) {
+                    updateSavingsUI(State.originalTotalBytes, blob.size);
+                }
+            }, mimeType, State.quality);
+        }
+
+        function updateSavingsUI(original, newSize) {
+            DOM.newSize.innerText = formatBytes(newSize);
+            
+            if (original === 0 || newSize === 0) {
+                DOM.savingsBar.style.width = '0%';
+                DOM.savingsText.innerText = 'Add photos to see savings';
+                return;
+            }
+
+            const saved = original - newSize;
+            if (saved > 0) {
+                const percent = (saved / original) * 100;
+                DOM.savingsBar.style.width = `${Math.min(percent, 100)}%`;
+                DOM.savingsBar.classList.replace('bg-red-500', 'bg-secondary');
+                DOM.savingsText.innerText = `Saved ${formatBytes(saved)} (${percent.toFixed(1)}%)!`;
+                DOM.savingsText.classList.replace('text-red-500', 'text-secondary');
+                DOM.newSize.classList.replace('text-red-500', 'text-secondary');
+            } else {
+                const increased = newSize - original;
+                DOM.savingsBar.style.width = '100%';
+                DOM.savingsBar.classList.replace('bg-secondary', 'bg-red-500');
+                DOM.savingsText.innerText = `Increased by ${formatBytes(increased)}`;
+                DOM.savingsText.classList.replace('text-secondary', 'text-red-500');
+                DOM.newSize.classList.replace('text-secondary', 'text-red-500');
+            }
+        }
+
+        // Presets
+        DOM.presetSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val === 'balanced') {
+                selectFormat('webp', true);
+                updateSliders(80, 80);
+            } else if (val === 'high-quality') {
+                selectFormat('jpeg', true);
+                updateSliders(100, 100);
+            } else if (val === 'max-space') {
+                selectFormat('webp', true);
+                updateSliders(30, 50); // Scale down to 50%, quality 30%
+            }
+            triggerSizeEstimate();
+        });
+
+        function updateSliders(scale, quality) {
+            DOM.scaleSlider.value = scale;
+            DOM.qualitySlider.value = quality;
+            State.scale = scale / 100;
+            State.quality = quality / 100;
+            DOM.scaleVal.innerText = `${scale}%`;
+            DOM.qualityVal.innerText = `${quality}%`;
+        }
+
+        // Sliders
+        DOM.scaleSlider.addEventListener('input', (e) => {
+            State.scale = e.target.value / 100;
+            DOM.scaleVal.innerText = `${e.target.value}%`;
+            DOM.presetSelect.value = 'custom';
+            triggerSizeEstimate();
+        });
+
+        DOM.qualitySlider.addEventListener('input', (e) => {
+            State.quality = e.target.value / 100;
+            DOM.qualityVal.innerText = `${e.target.value}%`;
+            DOM.presetSelect.value = 'custom';
+            triggerSizeEstimate();
+        });
+
+        // Format Selection
+        window.selectFormat = function(format, fromPreset = false) {
+            State.format = format;
+            DOM.formatCards.forEach(card => card.classList.remove('active'));
+            document.querySelector(`[data-format="${format}"]`).classList.add('active');
+            
+            if (!fromPreset) DOM.presetSelect.value = 'custom';
+            
+            // Disable quality slider for PNG and JSON
+            const disableQ = format === 'png' || format === 'json';
+            DOM.qualitySlider.disabled = disableQ;
+            DOM.qualitySlider.parentElement.style.opacity = disableQ ? '0.5' : '1';
+            
+            // Disable scale slider for JSON
+            const disableS = format === 'json';
+            DOM.scaleSlider.disabled = disableS;
+            DOM.scaleSlider.parentElement.style.opacity = disableS ? '0.5' : '1';
+
+            triggerSizeEstimate();
+        }
+
+        // Tool Selection
+        DOM.toolBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                DOM.toolBtns.forEach(b => b.classList.remove('active', 'bg-slate-200'));
+                btn.classList.add('active');
+                
+                const tool = btn.dataset.tool;
+                State.currentTool = tool;
+
+                if (tool === 'draw') {
+                    canvas.isDrawingMode = true;
+                    DOM.drawingControls.classList.remove('hidden');
+                } else {
+                    canvas.isDrawingMode = false;
+                    DOM.drawingControls.classList.add('hidden');
+                }
+            });
+        });
+
+        DOM.drawColor.addEventListener('input', (e) => {
+            canvas.freeDrawingBrush.color = e.target.value;
+        });
+
+        DOM.drawWidth.addEventListener('input', (e) => {
+            canvas.freeDrawingBrush.width = parseInt(e.target.value, 10);
+        });
+
+        // Add Text
+        DOM.addTextBtn.addEventListener('click', () => {
+            const text = new fabric.IText('Double click to edit', {
+                left: canvas.width / 2,
+                top: canvas.height / 2,
+                fontFamily: 'Inter',
+                fill: '#1e293b',
+                fontSize: 48,
+                originX: 'center',
+                originY: 'center',
+                cornerColor: '#4f46e5',
+                transparentCorners: false
+            });
+            canvas.add(text);
+            canvas.setActiveObject(text);
+        });
+
+        // Clear Canvas
+        DOM.clearBtn.addEventListener('click', () => {
+            // Replaced alert/confirm with custom logic (just clears it directly as requested, no blocking alerts)
+            canvas.clear();
+            canvas.backgroundColor = '#ffffff';
+            State.originalTotalBytes = 0;
+            DOM.originalSize.innerText = '0 KB';
+            triggerSizeEstimate();
+        });
+
+        // Download
+        DOM.downloadBtn.addEventListener('click', () => {
+            if (canvas.getObjects().length === 0 && State.format !== 'json') return;
+
+            // Remove selection boxes before export
+            canvas.discardActiveObject();
+            canvas.renderAll();
+
+            if (State.format === 'json') {
+                const jsonStr = JSON.stringify(canvas.toJSON());
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                downloadBlob(blob, 'collage-project.json');
+                return;
+            }
+
+            // Create temporary canvas for scaling
+            const tempCanvas = document.createElement('canvas');
+            const targetWidth = State.canvasBaseWidth * State.scale;
+            const targetHeight = State.canvasBaseHeight * State.scale;
+            tempCanvas.width = targetWidth;
+            tempCanvas.height = targetHeight;
+            const ctx = tempCanvas.getContext('2d');
+            
+            const mainCanvasEl = document.getElementById('collage-canvas');
+            ctx.drawImage(mainCanvasEl, 0, 0, mainCanvasEl.width, mainCanvasEl.height, 0, 0, targetWidth, targetHeight);
+
+            tempCanvas.toBlob((blob) => {
+                downloadBlob(blob, `spacesaver-collage.${State.format}`);
+            }, `image/${State.format}`, State.quality);
+        });
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Initialize Defaults
+        selectFormat('webp', true);
+        updateSliders(100, 80);
+        resizeCanvasView();
+
+        // Keyboard support for deleting objects
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                // Ensure we aren't editing text
+                if (canvas.getActiveObject() && !canvas.getActiveObject().isEditing) {
+                    canvas.remove(canvas.getActiveObject());
+                    triggerSizeEstimate();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
