@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Space Saver Collage Maker</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fabric for Canvas Manipulation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <!-- Piexif for reading/writing EXIF metadata (Date preservation) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.min.js"></script>
+    <!-- JSZip for bulk downloading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- FontAwesome for Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        primary: '#4f46e5',
+                        secondary: '#10b981',
+                        dark: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; overflow: hidden; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        #app-container { height: 100vh; display: flex; flex-direction: column; }
+        #main-workspace { flex: 1; overflow: hidden; display: flex; }
+        @media (max-width: 1024px) { #main-workspace { flex-direction: column; overflow-y: auto; } }
+
+        .tool-btn.active { background-color: #4f46e5; color: white; border-color: #4f46e5; }
+        .format-card.active { border-color: #4f46e5; background-color: #eef2ff; }
+        
+        /* Drag and Drop visual feedback */
+        .drag-over { border: 2px dashed #4f46e5; background-color: rgba(79, 70, 229, 0.1); }
+        .pool-item { transition: all 0.2s; cursor: grab; }
+        .pool-item:active { cursor: grabbing; }
+        
+        @media (max-width: 1024px) { 
+            #left-sidebar, #right-sidebar { width: 100% !important; height: auto; flex-shrink: 0; border-right: none; border-left: none; }
+            #canvas-wrapper { min-height: 500px; }
+        }
+
+        /* Loading Overlay */
+        #loading-overlay { backdrop-filter: blur(4px); }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div id="app-container">
+        <!-- Header -->
+        <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center shadow-sm z-10 shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="bg-primary text-white p-2 rounded-lg"><i class="fa-solid fa-layer-group"></i></div>
+                <h1 class="font-bold text-lg md:text-xl text-slate-800 tracking-tight">SpaceSaver Pro</h1>
+            </div>
+            <button onclick="toggleModal('info-modal')" class="text-slate-500 hover:text-primary transition-colors flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-slate-100">
+                <i class="fa-solid fa-circle-info"></i>
+                <span class="hidden sm:inline font-medium">How to Use</span>
+            </button>
+        </header>
+
+        <div id="info-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar transform scale-95 transition-transform duration-300">
+                <div class="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                    <h2 class="text-2xl font-bold text-slate-800">Pro Features Guide</h2>
+                    <button onclick="toggleModal('info-modal')" class="text-slate-400 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-6 space-y-6">
+                    <section>
+                        <h3 class="font-semibold text-lg text-primary mb-2"><i class="fa-solid fa-clock-rotate-left mr-2"></i>Preserving Dates</h3>
+                        <p class="text-slate-600 text-sm">To keep your original photo dates intact for Google Photos, upload <strong>JPEG files</strong> and export them as <strong>JPEGs</strong>. The tool will automatically extract and re-inject the date metadata.</p>
+                    </section>
+                    <section>
+                        <h3 class="font-semibold text-lg text-primary mb-2"><i class="fa-solid fa-boxes-packing mr-2"></i>Batch Processing (ZIP)</h3>
+                        <p class="text-slate-600 text-sm">Upload multiple files to the Media Pool. Select the checkboxes, adjust your global size/quality settings on the right, and click "Batch Export (ZIP)". This compresses them individually into one easy download.</p>
+                    </section>
+                    <section>
+                        <h3 class="font-semibold text-lg text-primary mb-2"><i class="fa-solid fa-film mr-2"></i>Video Compression</h3>
+                        <p class="text-slate-600 text-sm">Upload video files directly. The browser will physically re-record them in the background at a lower resolution and bitrate (WebM format) to save massive amounts of space. Processing takes real-time.</p>
+                    </section>
+                    <section>
+                        <h3 class="font-semibold text-lg text-primary mb-2"><i class="fa-solid fa-object-group mr-2"></i>Collage & Auto-Grid</h3>
+                        <p class="text-slate-600 text-sm"><strong>Drag and Drop</strong> photos from the left sidebar onto the center canvas. To instantly arrange them at the same size without overlapping, click the <strong>"Auto-Grid Layout"</strong> button on the top toolbar.</p>
+                    </section>
+                    
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 mt-6">
+                        <h3 class="font-bold text-slate-700 mb-3 border-b border-slate-200 pb-2"><i class="fa-regular fa-folder-open mr-2"></i>Related Files</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="./index.html" class="text-primary hover:underline flex items-center gap-2"><i class="fa-solid fa-file-code text-slate-400"></i> index.html (Current Workspace)</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading-overlay" class="fixed inset-0 bg-white/80 z-50 hidden flex flex-col items-center justify-center">
+            <div class="loader mb-4"></div>
+            <h2 id="loading-title" class="text-xl font-bold text-slate-800 mb-2">Processing Media...</h2>
+            <p id="loading-text" class="text-slate-600 text-sm mb-4">Please keep this tab open.</p>
+            <div class="w-64 bg-slate-200 rounded-full h-2 mb-2">
+                <div id="loading-bar" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <main id="main-workspace">
+            <!-- Left Sidebar -->
+            <aside id="left-sidebar" class="w-full bg-white border-r border-slate-200 flex flex-col h-full shrink-0 z-10" style="width: 288px; min-width: 200px; max-width: 50vw;">
+                <div class="p-4 border-b border-slate-200 bg-slate-50">
+                    <label class="block w-full bg-primary hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg text-center cursor-pointer transition-colors shadow-sm">
+                        <input type="file" id="file-input" multiple accept="image/*,video/*" class="hidden">
+                        <i class="fa-solid fa-plus mr-2"></i> Add Photos & Videos
+                    </label>
+                </div>
+                
+                <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center bg-white">
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Media Pool</span>
+                    <button id="select-all-btn" class="text-xs text-primary hover:underline font-medium">Select All</button>
+                </div>
+
+                <!-- Media Queue List -->
+                <div id="media-queue" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 bg-slate-50">
+                    <p id="empty-queue-msg" class="text-sm text-slate-400 text-center mt-10 italic">Upload media to begin. <br><br>You can batch compress them or drag them to the collage canvas.</p>
+                    <!-- Items inserted via JS -->
+                </div>
+            </aside>
+
+            <!-- Left Resizer -->
+            <div id="resizer-left" class="w-2 cursor-col-resize bg-slate-200 hover:bg-primary transition-colors hidden lg:block z-20 shrink-0 border-x border-slate-300"></div>
+
+            <!-- Center Canvas -->
+            <section class="flex-1 bg-slate-200/50 flex flex-col relative h-full min-w-[200px]">
+                <!-- Toolbar -->
+                <div class="bg-white border-b border-slate-200 p-2 flex flex-wrap gap-2 justify-center items-center shadow-sm z-10 shrink-0">
+                    <button id="auto-grid-btn" class="px-3 py-1.5 rounded text-sm font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors flex items-center gap-2" title="Make all images same size and arrange them">
+                        <i class="fa-solid fa-table-cells-large"></i> <span class="hidden sm:inline">Auto-Grid Layout</span>
+                    </button>
+                    <div class="h-6 w-px bg-slate-300 mx-2 hidden sm:block"></div>
+                    <div class="flex bg-slate-100 p-1 rounded-md gap-1">
+                        <button class="tool-btn active px-3 py-1.5 rounded text-sm font-medium border border-transparent text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-2" data-tool="select">
+                            <i class="fa-solid fa-arrow-pointer"></i>
+                        </button>
+                        <button class="tool-btn px-3 py-1.5 rounded text-sm font-medium border border-transparent text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-2" data-tool="draw">
+                            <i class="fa-solid fa-paintbrush"></i>
+                        </button>
+                    </div>
+                    <button id="add-text-btn" class="px-3 py-1.5 rounded text-sm font-medium bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-t"></i>
+                    </button>
+                    <div class="h-6 w-px bg-slate-300 mx-2 hidden sm:block"></div>
+                    <button id="clear-btn" class="px-3 py-1.5 rounded text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+
+                <!-- Drawing Controls -->
+                <div id="drawing-controls" class="hidden bg-white border-b border-slate-200 p-2 flex justify-center items-center gap-4 text-sm z-10 shadow-sm">
+                    <div class="flex items-center gap-2">
+                        <label class="text-slate-600 font-medium">Color:</label>
+                        <input type="color" id="draw-color" value="#ff0000" class="w-6 h-6 rounded cursor-pointer border border-slate-300">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-slate-600 font-medium">Thickness:</label>
+                        <input type="range" id="draw-width" min="1" max="50" value="5" class="w-24 accent-primary">
+                    </div>
+                </div>
+
+                <!-- Canvas Wrapper (Drag target) -->
+                <div id="canvas-wrapper" class="flex-1 overflow-auto custom-scrollbar flex items-center justify-center p-4 relative bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+PHBhdGggZmlsbD0iI2U1ZTdlYiIgZD0iTTAgMGgyMHYyMEgwem0xMCAwaDEwdjEwSDEwem0wIDEwSDB2MTBoMTB6Ii8+PC9zdmc+')]">
+                    <div id="drag-drop-hint" class="absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 transition-opacity z-20">
+                        <div class="bg-primary/90 text-white px-6 py-4 rounded-xl font-bold text-xl shadow-2xl flex items-center gap-3">
+                            <i class="fa-solid fa-download"></i> Drop to Add to Collage
+                        </div>
+                    </div>
+                    <div id="canvas-container" class="bg-white shadow-2xl rounded-sm transition-transform duration-200 transform-origin-top-left border-4 border-transparent">
+                        <canvas id="collage-canvas"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Resizer -->
+            <div id="resizer-right" class="w-2 cursor-col-resize bg-slate-200 hover:bg-primary transition-colors hidden lg:block z-20 shrink-0 border-x border-slate-300"></div>
+
+            <!-- Right Sidebar -->
+            <aside id="right-sidebar" class="w-full bg-white border-l border-slate-200 flex flex-col h-full shrink-0 z-10" style="width: 320px; min-width: 250px; max-width: 50vw;">
+                <div class="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-6">
+                    
+                    <!-- Canvas Settings (New) -->
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-crop-simple text-primary"></i> Canvas Size
+                        </h3>
+                        <div class="flex gap-2 mb-2">
+                            <div class="flex-1">
+                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Width (px)</label>
+                                <input type="number" id="canvas-width-input" value="1200" class="w-full text-sm border border-slate-300 rounded p-1.5 focus:border-primary focus:ring-1 focus:outline-none">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[10px] font-medium text-slate-500 mb-1">Height (px)</label>
+                                <input type="number" id="canvas-height-input" value="900" class="w-full text-sm border border-slate-300 rounded p-1.5 focus:border-primary focus:ring-1 focus:outline-none">
+                            </div>
+                        </div>
+                        <button id="apply-canvas-size" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-1.5 px-3 rounded border border-slate-300 transition-colors">Apply Size</button>
+                    </div>
+
+                    <!-- Global Settings -->
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-primary"></i> Global Settings
+                        </h3>
+                        
+                        <div class="mb-4">
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Compression Presets</label>
+                            <select id="preset-select" class="w-full text-sm border border-slate-300 rounded-md p-2 bg-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="custom">Custom Settings</option>
+                                <option value="balanced" selected>Balanced (Good Quality & Size)</option>
+                                <option value="high-quality">High Quality (Larger File)</option>
+                                <option value="max-space">Maximum Space Saving</option>
+                            </select>
+                        </div>
+
+                        <div class="space-y-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <label class="text-xs font-medium text-slate-600">Scale / Resolution</label>
+                                    <span id="scale-val" class="text-xs font-bold text-primary">100%</span>
+                                </div>
+                                <input type="range" id="scale-slider" min="10" max="100" value="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                                <p class="text-[10px] text-slate-400 mt-1 leading-tight">Reduces physical dimensions (Images & Videos).</p>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <label class="text-xs font-medium text-slate-600">Quality / Bitrate</label>
+                                    <span id="quality-val" class="text-xs font-bold text-primary">80%</span>
+                                </div>
+                                <input type="range" id="quality-slider" min="1" max="100" value="80" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                                <p class="text-[10px] text-slate-400 mt-1 leading-tight">Impacts JPEGs, WEBPs, and Video bitrate.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Format Settings -->
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Format Defaults</h3>
+                        <div class="space-y-2">
+                            <div class="format-card active border border-slate-200 rounded-lg p-2.5 cursor-pointer transition-colors" data-format="jpeg" onclick="selectFormat('jpeg')">
+                                <h4 class="font-bold text-sm text-slate-800 flex justify-between">JPEG <span class="bg-blue-100 text-blue-700 text-[10px] px-1.5 rounded flex items-center">KEEPS DATE</span></h4>
+                                <p class="text-[11px] text-slate-500 mt-0.5">Best for preserving EXIF metadata/dates.</p>
+                            </div>
+                            <div class="format-card border border-slate-200 rounded-lg p-2.5 cursor-pointer transition-colors" data-format="webp" onclick="selectFormat('webp')">
+                                <h4 class="font-bold text-sm text-slate-800 flex justify-between">WEBP <span class="bg-green-100 text-green-700 text-[10px] px-1.5 rounded flex items-center">SMALLEST</span></h4>
+                                <p class="text-[11px] text-slate-500 mt-0.5">Max compression, but loses dates.</p>
+                            </div>
+                            <div class="format-card border border-slate-200 rounded-lg p-2.5 cursor-pointer transition-colors" data-format="json" onclick="selectFormat('json')">
+                                <h4 class="font-bold text-sm text-slate-800">Collage Project (.json)</h4>
+                                <p class="text-[11px] text-slate-500 mt-0.5">Saves canvas layers for future editing here.</p>
+                            </div>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-2 italic">* Videos will always export as WebM.</p>
+                    </div>
+                </div>
+                
+                <div class="p-4 border-t border-slate-200 bg-white space-y-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                    
+                    <!-- Collage Download -->
+                    <div class="relative group">
+                        <button id="download-collage-btn" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-4 rounded-lg transition-all flex items-center justify-center gap-2 text-sm shadow-md">
+                            <i class="fa-solid fa-image"></i> Download Current Collage
+                        </button>
+                        <div class="text-[11px] text-center text-slate-500 mt-1">Saves whatever is on the central canvas.</div>
+                    </div>
+
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-slate-200"></div>
+                        <span class="flex-shrink-0 mx-4 text-slate-400 text-xs font-bold uppercase">OR</span>
+                        <div class="flex-grow border-t border-slate-200"></div>
+                    </div>
+
+                    <!-- Batch Download -->
+                    <div>
+                        <button id="batch-download-btn" class="w-full bg-primary hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 text-sm">
+                            <i class="fa-solid fa-file-zipper"></i> Batch Export Selected (ZIP)
+                        </button>
+                        <div class="text-[11px] text-center text-slate-500 mt-1">Applies settings to checked items in pool.</div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script>
+        // Data Models & State
+        const AppState = {
+            mediaPool: [], // { id, file, type: 'image'|'video', exifStr: null, dataUrl: null }
+            format: 'jpeg', // jpeg, webp, json
+            scale: 1, // 1.0 = 100%
+            quality: 0.8, // 0.8 = 80%
+            currentTool: 'select',
+            canvasBaseWidth: 1200,
+            canvasBaseHeight: 900
+        };
+
+        // Cache DOM
+        const DOM = {
+            leftSidebar: document.getElementById('left-sidebar'),
+            rightSidebar: document.getElementById('right-sidebar'),
+            resizerLeft: document.getElementById('resizer-left'),
+            resizerRight: document.getElementById('resizer-right'),
+            canvasWidthInput: document.getElementById('canvas-width-input'),
+            canvasHeightInput: document.getElementById('canvas-height-input'),
+            applyCanvasSizeBtn: document.getElementById('apply-canvas-size'),
+            fileInput: document.getElementById('file-input'),
+            mediaQueue: document.getElementById('media-queue'),
+            emptyMsg: document.getElementById('empty-queue-msg'),
+            canvasWrapper: document.getElementById('canvas-wrapper'),
+            canvasContainer: document.getElementById('canvas-container'),
+            dragDropHint: document.getElementById('drag-drop-hint'),
+            
+            presetSelect: document.getElementById('preset-select'),
+            scaleSlider: document.getElementById('scale-slider'),
+            scaleVal: document.getElementById('scale-val'),
+            qualitySlider: document.getElementById('quality-slider'),
+            qualityVal: document.getElementById('quality-val'),
+            formatCards: document.querySelectorAll('.format-card'),
+            
+            downloadCollageBtn: document.getElementById('download-collage-btn'),
+            batchDownloadBtn: document.getElementById('batch-download-btn'),
+            selectAllBtn: document.getElementById('select-all-btn'),
+            autoGridBtn: document.getElementById('auto-grid-btn'),
+            
+            toolBtns: document.querySelectorAll('.tool-btn'),
+            drawingControls: document.getElementById('drawing-controls'),
+            drawColor: document.getElementById('draw-color'),
+            drawWidth: document.getElementById('draw-width'),
+            addTextBtn: document.getElementById('add-text-btn'),
+            clearBtn: document.getElementById('clear-btn'),
+
+            loadingOverlay: document.getElementById('loading-overlay'),
+            loadingTitle: document.getElementById('loading-title'),
+            loadingText: document.getElementById('loading-text'),
+            loadingBar: document.getElementById('loading-bar')
+        };
+
+        // Initialize Fabric.js Canvas
+        const canvas = new fabric.Canvas('collage-canvas', {
+            width: AppState.canvasBaseWidth,
+            height: AppState.canvasBaseHeight,
+            backgroundColor: '#ffffff',
+            preserveObjectStacking: true
+        });
+
+        canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+        canvas.freeDrawingBrush.color = '#ff0000';
+        canvas.freeDrawingBrush.width = 5;
+
+        // Utility: Resize view to fit screen
+        function resizeCanvasView() {
+            const padding = 40;
+            const availableWidth = DOM.canvasWrapper.clientWidth - padding;
+            const availableHeight = DOM.canvasWrapper.clientHeight - padding;
+            const scaleX = availableWidth / canvas.width;
+            const scaleY = availableHeight / canvas.height;
+            const minScale = Math.min(scaleX, scaleY, 1);
+            DOM.canvasContainer.style.transform = `scale(${minScale})`;
+        }
+        window.addEventListener('resize', resizeCanvasView);
+        resizeCanvasView();
+
+        // Canvas Size Modification
+        DOM.applyCanvasSizeBtn.addEventListener('click', () => {
+            const w = parseInt(DOM.canvasWidthInput.value, 10);
+            const h = parseInt(DOM.canvasHeightInput.value, 10);
+            if (w > 0 && h > 0) {
+                AppState.canvasBaseWidth = w;
+                AppState.canvasBaseHeight = h;
+                canvas.setWidth(w);
+                canvas.setHeight(h);
+                resizeCanvasView();
+            }
+        });
+
+        // Resizer Logic
+        let isResizingLeft = false;
+        let isResizingRight = false;
+        let startX, startWidthLeft, startWidthRight;
+
+        DOM.resizerLeft.addEventListener('mousedown', (e) => {
+            isResizingLeft = true;
+            startX = e.clientX;
+            startWidthLeft = DOM.leftSidebar.getBoundingClientRect().width;
+            document.body.style.cursor = 'col-resize';
+            e.preventDefault();
+        });
+
+        DOM.resizerRight.addEventListener('mousedown', (e) => {
+            isResizingRight = true;
+            startX = e.clientX;
+            startWidthRight = DOM.rightSidebar.getBoundingClientRect().width;
+            document.body.style.cursor = 'col-resize';
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isResizingLeft && !isResizingRight) return;
+
+            if (isResizingLeft) {
+                const dx = e.clientX - startX;
+                const newWidth = Math.max(200, Math.min(startWidthLeft + dx, window.innerWidth * 0.5));
+                DOM.leftSidebar.style.width = `${newWidth}px`;
+            } else if (isResizingRight) {
+                const dx = startX - e.clientX;
+                const newWidth = Math.max(250, Math.min(startWidthRight + dx, window.innerWidth * 0.5));
+                DOM.rightSidebar.style.width = `${newWidth}px`;
+            }
+            resizeCanvasView();
+        });
+
+        window.addEventListener('mouseup', () => {
+            isResizingLeft = false;
+            isResizingRight = false;
+            document.body.style.cursor = 'default';
+        });
+
+        // Modal Logic
+        function toggleModal(id) {
+            const modal = document.getElementById(id);
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                void modal.offsetWidth;
+                modal.classList.remove('opacity-0');
+                modal.querySelector('div').classList.remove('scale-95');
+            } else {
+                modal.classList.add('opacity-0');
+                modal.querySelector('div').classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+        }
+
+        
+        DOM.fileInput.addEventListener('change', handleFiles);
+
+        function generateId() { return Math.random().toString(36).substr(2, 9); }
+
+        function formatBytes(bytes) {
+            if (!+bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+        }
+
+        async function handleFiles(e) {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            for (const file of files) {
+                // Support loading previous JSON project
+                if (file.name.endsWith('.json')) {
+                    const reader = new FileReader();
+                    reader.onload = function(f) {
+                        canvas.loadFromJSON(f.target.result, function() {
+                            canvas.renderAll();
+                            resizeCanvasView();
+                        });
+                    };
+                    reader.readAsText(file);
+                    continue;
+                }
+
+                const item = {
+                    id: generateId(),
+                    file: file,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type.startsWith('video/') ? 'video' : 'image',
+                    exifStr: null,
+                    dataUrl: null
+                };
+
+                // Generate DataURL for all images to show thumbnails
+                if (item.type === 'image') {
+                    try {
+                        const reader = new FileReader();
+                        reader.onload = function(evt) {
+                            item.dataUrl = evt.target.result;
+                            
+                            // Extract EXIF if JPEG to preserve Date
+                            if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+                                try {
+                                    const exifObj = piexif.load(evt.target.result);
+                                    item.exifStr = piexif.dump(exifObj);
+                                } catch (err) {
+                                    console.warn("No valid EXIF found in", file.name);
+                                }
+                            }
+                            renderMediaPool(); // Re-render when thumbnail is ready
+                        };
+                        reader.readAsDataURL(file);
+                    } catch(e) {}
+                }
+
+                AppState.mediaPool.push(item);
+            }
+            renderMediaPool(); // Render initial list
+            DOM.fileInput.value = ''; // Reset
+        }
+
+        function renderMediaPool() {
+            const queueDiv = document.getElementById('media-queue');
+            
+            if (AppState.mediaPool.length === 0) {
+                DOM.emptyMsg.style.display = 'block';
+                queueDiv.innerHTML = '';
+                return;
+            }
+            
+            DOM.emptyMsg.style.display = 'none';
+            queueDiv.innerHTML = '';
+
+            AppState.mediaPool.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'pool-item bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex items-center gap-3 cursor-grab hover:border-primary group';
+                el.draggable = true;
+                el.dataset.id = item.id;
+                
+                // Drag start event
+                el.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', item.id);
+                    e.dataTransfer.effectAllowed = 'copy';
+                });
+
+                let mediaVisual = '';
+                if (item.type === 'image' && item.dataUrl) {
+                    mediaVisual = `<div class="w-12 h-12 rounded bg-slate-100 bg-cover bg-center border border-slate-200 shrink-0" style="background-image: url('${item.dataUrl}')"></div>`;
+                } else if (item.type === 'video') {
+                    mediaVisual = `<div class="w-12 h-12 bg-slate-100 rounded flex items-center justify-center shrink-0 border border-slate-200"><i class="fa-solid fa-film text-blue-500 text-xl"></i></div>`;
+                } else {
+                    mediaVisual = `<div class="w-12 h-12 bg-slate-100 rounded flex items-center justify-center shrink-0 border border-slate-200"><i class="fa-solid fa-image text-emerald-500 text-xl"></i></div>`;
+                }
+                
+                el.innerHTML = `
+                    <input type="checkbox" class="pool-checkbox w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary cursor-pointer shrink-0" data-id="${item.id}" checked>
+                    ${mediaVisual}
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold text-slate-700 truncate" title="${item.name}">${item.name}</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">${formatBytes(item.size)}</p>
+                    </div>
+                    <div class="text-[10px] text-slate-300 group-hover:text-primary pr-1 shrink-0">
+                        <i class="fa-solid fa-grip-vertical"></i>
+                    </div>
+                `;
+                queueDiv.appendChild(el);
+            });
+        }
+
+        DOM.selectAllBtn.addEventListener('click', () => {
+            const checkboxes = document.querySelectorAll('.pool-checkbox');
+            const allChecked = Array.from(checkboxes).every(c => c.checked);
+            checkboxes.forEach(c => c.checked = !allChecked);
+        });
+
+
+        DOM.canvasWrapper.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            DOM.canvasContainer.classList.add('border-primary');
+            DOM.dragDropHint.classList.remove('opacity-0');
+        });
+
+        DOM.canvasWrapper.addEventListener('dragleave', () => {
+            DOM.canvasContainer.classList.remove('border-primary');
+            DOM.dragDropHint.classList.add('opacity-0');
+        });
+
+        DOM.canvasWrapper.addEventListener('drop', (e) => {
+            e.preventDefault();
+            DOM.canvasContainer.classList.remove('border-primary');
+            DOM.dragDropHint.classList.add('opacity-0');
+            
+            const id = e.dataTransfer.getData('text/plain');
+            if (id) {
+                const item = AppState.mediaPool.find(i => i.id === id);
+                if (item) addPoolItemToCanvas(item, e);
+            }
+        });
+
+        function addPoolItemToCanvas(item, mouseEvent) {
+            if (item.type !== 'image') {
+                alert("Only images can be added to the collage canvas. Videos must be processed via Batch Export.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (f) => {
+                fabric.Image.fromURL(f.target.result, (img) => {
+                    
+                    // Default scaling to fit nicely on first drop
+                    const maxSize = Math.min(canvas.width, canvas.height) * 0.4;
+                    const scale = Math.min(maxSize / img.width, maxSize / img.height);
+                    
+                    // Calculate drop position relative to canvas
+                    let dropLeft = canvas.width / 2;
+                    let dropTop = canvas.height / 2;
+                    
+                    if (mouseEvent) {
+                        const rect = DOM.canvasContainer.getBoundingClientRect();
+                        // Adjust for CSS transform scale
+                        const cssScale = rect.width / canvas.width;
+                        dropLeft = (mouseEvent.clientX - rect.left) / cssScale;
+                        dropTop = (mouseEvent.clientY - rect.top) / cssScale;
+                    }
+
+                    img.set({
+                        scaleX: scale,
+                        scaleY: scale,
+                        left: dropLeft,
+                        top: dropTop,
+                        originX: 'center',
+                        originY: 'center',
+                        cornerColor: '#4f46e5',
+                        cornerStrokeColor: '#ffffff',
+                        transparentCorners: false,
+                        cornerStyle: 'circle'
+                    });
+
+                    canvas.add(img);
+                    canvas.setActiveObject(img);
+                    canvas.renderAll();
+                });
+            };
+            reader.readAsDataURL(item.file);
+        }
+
+
+        DOM.autoGridBtn.addEventListener('click', () => {
+            const objs = canvas.getObjects('image');
+            if (objs.length === 0) return;
+
+            // Calculate grid dimensions
+            const count = objs.length;
+            const cols = Math.ceil(Math.sqrt(count));
+            const rows = Math.ceil(count / cols);
+            
+            const cellW = canvas.width / cols;
+            const cellH = canvas.height / rows;
+            const padding = 20;
+
+            objs.forEach((img, index) => {
+                const row = Math.floor(index / cols);
+                const col = index % cols;
+
+                // Scale to fit uniformly in the cell
+                const scaleX = (cellW - padding) / img.width;
+                const scaleY = (cellH - padding) / img.height;
+                const scale = Math.min(scaleX, scaleY);
+
+                // Animate to position
+                img.animate({
+                    scaleX: scale,
+                    scaleY: scale,
+                    left: (col * cellW) + (cellW / 2),
+                    top: (row * cellH) + (cellH / 2)
+                }, {
+                    duration: 300,
+                    onChange: canvas.renderAll.bind(canvas),
+                    easing: fabric.util.ease.easeOutCubic
+                });
+            });
+        });
+
+        DOM.toolBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                DOM.toolBtns.forEach(b => b.classList.remove('active', 'bg-slate-200'));
+                btn.classList.add('active');
+                
+                const tool = btn.dataset.tool;
+                AppState.currentTool = tool;
+
+                if (tool === 'draw') {
+                    canvas.isDrawingMode = true;
+                    DOM.drawingControls.classList.remove('hidden');
+                } else {
+                    canvas.isDrawingMode = false;
+                    DOM.drawingControls.classList.add('hidden');
+                }
+            });
+        });
+
+        DOM.drawColor.addEventListener('input', (e) => canvas.freeDrawingBrush.color = e.target.value);
+        DOM.drawWidth.addEventListener('input', (e) => canvas.freeDrawingBrush.width = parseInt(e.target.value, 10));
+
+        DOM.addTextBtn.addEventListener('click', () => {
+            const text = new fabric.IText('Edit text', {
+                left: canvas.width / 2, top: canvas.height / 2,
+                fontFamily: 'Inter', fill: '#1e293b', fontSize: 60,
+                originX: 'center', originY: 'center',
+                cornerColor: '#4f46e5', transparentCorners: false
+            });
+            canvas.add(text);
+            canvas.setActiveObject(text);
+        });
+
+        DOM.clearBtn.addEventListener('click', () => {
+            canvas.clear();
+            canvas.backgroundColor = '#ffffff';
+            canvas.renderAll();
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (canvas.getActiveObject() && !canvas.getActiveObject().isEditing) {
+                    canvas.remove(canvas.getActiveObject());
+                }
+            }
+        });
+
+
+        function updateSliders(scale, quality) {
+            DOM.scaleSlider.value = scale;
+            DOM.qualitySlider.value = quality;
+            AppState.scale = scale / 100;
+            AppState.quality = quality / 100;
+            DOM.scaleVal.innerText = `${scale}%`;
+            DOM.qualityVal.innerText = `${quality}%`;
+        }
+
+        DOM.presetSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val === 'balanced') {
+                selectFormat('jpeg');
+                updateSliders(80, 80);
+            } else if (val === 'high-quality') {
+                selectFormat('jpeg');
+                updateSliders(100, 100);
+            } else if (val === 'max-space') {
+                selectFormat('webp');
+                updateSliders(50, 40);
+            }
+        });
+
+        DOM.scaleSlider.addEventListener('input', (e) => {
+            AppState.scale = e.target.value / 100;
+            DOM.scaleVal.innerText = `${e.target.value}%`;
+            DOM.presetSelect.value = 'custom';
+        });
+
+        DOM.qualitySlider.addEventListener('input', (e) => {
+            AppState.quality = e.target.value / 100;
+            DOM.qualityVal.innerText = `${e.target.value}%`;
+            DOM.presetSelect.value = 'custom';
+        });
+
+        window.selectFormat = function(format) {
+            AppState.format = format;
+            DOM.formatCards.forEach(card => card.classList.remove('active'));
+            document.querySelector(`[data-format="${format}"]`).classList.add('active');
+            
+            const disableQ = format === 'json';
+            DOM.qualitySlider.disabled = disableQ;
+            DOM.qualitySlider.parentElement.style.opacity = disableQ ? '0.5' : '1';
+        }
+        
+        // Initialize Defaults
+        selectFormat('jpeg');
+        updateSliders(100, 80);
+
+
+        function showLoader(title, text) {
+            DOM.loadingTitle.innerText = title;
+            DOM.loadingText.innerText = text;
+            DOM.loadingBar.style.width = '0%';
+            DOM.loadingOverlay.classList.remove('hidden');
+        }
+
+        function hideLoader() {
+            DOM.loadingOverlay.classList.add('hidden');
+        }
+
+        function updateProgress(percent) {
+            DOM.loadingBar.style.width = `${percent}%`;
+        }
+
+        // Export Single Collage Canvas
+        DOM.downloadCollageBtn.addEventListener('click', () => {
+            if (canvas.getObjects().length === 0 && AppState.format !== 'json') return;
+
+            canvas.discardActiveObject();
+            canvas.renderAll();
+
+            if (AppState.format === 'json') {
+                const blob = new Blob([JSON.stringify(canvas.toJSON())], { type: 'application/json' });
+                downloadBlob(blob, 'spacesaver-collage.json');
+                return;
+            }
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width * AppState.scale;
+            tempCanvas.height = canvas.height * AppState.scale;
+            const ctx = tempCanvas.getContext('2d');
+            const mainCanvasEl = document.getElementById('collage-canvas');
+            ctx.drawImage(mainCanvasEl, 0, 0, mainCanvasEl.width, mainCanvasEl.height, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            const mime = `image/${AppState.format}`;
+            let dataUrl = tempCanvas.toDataURL(mime, AppState.quality);
+
+            // Attempt to copy Date from first image on canvas if exporting to JPEG
+            if (AppState.format === 'jpeg') {
+                const firstImgItem = AppState.mediaPool.find(p => p.exifStr != null);
+                if (firstImgItem && firstImgItem.exifStr) {
+                    try {
+                        dataUrl = piexif.insert(firstImgItem.exifStr, dataUrl);
+                    } catch(e) { console.warn("Failed inserting EXIF to collage", e); }
+                }
+            }
+
+            downloadDataUrl(dataUrl, `collage.${AppState.format}`);
+        });
+
+        // Batch Export Selected to ZIP
+        DOM.batchDownloadBtn.addEventListener('click', async () => {
+            const checkedBoxes = document.querySelectorAll('.pool-checkbox:checked');
+            if (checkedBoxes.length === 0) {
+                alert("Select at least one media item from the pool to batch process.");
+                return;
+            }
+
+            showLoader("Batch Processing", "Preparing files...");
+            const zip = new JSZip();
+            const total = checkedBoxes.length;
+
+            for (let i = 0; i < total; i++) {
+                const id = checkedBoxes[i].dataset.id;
+                const item = AppState.mediaPool.find(p => p.id === id);
+                if (!item) continue;
+
+                updateProgress((i / total) * 100);
+                DOM.loadingText.innerText = `Processing (${i+1}/${total}): ${item.name}`;
+
+                if (item.type === 'video') {
+                    const webmBlob = await compressVideo(item.file, AppState.scale, AppState.quality);
+                    // Rename extension to .webm
+                    const baseName = item.name.substring(0, item.name.lastIndexOf('.')) || item.name;
+                    zip.file(`${baseName}.webm`, webmBlob);
+                } else {
+                    const imgBlob = await compressImage(item, AppState.scale, AppState.quality, AppState.format);
+                    const ext = AppState.format === 'jpeg' ? 'jpg' : AppState.format;
+                    const baseName = item.name.substring(0, item.name.lastIndexOf('.')) || item.name;
+                    zip.file(`${baseName}_compressed.${ext}`, imgBlob);
+                }
+            }
+
+            updateProgress(100);
+            DOM.loadingText.innerText = "Zipping files together...";
+            
+            const zipContent = await zip.generateAsync({ type: "blob" });
+            downloadBlob(zipContent, "SpaceSaver_Batch.zip");
+            
+            hideLoader();
+        });
+
+        // Async Image Compression with EXIF preservation
+        function compressImage(poolItem, scale, quality, format) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const cvs = document.createElement('canvas');
+                    cvs.width = img.width * scale;
+                    cvs.height = img.height * scale;
+                    const ctx = cvs.getContext('2d');
+                    ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+
+                    const mime = `image/${format}`;
+                    let dataUrl = cvs.toDataURL(mime, quality);
+
+                    // Inject EXIF if JPEG
+                    if (format === 'jpeg' && poolItem.exifStr) {
+                        try {
+                            dataUrl = piexif.insert(poolItem.exifStr, dataUrl);
+                        } catch(e) { console.warn("Failed Exif inject", e); }
+                    }
+
+                    // Convert dataUrl to Blob
+                    fetch(dataUrl).then(res => res.blob()).then(resolve);
+                };
+                img.src = URL.createObjectURL(poolItem.file);
+            });
+        }
+
+        // Async Video Transcoding (HTML5 Canvas -> MediaRecorder)
+        function compressVideo(file, scale, quality) {
+            return new Promise((resolve) => {
+                const url = URL.createObjectURL(file);
+                const video = document.createElement('video');
+                video.src = url;
+                video.muted = true;
+                video.crossOrigin = "anonymous";
+                
+                video.onloadedmetadata = () => {
+                    const cvs = document.createElement('canvas');
+                    cvs.width = video.videoWidth * scale;
+                    cvs.height = video.videoHeight * scale;
+                    const ctx = cvs.getContext('2d');
+
+                    video.play();
+                    
+                    // Capture stream at 30fps
+                    const stream = cvs.captureStream(30);
+                    // Bitrate calc based on quality slider (0.1 = ~250kbps, 1.0 = ~5Mbps)
+                    const bps = Math.floor((quality * 4750000) + 250000);
+                    
+                    let recorder;
+                    try {
+                        recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: bps });
+                    } catch(e) {
+                        // Fallback if specific codec constraint fails
+                        recorder = new MediaRecorder(stream);
+                    }
+
+                    const chunks = [];
+                    recorder.ondataavailable = e => chunks.push(e.data);
+                    
+                    recorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: 'video/webm' });
+                        URL.revokeObjectURL(url);
+                        resolve(blob);
+                    };
+
+                    recorder.start();
+
+                    function drawFrame() {
+                        if (video.paused || video.ended) {
+                            recorder.stop();
+                            return;
+                        }
+                        ctx.drawImage(video, 0, 0, cvs.width, cvs.height);
+                        requestAnimationFrame(drawFrame);
+                    }
+                    drawFrame();
+                };
+                
+                video.onerror = () => {
+                    console.error("Video processing failed.");
+                    resolve(file); // fallback to original
+                };
+            });
+        }
+
+        // Helpers
+        function downloadDataUrl(dataUrl, filename) {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
