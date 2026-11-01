@@ -1,4 +1,4 @@
-```html
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -81,7 +81,7 @@
                 <h1 class="text-2xl sm:text-3xl font-extrabold text-gray-900">Kids Video Player</h1>
                 <p class="text-xs sm:text-sm text-gray-500">Distraction-free YouTube viewer</p>
             </div>
-            <button id="toggleParentModeBtn" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl transition flex items-center space-x-1">
+            <button id="toggleParentModeBtn" type="button" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl transition flex items-center space-x-1 cursor-pointer">
                 <span id="parentModeIcon">⚙️</span>
                 <span id="parentModeText">Parent Controls</span>
             </button>
@@ -97,7 +97,7 @@
                 <input type="url" id="videoUrl" placeholder="YouTube Link" class="sm:col-span-4 p-2 border rounded-lg text-sm">
                 <input type="text" id="startTime" placeholder="Start (0:00)" class="sm:col-span-1 p-2 border rounded-lg text-sm text-center">
                 <input type="text" id="endTime" placeholder="End (0:00)" class="sm:col-span-1 p-2 border rounded-lg text-sm text-center">
-                <button id="addItemBtn" class="sm:col-span-3 bg-green-500 hover:bg-green-600 text-white font-bold p-2 rounded-lg text-sm">Add Video</button>
+                <button id="addItemBtn" type="button" class="sm:col-span-3 bg-green-500 hover:bg-green-600 text-white font-bold p-2 rounded-lg text-sm">Add Video</button>
             </div>
 
             <!-- Toggles & Limits -->
@@ -129,15 +129,15 @@
             <div class="pt-2 border-t border-slate-200 text-sm">
                 <label class="block font-medium text-slate-700 mb-1">Visual Progress Tracker</label>
                 <div class="flex flex-wrap gap-4">
-                    <label class="inline-flex items-center">
+                    <label class="inline-flex items-center cursor-pointer">
                         <input type="radio" name="trackerType" value="none" checked class="text-indigo-600">
                         <span class="ml-2">None</span>
                     </label>
-                    <label class="inline-flex items-center">
+                    <label class="inline-flex items-center cursor-pointer">
                         <input type="radio" name="trackerType" value="train" class="text-indigo-600">
                         <span class="ml-2">Moving Train</span>
                     </label>
-                    <label class="inline-flex items-center">
+                    <label class="inline-flex items-center cursor-pointer">
                         <input type="radio" name="trackerType" value="hourglass" class="text-indigo-600">
                         <span class="ml-2">Pixel Hourglass</span>
                     </label>
@@ -146,8 +146,8 @@
 
             <!-- CSV Import/Export -->
             <div class="flex space-x-2 pt-2 border-t border-slate-200">
-                <button id="exportCsvBtn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">Export CSV</button>
-                <button id="importCsvBtn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">Import CSV</button>
+                <button id="exportCsvBtn" type="button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">Export CSV</button>
+                <button id="importCsvBtn" type="button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">Import CSV</button>
                 <input type="file" id="importCsvInput" accept=".csv" class="hidden">
             </div>
         </div>
@@ -190,7 +190,7 @@
         <div class="drag-handle flex items-center justify-between text-xs text-slate-400 mb-2 border-b border-slate-700 pb-1">
             <span class="font-bold cursor-move">⌛ Time Left</span>
             <div class="flex space-x-1">
-                <button id="resizeWidgetBtn" class="hover:text-white px-1 text-xs">🔍</button>
+                <button id="resizeWidgetBtn" type="button" class="hover:text-white px-1 text-xs">🔍</button>
             </div>
         </div>
         <!-- Canvas Hourglass -->
@@ -207,7 +207,7 @@
             <!-- Modal Header -->
             <div class="flex items-center justify-between text-white mb-2 px-2">
                 <h3 id="modalVideoTitle" class="text-base sm:text-lg font-bold truncate max-w-[70%]"></h3>
-                <button onclick="closeModal()" class="bg-white/20 hover:bg-white/40 text-white rounded-full p-2 transition">
+                <button type="button" onclick="closeModal()" class="bg-white/20 hover:bg-white/40 text-white rounded-full p-2 transition">
                     <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
@@ -217,11 +217,11 @@
 
             <!-- Minimal Child Navigation -->
             <div class="flex items-center justify-between mt-4 px-2">
-                <button id="prevBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl text-lg transition disabled:opacity-30">
+                <button id="prevBtn" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl text-lg transition disabled:opacity-30">
                     &larr; Back
                 </button>
                 <span id="videoCounter" class="text-white text-sm font-semibold"></span>
-                <button id="nextBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl text-lg transition disabled:opacity-30">
+                <button id="nextBtn" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl text-lg transition disabled:opacity-30">
                     Next &rarr;
                 </button>
             </div>
@@ -234,11 +234,10 @@
             playlist: [],
             storageKey: 'kids_safe_playlist_v1',
             showThumbnails: true,
-            limitType: 'none', // 'none' | 'time' | 'videos'
+            limitType: 'none',
             limitValue: 5,
-            trackerType: 'none', // 'none' | 'train' | 'hourglass'
+            trackerType: 'none',
             
-            // Session Tracking
             videosWatched: 0,
             secondsElapsed: 0,
             timerInterval: null,
@@ -247,28 +246,23 @@
             widgetScale: 1
         };
 
-        // --- DOM Elements ---
-        let videoTitleInput, videoUrlInput, startTimeInput, endTimeInput, addItemBtn,
-            playlistContainer, emptyMessage, parentPanel, toggleParentModeBtn,
-            showThumbnailsToggle, limitTypeSelect, limitValueContainer, limitValueInput, limitValueLabel,
-            messageBox, trainTracker, trainIcon, trainStations, trainStatusLabel,
-            hourglassWidget, hourglassCanvas, hourglassLabel, resizeWidgetBtn,
-            videoModal, videoEmbedContainer, modalVideoTitle, videoCounter, prevBtn, nextBtn,
-            sessionEndScreen, parentUnlockBtn, exportCsvBtn, importCsvBtn, importCsvInput;
-
-        // --- Storage Functions ---
-        function saveSettings() {
-            const dataToSave = {
-                playlist: state.playlist,
-                showThumbnails: state.showThumbnails,
-                limitType: state.limitType,
-                limitValue: state.limitValue,
-                trackerType: state.trackerType
-            };
-            localStorage.setItem(state.storageKey, JSON.stringify(dataToSave));
+        // --- Safe Storage Wrapper (Fixes GitHub Pages / iOS Lockdown issues) ---
+        function safeSave() {
+            try {
+                const dataToSave = {
+                    playlist: state.playlist,
+                    showThumbnails: state.showThumbnails,
+                    limitType: state.limitType,
+                    limitValue: state.limitValue,
+                    trackerType: state.trackerType
+                };
+                localStorage.setItem(state.storageKey, JSON.stringify(dataToSave));
+            } catch (e) {
+                console.warn("Storage write failed (possibly blocked by browser privacy settings):", e);
+            }
         }
 
-        function loadSettings() {
+        function safeLoad() {
             try {
                 const raw = localStorage.getItem(state.storageKey);
                 if (raw) {
@@ -279,17 +273,19 @@
                     state.limitValue = parsed.limitValue || 5;
                     state.trackerType = parsed.trackerType || 'none';
                 }
-            } catch(e) {
-                console.error("Failed to load settings:", e);
+            } catch (e) {
+                console.warn("Storage read failed:", e);
                 state.playlist = [];
             }
         }
 
         // --- Helper Utilities ---
         function showMessage(msg) {
-            messageBox.textContent = msg;
-            messageBox.classList.remove('hidden');
-            setTimeout(() => messageBox.classList.add('hidden'), 4000);
+            const box = document.getElementById('messageBox');
+            if (!box) return;
+            box.textContent = msg;
+            box.classList.remove('hidden');
+            setTimeout(() => box.classList.add('hidden'), 4000);
         }
 
         function parseTimeToSeconds(str) {
@@ -312,6 +308,10 @@
 
         // --- UI Rendering ---
         function renderPlaylist() {
+            const playlistContainer = document.getElementById('playlistContainer');
+            const emptyMessage = document.getElementById('emptyMessage');
+            if (!playlistContainer) return;
+
             playlistContainer.innerHTML = '';
             
             if (state.playlist.length === 0) {
@@ -324,7 +324,6 @@
                 const card = document.createElement('div');
                 card.className = 'bg-white border-2 border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer flex flex-col justify-between';
                 
-                // Card Inner
                 let thumbHtml = '';
                 if (state.showThumbnails) {
                     const thumbUrl = `https://img.youtube.com/vi/${item.id}/hqdefault.jpg`;
@@ -348,7 +347,7 @@
                             ${item.startTime || item.endTime ? '<span class="text-xs text-indigo-500 font-semibold">Custom Clip</span>' : ''}
                         </div>
                         ${state.isParentMode ? `
-                            <button onclick="removeVideo(event, ${index})" class="text-red-400 hover:text-red-600 p-2 text-sm font-bold">✕</button>
+                            <button type="button" onclick="removeVideo(event, ${index})" class="text-red-400 hover:text-red-600 p-2 text-sm font-bold">✕</button>
                         ` : ''}
                     </div>
                 `;
@@ -359,24 +358,27 @@
         }
 
         function updateTrackers() {
-            // Check session limits
             checkLimits();
 
-            // Train Tracker Update
+            const trainTracker = document.getElementById('trainTracker');
+            const trainStatusLabel = document.getElementById('trainStatusLabel');
+            const trainStations = document.getElementById('trainStations');
+            const trainIcon = document.getElementById('trainIcon');
+            const hourglassWidget = document.getElementById('hourglassWidget');
+
             if (state.trackerType === 'train' && state.limitType !== 'none') {
                 trainTracker.classList.remove('hidden');
-                let progress = 0; // 0 to 100
+                let progress = 0;
 
                 if (state.limitType === 'time') {
                     const totalSecs = state.limitValue * 60;
                     progress = Math.min(100, (state.secondsElapsed / totalSecs) * 100);
                     trainStatusLabel.textContent = `${Math.ceil((totalSecs - state.secondsElapsed)/60)}m left`;
-                    trainStations.innerHTML = ''; // Smooth line for continuous time
+                    trainStations.innerHTML = '';
                 } else if (state.limitType === 'videos') {
                     progress = Math.min(100, (state.videosWatched / state.limitValue) * 100);
                     trainStatusLabel.textContent = `${state.limitValue - state.videosWatched} videos left`;
                     
-                    // Render stations
                     trainStations.innerHTML = '';
                     for (let i = 0; i < state.limitValue; i++) {
                         const dot = document.createElement('div');
@@ -389,7 +391,6 @@
                 trainTracker.classList.add('hidden');
             }
 
-            // Hourglass Tracker Update
             if (state.trackerType === 'hourglass' && state.limitType !== 'none') {
                 hourglassWidget.classList.remove('hidden');
                 drawHourglass();
@@ -398,12 +399,349 @@
             }
         }
 
-        // --- Pixel Hourglass Renderer ---
         function drawHourglass() {
-            const ctx = hourglassCanvas.getContext('2d');
+            const canvas = document.getElementById('hourglassCanvas');
+            const label = document.getElementById('hourglassLabel');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, 64, 64);
 
             let percentRemaining = 1;
             if (state.limitType === 'time') {
                 const totalSecs = state.limitValue * 60;
-           
+                percentRemaining = Math.max(0, (totalSecs - state.secondsElapsed) / totalSecs);
+                label.textContent = `${Math.ceil((totalSecs - state.secondsElapsed)/60)}m`;
+            } else if (state.limitType === 'videos') {
+                percentRemaining = Math.max(0, (state.limitValue - state.videosWatched) / state.limitValue);
+                label.textContent = `${state.limitValue - state.videosWatched} left`;
+            }
+
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillRect(16, 8, 32, 4);
+            ctx.fillRect(16, 52, 32, 4);
+
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(20, 12, 4, 12);
+            ctx.fillRect(40, 12, 4, 12);
+            ctx.fillRect(24, 24, 4, 8);
+            ctx.fillRect(36, 24, 4, 8);
+            ctx.fillRect(28, 30, 8, 4);
+            ctx.fillRect(24, 32, 4, 8);
+            ctx.fillRect(36, 32, 4, 8);
+            ctx.fillRect(20, 40, 4, 12);
+            ctx.fillRect(40, 40, 4, 12);
+
+            ctx.fillStyle = '#f59e0b';
+            const topHeight = Math.floor(12 * percentRemaining);
+            if (topHeight > 0) ctx.fillRect(24, 24 - topHeight, 16, topHeight);
+
+            const bottomHeight = Math.floor(12 * (1 - percentRemaining));
+            if (bottomHeight > 0) ctx.fillRect(24, 52 - bottomHeight, 16, bottomHeight);
+
+            if (percentRemaining > 0 && percentRemaining < 1) {
+                if (Math.floor(Date.now() / 300) % 2 === 0) {
+                    ctx.fillRect(31, 28, 2, 16);
+                }
+            }
+        }
+
+        function checkLimits() {
+            if (state.limitType === 'none') return;
+
+            let reachedLimit = false;
+            if (state.limitType === 'time' && state.secondsElapsed >= state.limitValue * 60) {
+                reachedLimit = true;
+            } else if (state.limitType === 'videos' && state.videosWatched >= state.limitValue) {
+                reachedLimit = true;
+            }
+
+            if (reachedLimit) endSession();
+        }
+
+        function startSessionTimer() {
+            if (state.timerInterval) clearInterval(state.timerInterval);
+            state.timerInterval = setInterval(() => {
+                state.secondsElapsed++;
+                updateTrackers();
+            }, 1000);
+        }
+
+        function endSession() {
+            clearInterval(state.timerInterval);
+            closeModal();
+            document.getElementById('sessionEndScreen').classList.remove('hidden');
+        }
+
+        function playVideo(index) {
+            if (index < 0 || index >= state.playlist.length) return;
+
+            state.currentVideoIndex = index;
+            const item = state.playlist[index];
+
+            document.getElementById('modalVideoTitle').textContent = item.title;
+            document.getElementById('videoCounter').textContent = `${index + 1} of ${state.playlist.length}`;
+            document.getElementById('prevBtn').disabled = index === 0;
+            document.getElementById('nextBtn').disabled = index === state.playlist.length - 1;
+
+            let embedUrl = `https://www.youtube-nocookie.com/embed/${item.id}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
+            if (item.startTime) embedUrl += `&start=${item.startTime}`;
+            if (item.endTime) embedUrl += `&end=${item.endTime}`;
+
+            const iframe = document.createElement('iframe');
+            iframe.src = embedUrl;
+            iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+            iframe.allowFullscreen = true;
+
+            const videoEmbedContainer = document.getElementById('videoEmbedContainer');
+            videoEmbedContainer.innerHTML = '';
+            videoEmbedContainer.appendChild(iframe);
+
+            document.getElementById('videoModal').classList.remove('hidden');
+
+            state.videosWatched++;
+            updateTrackers();
+        }
+
+        function closeModal(e) {
+            if (e && e.target !== document.getElementById('videoModal') && !e.target.closest('button')) return;
+            document.getElementById('videoModal').classList.add('hidden');
+            document.getElementById('videoEmbedContainer').innerHTML = '';
+        }
+
+        function addVideo() {
+            const url = document.getElementById('videoUrl').value.trim();
+            const id = extractYoutubeId(url);
+
+            if (!id) {
+                showMessage("Please enter a valid YouTube URL.");
+                return;
+            }
+
+            const title = document.getElementById('videoTitle').value.trim() || `Video ${state.playlist.length + 1}`;
+            const startTime = parseTimeToSeconds(document.getElementById('startTime').value);
+            const endTime = parseTimeToSeconds(document.getElementById('endTime').value);
+
+            state.playlist.push({ id, title, startTime, endTime });
+            safeSave();
+            renderPlaylist();
+
+            document.getElementById('videoTitle').value = '';
+            document.getElementById('videoUrl').value = '';
+            document.getElementById('startTime').value = '';
+            document.getElementById('endTime').value = '';
+        }
+
+        window.removeVideo = function(e, index) {
+            e.stopPropagation();
+            state.playlist.splice(index, 1);
+            safeSave();
+            renderPlaylist();
+        };
+
+        function makeDraggable(el) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            const handle = el.querySelector('.drag-handle') || el;
+            
+            handle.onmousedown = dragMouseDown;
+            handle.ontouchstart = dragTouchStart;
+
+            function dragMouseDown(e) {
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function dragTouchStart(e) {
+                const touch = e.touches[0];
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+                document.ontouchend = closeDragElement;
+                document.ontouchmove = elementTouchMove;
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                el.style.top = (el.offsetTop - pos2) + "px";
+                el.style.left = (el.offsetLeft - pos1) + "px";
+                el.style.bottom = 'auto';
+                el.style.right = 'auto';
+            }
+
+            function elementTouchMove(e) {
+                const touch = e.touches[0];
+                pos1 = pos3 - touch.clientX;
+                pos2 = pos4 - touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+                el.style.top = (el.offsetTop - pos2) + "px";
+                el.style.left = (el.offsetLeft - touch.clientX) + "px";
+                el.style.bottom = 'auto';
+                el.style.right = 'auto';
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+                document.ontouchend = null;
+                document.ontouchmove = null;
+            }
+        }
+
+        function exportCSV() {
+            if (!state.playlist.length) return showMessage("Playlist is empty.");
+            let csv = "Title,VideoID,StartTime,EndTime\n";
+            state.playlist.forEach(i => {
+                csv += `"${i.title.replace(/"/g, '""')}",${i.id},${i.startTime||''},${i.endTime||''}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'kids_playlist.csv';
+            a.click();
+        }
+
+        function importCSV(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const lines = evt.target.result.split('\n');
+                const newPlaylist = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    const parts = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || [];
+                    if (parts.length >= 2) {
+                        const title = parts[0].replace(/^"|"$/g, '');
+                        const id = parts[1];
+                        const startTime = parts[2] ? parseInt(parts[2]) : null;
+                        const endTime = parts[3] ? parseInt(parts[3]) : null;
+                        newPlaylist.push({ title, id, startTime, endTime });
+                    }
+                }
+                if (newPlaylist.length) {
+                    state.playlist = newPlaylist;
+                    safeSave();
+                    renderPlaylist();
+                    showMessage("Playlist imported successfully!");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Direct Global Event Binding ---
+        function initEvents() {
+            safeLoad();
+
+            const toggleParentBtn = document.getElementById('toggleParentModeBtn');
+            const parentPanel = document.getElementById('parentPanel');
+            const parentModeText = document.getElementById('parentModeText');
+
+            // Robust click handling
+            toggleParentBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                state.isParentMode = !state.isParentMode;
+                if (state.isParentMode) {
+                    parentPanel.classList.remove('hidden');
+                    parentModeText.textContent = 'Done Editing';
+                } else {
+                    parentPanel.classList.add('hidden');
+                    parentModeText.textContent = 'Parent Controls';
+                }
+                renderPlaylist();
+            });
+
+            document.getElementById('addItemBtn').onclick = addVideo;
+
+            document.getElementById('showThumbnailsToggle').onchange = (e) => {
+                state.showThumbnails = e.target.checked;
+                safeSave();
+                renderPlaylist();
+            };
+
+            const limitTypeSelect = document.getElementById('limitType');
+            const limitValueContainer = document.getElementById('limitValueContainer');
+            const limitValueLabel = document.getElementById('limitValueLabel');
+
+            limitTypeSelect.onchange = (e) => {
+                state.limitType = e.target.value;
+                if (state.limitType === 'none') {
+                    limitValueContainer.classList.add('hidden');
+                } else {
+                    limitValueContainer.classList.remove('hidden');
+                    limitValueLabel.textContent = state.limitType === 'time' ? 'Limit (Minutes)' : 'Limit (Videos)';
+                }
+                safeSave();
+                updateTrackers();
+            };
+
+            document.getElementById('limitValue').onchange = (e) => {
+                state.limitValue = parseInt(e.target.value) || 1;
+                safeSave();
+                updateTrackers();
+            };
+
+            document.querySelectorAll('input[name="trackerType"]').forEach(radio => {
+                radio.onchange = (e) => {
+                    state.trackerType = e.target.value;
+                    safeSave();
+                    updateTrackers();
+                };
+            });
+
+            document.getElementById('prevBtn').onclick = () => playVideo(state.currentVideoIndex - 1);
+            document.getElementById('nextBtn').onclick = () => playVideo(state.currentVideoIndex + 1);
+
+            document.getElementById('parentUnlockBtn').onclick = () => {
+                document.getElementById('sessionEndScreen').classList.add('hidden');
+                state.secondsElapsed = 0;
+                state.videosWatched = 0;
+                startSessionTimer();
+                updateTrackers();
+            };
+
+            document.getElementById('exportCsvBtn').onclick = exportCSV;
+            document.getElementById('importCsvBtn').onclick = () => document.getElementById('importCsvInput').click();
+            document.getElementById('importCsvInput').onchange = importCSV;
+
+            document.getElementById('resizeWidgetBtn').onclick = () => {
+                state.widgetScale = state.widgetScale === 1 ? 1.5 : (state.widgetScale === 1.5 ? 2 : 1);
+                const hourglassWidget = document.getElementById('hourglassWidget');
+                hourglassWidget.style.transform = `scale(${state.widgetScale})`;
+                hourglassWidget.style.transformOrigin = 'bottom right';
+            };
+
+            makeDraggable(document.getElementById('hourglassWidget'));
+            
+            // Set initial UI field states
+            document.getElementById('showThumbnailsToggle').checked = state.showThumbnails;
+            limitTypeSelect.value = state.limitType;
+            document.getElementById('limitValue').value = state.limitValue;
+            
+            const radioToSelect = document.querySelector(`input[name="trackerType"][value="${state.trackerType}"]`);
+            if (radioToSelect) radioToSelect.checked = true;
+
+            if (state.limitType !== 'none') {
+                limitValueContainer.classList.remove('hidden');
+            }
+
+            startSessionTimer();
+            renderPlaylist();
+            updateTrackers();
+        }
+
+        // Run setup once DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initEvents);
+        } else {
+            initEvents();
+        }
+    </script>
+</body>
+</html>
