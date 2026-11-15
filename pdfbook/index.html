@@ -1,0 +1,1561 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image to PDF Studio & Optimizer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Cropper.js for Image Cropping -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <!-- jsPDF for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col selection:bg-brand-500 selection:text-white">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-brand-600 text-white p-2 rounded-xl shadow-sm">
+                    <i data-lucide="file-image" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold text-slate-900 leading-tight">PDF Studio</h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">Arrange, Crop, Collage & Compress</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                <button id="resetAllBtn" onclick="confirmReset()" class="hidden text-xs sm:text-sm font-medium text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-xl transition flex items-center gap-1.5">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Clear All</span>
+                </button>
+                <button onclick="openInfoModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs sm:text-sm px-3.5 py-2.5 rounded-xl transition flex items-center gap-2 shadow-sm border border-slate-200/60">
+                    <i data-lucide="info" class="w-4 h-4 text-brand-600"></i>
+                    <span>Info & Related Files</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Stepper Navigation -->
+    <div class="bg-white border-b border-slate-200">
+        <div class="max-w-5xl mx-auto px-4 py-3">
+            <div class="grid grid-cols-3 gap-2 sm:gap-4">
+                <button onclick="goToStep(1)" id="stepTab1" class="step-tab flex items-center justify-center sm:justify-start gap-2 p-2.5 rounded-xl bg-brand-50 text-brand-700 border border-brand-200 font-semibold text-xs sm:text-sm transition">
+                    <span class="w-6 h-6 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-bold shrink-0">1</span>
+                    <span class="truncate">Upload & Crop</span>
+                </button>
+                <button onclick="goToStep(2)" id="stepTab2" class="step-tab flex items-center justify-center sm:justify-start gap-2 p-2.5 rounded-xl bg-slate-50 text-slate-500 border border-transparent hover:bg-slate-100 font-medium text-xs sm:text-sm transition">
+                    <span class="w-6 h-6 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0">2</span>
+                    <span class="truncate">Pages & Layout</span>
+                </button>
+                <button onclick="goToStep(3)" id="stepTab3" class="step-tab flex items-center justify-center sm:justify-start gap-2 p-2.5 rounded-xl bg-slate-50 text-slate-500 border border-transparent hover:bg-slate-100 font-medium text-xs sm:text-sm transition">
+                    <span class="w-6 h-6 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0">3</span>
+                    <span class="truncate">Compress & Export</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- Notification Banner (Replaces alert()) -->
+        <div id="toastBanner" class="hidden fixed bottom-5 right-5 left-5 sm:left-auto sm:w-96 bg-slate-900 text-white px-4 py-3.5 rounded-2xl shadow-xl z-50 flex items-center justify-between gap-3 transition-all">
+            <div class="flex items-center gap-2.5 text-sm">
+                <i data-lucide="bell" class="w-5 h-5 text-brand-400 shrink-0"></i>
+                <span id="toastMessage">Notification</span>
+            </div>
+            <button onclick="hideToast()" class="text-slate-400 hover:text-white p-1">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        <!-- ==================== STEP 1: UPLOAD, ORDER & CROP ==================== -->
+        <section id="step1Section" class="space-y-6">
+            <!-- Upload Dropzone -->
+            <div id="dropZone" class="border-2 border-dashed border-brand-300 hover:border-brand-500 bg-white rounded-3xl p-8 sm:p-12 text-center transition cursor-pointer shadow-sm group">
+                <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
+                <div class="w-16 h-16 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-105 transition">
+                    <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+                </div>
+                <h2 class="text-lg sm:text-xl font-bold text-slate-900 mb-1">Tap to upload or drag & drop images</h2>
+                <p class="text-sm text-slate-500 max-w-md mx-auto mb-4">Supports JPG, PNG, WebP. Everything processes 100% locally on your device—no files are ever uploaded to a server.</p>
+                <span class="inline-flex items-center gap-2 bg-brand-600 text-white font-medium text-sm px-5 py-2.5 rounded-xl shadow-sm group-hover:bg-brand-700 transition">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Select Images
+                </span>
+            </div>
+
+            <!-- Uploaded Image Queue -->
+            <div id="imageQueueContainer" class="hidden space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                    <div>
+                        <h3 class="font-bold text-slate-900 flex items-center gap-2">
+                            <span>Image Order & Cropping</span>
+                            <span id="imageCountBadge" class="bg-brand-100 text-brand-700 text-xs px-2.5 py-0.5 rounded-full font-semibold">0</span>
+                        </h3>
+                        <p class="text-xs text-slate-500">Use arrows to reorder sequence or tap Crop to trim any image before building pages.</p>
+                    </div>
+                    <button onclick="goToStep(2)" class="bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm px-5 py-3 rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+                        <span>Next: Configure Pages</span>
+                        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Grid of Uploaded Images -->
+                <div id="imageGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    <!-- Dynamic Image Cards Injected Here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== STEP 2: PAGE DIMENSIONS & MULTI-IMAGE LAYOUT ==================== -->
+        <section id="step2Section" class="hidden space-y-6">
+            
+            <!-- Global Page & Scaling Configuration Card -->
+            <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900">Page Dimensions & Scaling Rules</h2>
+                        <p class="text-xs sm:text-sm text-slate-500">Choose how page sizes are calculated across your PDF document.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="goToStep(1)" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium transition">Back</button>
+                        <button onclick="goToStep(3)" class="bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
+                            <span>Next: Preview & Compress</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <!-- Sizing Mode -->
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">1. Page Sizing Mode</label>
+                        <select id="sizingMode" onchange="handleLayoutSettingsChange()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <option value="match_all">All Pages Match (Fixed Preset / Custom)</option>
+                            <option value="same_width">Same Width (Variable Height per Image)</option>
+                            <option value="same_height">Same Height (Variable Width per Image)</option>
+                            <option value="original">Fit to Each Image's Native Aspect</option>
+                        </select>
+                        <p id="sizingModeDesc" class="text-xs text-slate-500">Every page has identical width and height.</p>
+                    </div>
+
+                    <!-- Preset / Dimension Inputs -->
+                    <div class="space-y-2" id="presetWrapper">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">2. Base Dimensions (mm)</label>
+                        <div class="flex gap-2">
+                            <select id="pagePreset" onchange="applyPagePreset()" class="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                                <option value="a4_p">A4 Portrait (210×297)</option>
+                                <option value="a4_l">A4 Landscape (297×210)</option>
+                                <option value="letter_p">US Letter (216×279)</option>
+                                <option value="square">Square (210×210)</option>
+                                <option value="custom">Custom (mm)</option>
+                            </select>
+                            <div class="w-1/2 flex items-center gap-1.5">
+                                <input type="number" id="customWidthMm" value="210" min="20" max="2000" onchange="handleCustomDimChange()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-3 text-sm text-center font-semibold" title="Width in mm">
+                                <span class="text-slate-400 text-xs">×</span>
+                                <input type="number" id="customHeightMm" value="297" min="20" max="2000" onchange="handleCustomDimChange()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-3 text-sm text-center font-semibold" title="Height in mm">
+                            </div>
+                        </div>
+                        <p class="text-xs text-slate-500" id="dimensionHint">Standard A4 sheet dimensions in millimeters.</p>
+                    </div>
+
+                    <!-- Page Assignment Mode -->
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">3. Images Per Page</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button type="button" id="modeSingleBtn" onclick="setPageGroupingMode('single')" class="py-2.5 px-3 rounded-xl border-2 border-brand-600 bg-brand-50 text-brand-700 font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="file" class="w-4 h-4"></i> 1 Per Page
+                            </button>
+                            <button type="button" id="modeMultiBtn" onclick="setPageGroupingMode('multi')" class="py-2.5 px-3 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="layout-grid" class="w-4 h-4"></i> Multi-Image
+                            </button>
+                        </div>
+                        <p class="text-xs text-slate-500">Choose single-image pages or freeform collage pages.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive Page Builder & Collage Designer -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                <!-- Left Sidebar: Page List -->
+                <div class="lg:col-span-4 bg-white rounded-3xl border border-slate-200 p-4 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-slate-900 text-sm">PDF Pages (<span id="totalPagesCount">0</span>)</h3>
+                        <button id="addPageBtn" onclick="addNewBlankPage()" class="hidden text-xs bg-brand-50 hover:bg-brand-100 text-brand-700 font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Page
+                        </button>
+                    </div>
+
+                    <div id="pagesList" class="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                        <!-- Page Selector Items -->
+                    </div>
+                </div>
+
+                <!-- Right Main Area: Interactive Page Canvas -->
+                <div class="lg:col-span-8 bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-sm sm:text-base" id="activePageTitle">Page 1 Preview</h3>
+                            <p class="text-xs text-slate-500" id="activePageDimLabel">210mm × 297mm</p>
+                        </div>
+
+                        <!-- Multi-image tools -->
+                        <div id="multiImageToolbar" class="hidden flex flex-wrap items-center gap-2">
+                            <button onclick="autoArrangeGrid()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1">
+                                <i data-lucide="grid" class="w-3.5 h-3.5"></i> Auto Grid
+                            </button>
+                            <button onclick="openAddImageToPageModal()" class="text-xs bg-brand-600 hover:bg-brand-700 text-white font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1">
+                                <i data-lucide="image-plus" class="w-3.5 h-3.5"></i> Place Image
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Visual Page Stage -->
+                    <div class="bg-slate-100/80 rounded-2xl p-4 sm:p-8 flex items-center justify-center min-h-[380px] sm:min-h-[480px] overflow-hidden relative border border-slate-200/60">
+                        <div id="pageStage" class="bg-white shadow-lg relative overflow-hidden transition-all duration-200 select-none border border-slate-300" style="width: 280px; height: 396px;">
+                            <!-- Placed Images on Active Page Rendered Here -->
+                        </div>
+                    </div>
+
+                    <!-- Selected Item Fine-Tuning Controls (Shown when an image on canvas is selected) -->
+                    <div id="itemControlsPanel" class="hidden bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex items-center gap-3 flex-1 min-w-[200px]">
+                            <span class="text-xs font-semibold text-slate-600">Scale:</span>
+                            <input type="range" id="itemScaleSlider" min="10" max="100" value="50" oninput="updateSelectedItemScale(this.value)" class="flex-1 accent-brand-600">
+                            <span id="itemScaleValue" class="text-xs font-bold text-slate-700 w-9">50%</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="centerSelectedItem()" class="text-xs bg-white border border-slate-200 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg font-medium text-slate-700">Center</button>
+                            <button onclick="bringItemFront()" class="text-xs bg-white border border-slate-200 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg font-medium text-slate-700">Front</button>
+                            <button onclick="removeSelectedItemFromPage()" class="text-xs bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg font-medium text-rose-600">Remove</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== STEP 3: STORAGE SAVING PREVIEW & EXPORT ==================== -->
+        <section id="step3Section" class="hidden space-y-6">
+            <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-6">
+                    <div>
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-900">Storage Saving Methods & Visual Preview</h2>
+                        <p class="text-xs sm:text-sm text-slate-500">Compare file sizes and inspect exact visual quality before downloading your final PDF.</p>
+                    </div>
+                    <button onclick="goToStep(2)" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium transition self-start sm:self-auto">
+                        Back to Layout
+                    </button>
+                </div>
+
+                <!-- Compression Preset Cards -->
+                <div id="compressionPresetsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <!-- Cards injected dynamically with real calculated sizes -->
+                </div>
+
+                <!-- Custom Fine-Tune Sliders + Live Side-by-Side Visual Preview -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start pt-2">
+                    
+                    <!-- Fine-Tuning Controls -->
+                    <div class="lg:col-span-5 bg-slate-50 rounded-2xl p-5 border border-slate-200/80 space-y-5">
+                        <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                            <i data-lucide="sliders" class="w-4 h-4 text-brand-600"></i>
+                            Custom Compression Tuning
+                        </h3>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs font-semibold">
+                                <span class="text-slate-600">JPEG Image Quality</span>
+                                <span id="qualityValLabel" class="text-brand-600 font-bold">85%</span>
+                            </div>
+                            <input type="range" id="customQualityRange" min="15" max="100" value="85" oninput="handleCustomCompressionChange()" class="w-full accent-brand-600">
+                            <p class="text-[11px] text-slate-500">Lower values drastically cut file size; higher values keep crisp text & edges.</p>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs font-semibold">
+                                <span class="text-slate-600">Resolution Scale (DPI Target)</span>
+                                <span id="resolutionValLabel" class="text-brand-600 font-bold">100% (Original)</span>
+                            </div>
+                            <input type="range" id="customResolutionRange" min="25" max="100" step="5" value="100" oninput="handleCustomCompressionChange()" class="w-full accent-brand-600">
+                            <p class="text-[11px] text-slate-500">Downsampling oversized camera photos saves massive storage without noticeable screen loss.</p>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-2 border-t border-slate-200">
+                            <div>
+                                <span class="text-xs font-bold text-slate-800 block">Grayscale Document Mode</span>
+                                <span class="text-[11px] text-slate-500">Ideal for scanned receipts & notes</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="grayscaleToggle" onchange="handleCustomCompressionChange()" class="sr-only peer">
+                                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                            </label>
+                        </div>
+
+                        <!-- Summary Box & Download Button -->
+                        <div class="bg-white rounded-xl p-4 border border-slate-200 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs text-slate-500 font-medium">Estimated Final PDF Size:</span>
+                                <span id="finalEstimatedSize" class="text-base font-extrabold text-emerald-600">Calculating...</span>
+                            </div>
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-slate-500">Space Saved vs Uncompressed:</span>
+                                <span id="spaceSavedBadge" class="font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-md">0% saved</span>
+                            </div>
+                            <button id="downloadPdfBtn" onclick="generateAndDownloadPDF()" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2">
+                                <i data-lucide="download" class="w-5 h-5"></i>
+                                <span>Download Final PDF</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Live Visual Quality Preview -->
+                    <div class="lg:col-span-7 bg-slate-900 rounded-2xl p-4 sm:p-5 text-white space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <h3 class="text-sm font-bold">Live Output Quality Preview</h3>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs text-slate-400">Preview Page:</label>
+                                <select id="previewPageSelect" onchange="renderCompressionPreview()" class="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none">
+                                    <!-- Populated dynamically -->
+                                </select>
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-slate-400">This preview renders the exact compressed image data that will be embedded into your PDF so you can check readability before downloading.</p>
+
+                        <div class="bg-slate-950 rounded-xl p-4 flex items-center justify-center min-h-[340px] max-h-[460px] overflow-auto border border-slate-800">
+                            <img id="compressionPreviewImg" src="" alt="Compressed Page Preview" class="max-w-full max-h-[420px] object-contain rounded shadow-lg">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ==================== CROPPER MODAL ==================== -->
+    <div id="cropModal" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="crop" class="w-5 h-5 text-brand-600"></i>
+                    <span>Crop Image</span>
+                </h3>
+                <button onclick="closeCropModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-4 bg-slate-950 flex-1 overflow-hidden flex items-center justify-center min-h-[300px]">
+                <img id="cropTargetImage" src="" alt="Crop Preview" class="max-h-[55vh] max-w-full block">
+            </div>
+
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap gap-1.5">
+                    <button onclick="setCropAspect(NaN)" class="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-100">Free</button>
+                    <button onclick="setCropAspect(1)" class="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-100">1:1</button>
+                    <button onclick="setCropAspect(4/3)" class="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-100">4:3</button>
+                    <button onclick="setCropAspect(16/9)" class="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-100">16:9</button>
+                    <button onclick="setCropAspect(210/297)" class="px-2.5 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-100">A4</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="closeCropModal()" class="px-4 py-2 text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-xl transition">Cancel</button>
+                    <button onclick="applyCrop()" class="px-5 py-2 text-xs sm:text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition">Apply Crop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== ADD IMAGE TO MULTI-PAGE MODAL ==================== -->
+    <div id="addImageModal" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="font-bold text-slate-900">Place Image onto Current Page</h3>
+                <button onclick="closeAddImageModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="modalImagePickerGrid" class="p-5 grid grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
+                <!-- Thumbnails populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== INFO & RELATED FILES MODAL ==================== -->
+    <div id="infoModal" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[88vh]">
+            <div class="px-6 py-4 bg-brand-600 text-white flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <i data-lucide="book-open" class="w-5 h-5"></i>
+                    <h3 class="font-bold text-base sm:text-lg">How to Use & Related Files</h3>
+                </div>
+                <button onclick="closeInfoModal()" class="text-white/80 hover:text-white p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-6 text-sm text-slate-600">
+                <!-- Instructions Section -->
+                <div class="space-y-3">
+                    <h4 class="font-bold text-slate-900 text-base flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">?</span>
+                        Quick User Guide
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70">
+                            <span class="font-bold text-brand-600 block mb-1">1. Upload & Crop</span>
+                            <p class="text-xs leading-relaxed">Select multiple photos from your phone or PC. Use the arrow buttons to set their exact order and optionally crop edges.</p>
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70">
+                            <span class="font-bold text-brand-600 block mb-1">2. Dimensions & Layout</span>
+                            <p class="text-xs leading-relaxed">Choose uniform page dimensions, matching widths, or matching heights. Switch to <strong>Multi-Image</strong> mode to drag and resize multiple photos per page.</p>
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70">
+                            <span class="font-bold text-brand-600 block mb-1">3. Storage & Preview</span>
+                            <p class="text-xs leading-relaxed">Compare storage-saving presets (Archive, Balanced, Email, Ultra-Light), inspect live visual quality, and download your PDF.</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-500 bg-emerald-50 text-emerald-800 px-3.5 py-2.5 rounded-xl border border-emerald-200/60 flex items-center gap-2">
+                        <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                        <span><strong>100% Private & Offline-Ready:</strong> All cropping, layout rendering, and PDF compression happens directly inside your browser.</span>
+                    </p>
+                </div>
+
+                <!-- Related Files Section (Auto-discovers files in the same GitHub Pages folder) -->
+                <div class="space-y-3 pt-3 border-t border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-slate-900 text-base flex items-center gap-2">
+                            <i data-lucide="folder-git-2" class="w-5 h-5 text-brand-600"></i>
+                            <span>Related Files in This Folder</span>
+                        </h4>
+                        <span id="folderStatusBadge" class="text-[11px] font-medium bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">Scanning folder...</span>
+                    </div>
+                    <p class="text-xs text-slate-500">Other tools and HTML pages located in the same directory:</p>
+                    
+                    <div id="relatedFilesList" class="space-y-2">
+                        <!-- Dynamically populated links to sibling files in the same folder -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end">
+                <button onclick="closeInfoModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs sm:text-sm px-5 py-2.5 rounded-xl transition">Got It</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal (Replaces window.confirm()) -->
+    <div id="confirmModal" class="hidden fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <h3 class="font-bold text-slate-900 text-base">Clear all uploaded images?</h3>
+            <p class="text-xs sm:text-sm text-slate-500">This will remove all current images and reset your page layouts.</p>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeConfirmModal()" class="px-4 py-2 text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
+                <button onclick="executeReset()" class="px-4 py-2 text-xs sm:text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl">Clear Everything</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== APPLICATION STATE ====================
+        const state = {
+            images: [], // { id, name, originalSrc, currentSrc, width, height, sizeBytes }
+            pages: [],  // { id, widthMm, heightMm, items: [{ uid, imageId, xPct, yPct, wPct, hPct, zIndex }] }
+            activePageIndex: 0,
+            selectedItemUid: null,
+            sizingMode: 'match_all', // 'match_all' | 'same_width' | 'same_height' | 'original'
+            groupingMode: 'single',  // 'single' | 'multi'
+            baseWidthMm: 210,
+            baseHeightMm: 297,
+            cropper: null,
+            croppingImageId: null,
+            compression: {
+                preset: 'balanced',
+                quality: 0.85,
+                scale: 1.0,
+                grayscale: false
+            }
+        };
+
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // ==================== TOAST & MODAL HELPERS ====================
+        let toastTimeout;
+        function showToast(msg) {
+            const banner = document.getElementById('toastBanner');
+            document.getElementById('toastMessage').textContent = msg;
+            banner.classList.remove('hidden');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(hideToast, 4000);
+        }
+
+        function hideToast() {
+            document.getElementById('toastBanner').classList.add('hidden');
+        }
+
+        function confirmReset() {
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirmModal').classList.add('hidden');
+        }
+
+        function executeReset() {
+            state.images = [];
+            state.pages = [];
+            state.activePageIndex = 0;
+            state.selectedItemUid = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('resetAllBtn').classList.add('hidden');
+            document.getElementById('imageQueueContainer').classList.add('hidden');
+            closeConfirmModal();
+            goToStep(1);
+            showToast('Workspace cleared.');
+        }
+
+        // ==================== STEP NAVIGATION ====================
+        function goToStep(stepNumber) {
+            if (stepNumber > 1 && state.images.length === 0) {
+                showToast('Please upload at least one image first.');
+                return;
+            }
+
+            // Hide all sections
+            document.getElementById('step1Section').classList.add('hidden');
+            document.getElementById('step2Section').classList.add('hidden');
+            document.getElementById('step3Section').classList.add('hidden');
+
+            // Reset tab styling
+            [1, 2, 3].forEach(num => {
+                const tab = document.getElementById(`stepTab${num}`);
+                const badge = tab.querySelector('span:first-child');
+                if (num === stepNumber) {
+                    tab.className = 'step-tab flex items-center justify-center sm:justify-start gap-2 p-2.5 rounded-xl bg-brand-50 text-brand-700 border border-brand-200 font-semibold text-xs sm:text-sm transition';
+                    badge.className = 'w-6 h-6 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-bold shrink-0';
+                } else {
+                    tab.className = 'step-tab flex items-center justify-center sm:justify-start gap-2 p-2.5 rounded-xl bg-slate-50 text-slate-500 border border-transparent hover:bg-slate-100 font-medium text-xs sm:text-sm transition';
+                    badge.className = 'w-6 h-6 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0';
+                }
+            });
+
+            // Show target section & initialize data
+            if (stepNumber === 1) {
+                document.getElementById('step1Section').classList.remove('hidden');
+                renderImageGrid();
+            } else if (stepNumber === 2) {
+                document.getElementById('step2Section').classList.remove('hidden');
+                if (state.pages.length === 0) {
+                    rebuildPagesFromImages();
+                } else {
+                    recalculatePageDimensions();
+                }
+                renderPagesList();
+                renderActivePageStage();
+            } else if (stepNumber === 3) {
+                document.getElementById('step3Section').classList.remove('hidden');
+                initStep3Compression();
+            }
+        }
+
+        // ==================== STEP 1: FILE UPLOAD & ORDERING ====================
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-brand-500', 'bg-brand-50/40');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-brand-500', 'bg-brand-50/40');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-brand-500', 'bg-brand-50/40');
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+                handleFiles(e.target.files);
+            }
+        });
+
+        async function handleFiles(fileList) {
+            const validFiles = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+            if (validFiles.length === 0) {
+                showToast('Please select valid image files (JPG, PNG, WebP).');
+                return;
+            }
+
+            for (const file of validFiles) {
+                const dataUrl = await readFileAsDataURL(file);
+                const dims = await getImageDimensions(dataUrl);
+                state.images.push({
+                    id: 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                    name: file.name,
+                    originalSrc: dataUrl,
+                    currentSrc: dataUrl,
+                    width: dims.width,
+                    height: dims.height,
+                    sizeBytes: file.size
+                });
+            }
+
+            // Reset pages so Step 2 regenerates cleanly with new images
+            state.pages = [];
+            document.getElementById('resetAllBtn').classList.remove('hidden');
+            document.getElementById('imageQueueContainer').classList.remove('hidden');
+            renderImageGrid();
+            showToast(`Added ${validFiles.length} image${validFiles.length > 1 ? 's' : ''}.`);
+        }
+
+        function readFileAsDataURL(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function getImageDimensions(src) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+                img.src = src;
+            });
+        }
+
+        function renderImageGrid() {
+            const grid = document.getElementById('imageGrid');
+            document.getElementById('imageCountBadge').textContent = state.images.length;
+            grid.innerHTML = '';
+
+            state.images.forEach((img, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col group';
+                card.innerHTML = `
+                    <div class="relative aspect-[3/4] bg-slate-100 overflow-hidden">
+                        <img src="${img.currentSrc}" alt="${img.name}" class="w-full h-full object-contain p-1.5">
+                        <span class="absolute top-2 left-2 bg-slate-900/80 text-white text-xs font-bold px-2 py-0.5 rounded-lg backdrop-blur-sm">
+                            #${index + 1}
+                        </span>
+                        <button onclick="removeImage('${img.id}')" class="absolute top-2 right-2 bg-rose-600/90 hover:bg-rose-600 text-white p-1.5 rounded-lg shadow-sm transition" title="Remove image">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                    <div class="p-2.5 border-t border-slate-100 space-y-2 bg-white">
+                        <p class="text-xs font-medium text-slate-700 truncate" title="${img.name}">${img.name}</p>
+                        <div class="flex items-center justify-between gap-1">
+                            <div class="flex items-center gap-1">
+                                <button onclick="moveImage(${index}, -1)" ${index === 0 ? 'disabled' : ''} class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 text-slate-700" title="Move Earlier">
+                                    <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button onclick="moveImage(${index}, 1)" ${index === state.images.length - 1 ? 'disabled' : ''} class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 text-slate-700" title="Move Later">
+                                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                            <button onclick="openCropModal('${img.id}')" class="flex items-center gap-1 text-xs font-semibold bg-brand-50 hover:bg-brand-100 text-brand-700 px-2.5 py-1.5 rounded-lg transition">
+                                <i data-lucide="crop" class="w-3.5 h-3.5"></i>
+                                <span>Crop</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        function moveImage(index, direction) {
+            const target = index + direction;
+            if (target < 0 || target >= state.images.length) return;
+            const temp = state.images[index];
+            state.images[index] = state.images[target];
+            state.images[target] = temp;
+            state.pages = []; // Force page order refresh
+            renderImageGrid();
+        }
+
+        function removeImage(id) {
+            state.images = state.images.filter(img => img.id !== id);
+            state.pages = [];
+            if (state.images.length === 0) {
+                document.getElementById('imageQueueContainer').classList.add('hidden');
+                document.getElementById('resetAllBtn').classList.add('hidden');
+            }
+            renderImageGrid();
+        }
+
+        // ==================== CROPPER LOGIC ====================
+        function openCropModal(imageId) {
+            const imgObj = state.images.find(i => i.id === imageId);
+            if (!imgObj) return;
+            state.croppingImageId = imageId;
+            const target = document.getElementById('cropTargetImage');
+            target.src = imgObj.originalSrc;
+            document.getElementById('cropModal').classList.remove('hidden');
+
+            if (state.cropper) {
+                state.cropper.destroy();
+            }
+            state.cropper = new Cropper(target, {
+                viewMode: 1,
+                autoCropArea: 0.9,
+                responsive: true,
+                background: false
+            });
+        }
+
+        function setCropAspect(ratio) {
+            if (state.cropper) {
+                state.cropper.setAspectRatio(ratio);
+            }
+        }
+
+        function closeCropModal() {
+            if (state.cropper) {
+                state.cropper.destroy();
+                state.cropper = null;
+            }
+            document.getElementById('cropModal').classList.add('hidden');
+        }
+
+        function applyCrop() {
+            if (!state.cropper || !state.croppingImageId) return;
+            const canvas = state.cropper.getCroppedCanvas();
+            if (!canvas) return;
+
+            const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+            const imgObj = state.images.find(i => i.id === state.croppingImageId);
+            if (imgObj) {
+                imgObj.currentSrc = croppedDataUrl;
+                imgObj.width = canvas.width;
+                imgObj.height = canvas.height;
+            }
+            state.pages = []; // Reset pages so new aspect ratio takes effect
+            closeCropModal();
+            renderImageGrid();
+            showToast('Image cropped successfully.');
+        }
+
+        // ==================== STEP 2: PAGE DIMENSIONS & COLLAGE BUILDER ====================
+        function applyPagePreset() {
+            const preset = document.getElementById('pagePreset').value;
+            const wInput = document.getElementById('customWidthMm');
+            const hInput = document.getElementById('customHeightMm');
+
+            if (preset === 'a4_p') { wInput.value = 210; hInput.value = 297; }
+            else if (preset === 'a4_l') { wInput.value = 297; hInput.value = 210; }
+            else if (preset === 'letter_p') { wInput.value = 216; hInput.value = 279; }
+            else if (preset === 'square') { wInput.value = 210; hInput.value = 210; }
+
+            handleCustomDimChange();
+        }
+
+        function handleCustomDimChange() {
+            state.baseWidthMm = Math.max(20, parseFloat(document.getElementById('customWidthMm').value) || 210);
+            state.baseHeightMm = Math.max(20, parseFloat(document.getElementById('customHeightMm').value) || 297);
+            recalculatePageDimensions();
+            renderPagesList();
+            renderActivePageStage();
+        }
+
+        function handleLayoutSettingsChange() {
+            state.sizingMode = document.getElementById('sizingMode').value;
+            const desc = document.getElementById('sizingModeDesc');
+            const presetWrapper = document.getElementById('presetWrapper');
+
+            if (state.sizingMode === 'match_all') {
+                desc.textContent = 'Every page has identical width and height.';
+                presetWrapper.classList.remove('opacity-50', 'pointer-events-none');
+            } else if (state.sizingMode === 'same_width') {
+                desc.textContent = 'All pages share the target width; height adapts to each image.';
+                presetWrapper.classList.remove('opacity-50', 'pointer-events-none');
+            } else if (state.sizingMode === 'same_height') {
+                desc.textContent = 'All pages share the target height; width adapts to each image.';
+                presetWrapper.classList.remove('opacity-50', 'pointer-events-none');
+            } else {
+                desc.textContent = 'Each page matches its image’s exact native proportions.';
+                presetWrapper.classList.add('opacity-50', 'pointer-events-none');
+            }
+
+            recalculatePageDimensions();
+            renderPagesList();
+            renderActivePageStage();
+        }
+
+        function setPageGroupingMode(mode) {
+            state.groupingMode = mode;
+            const singleBtn = document.getElementById('modeSingleBtn');
+            const multiBtn = document.getElementById('modeMultiBtn');
+            const addPageBtn = document.getElementById('addPageBtn');
+            const multiToolbar = document.getElementById('multiImageToolbar');
+
+            if (mode === 'single') {
+                singleBtn.className = 'py-2.5 px-3 rounded-xl border-2 border-brand-600 bg-brand-50 text-brand-700 font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-1.5';
+                multiBtn.className = 'py-2.5 px-3 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-1.5';
+                addPageBtn.classList.add('hidden');
+                multiToolbar.classList.add('hidden');
+                rebuildPagesFromImages();
+            } else {
+                multiBtn.className = 'py-2.5 px-3 rounded-xl border-2 border-brand-600 bg-brand-50 text-brand-700 font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-1.5';
+                singleBtn.className = 'py-2.5 px-3 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-1.5';
+                addPageBtn.classList.remove('hidden');
+                multiToolbar.classList.remove('hidden');
+                // Group 2 images per page initially if coming from single mode
+                buildInitialMultiPages();
+            }
+
+            state.activePageIndex = 0;
+            state.selectedItemUid = null;
+            renderPagesList();
+            renderActivePageStage();
+        }
+
+        function rebuildPagesFromImages() {
+            state.pages = state.images.map((img, idx) => {
+                const dims = computePageSizeForImage(img);
+                return {
+                    id: 'page_' + idx + '_' + Date.now(),
+                    widthMm: dims.widthMm,
+                    heightMm: dims.heightMm,
+                    items: [{
+                        uid: 'item_' + idx + '_' + Date.now(),
+                        imageId: img.id,
+                        xPct: 0,
+                        yPct: 0,
+                        wPct: 100,
+                        hPct: 100,
+                        zIndex: 1
+                    }]
+                };
+            });
+        }
+
+        function buildInitialMultiPages() {
+            state.pages = [];
+            for (let i = 0; i < state.images.length; i += 2) {
+                const slice = state.images.slice(i, i + 2);
+                const pageItems = slice.map((img, subIdx) => ({
+                    uid: 'item_' + (i + subIdx) + '_' + Date.now(),
+                    imageId: img.id,
+                    xPct: 5,
+                    yPct: subIdx === 0 ? 4 : 52,
+                    wPct: 90,
+                    hPct: 44,
+                    zIndex: subIdx + 1
+                }));
+                state.pages.push({
+                    id: 'mpage_' + i + '_' + Date.now(),
+                    widthMm: state.baseWidthMm,
+                    heightMm: state.baseHeightMm,
+                    items: pageItems
+                });
+            }
+        }
+
+        function computePageSizeForImage(img) {
+            const aspect = img.width / img.height;
+            if (state.sizingMode === 'match_all') {
+                return { widthMm: state.baseWidthMm, heightMm: state.baseHeightMm };
+            } else if (state.sizingMode === 'same_width') {
+                return { widthMm: state.baseWidthMm, heightMm: Math.round(state.baseWidthMm / aspect) };
+            } else if (state.sizingMode === 'same_height') {
+                return { widthMm: Math.round(state.baseHeightMm * aspect), heightMm: state.baseHeightMm };
+            } else {
+                // Original native aspect scaled to ~210mm width baseline
+                const w = 210;
+                return { widthMm: w, heightMm: Math.round(w / aspect) };
+            }
+        }
+
+        function recalculatePageDimensions() {
+            state.pages.forEach(page => {
+                if (state.groupingMode === 'single' && page.items.length > 0) {
+                    const img = state.images.find(i => i.id === page.items[0].imageId);
+                    if (img) {
+                        const dims = computePageSizeForImage(img);
+                        page.widthMm = dims.widthMm;
+                        page.heightMm = dims.heightMm;
+                    }
+                } else {
+                    page.widthMm = state.baseWidthMm;
+                    page.heightMm = state.baseHeightMm;
+                }
+            });
+        }
+
+        function addNewBlankPage() {
+            state.pages.push({
+                id: 'mpage_' + Date.now(),
+                widthMm: state.baseWidthMm,
+                heightMm: state.baseHeightMm,
+                items: []
+            });
+            state.activePageIndex = state.pages.length - 1;
+            renderPagesList();
+            renderActivePageStage();
+        }
+
+        function deletePage(idx, e) {
+            e.stopPropagation();
+            if (state.pages.length <= 1) {
+                showToast('You must keep at least one page.');
+                return;
+            }
+            state.pages.splice(idx, 1);
+            if (state.activePageIndex >= state.pages.length) {
+                state.activePageIndex = state.pages.length - 1;
+            }
+            renderPagesList();
+            renderActivePageStage();
+        }
+
+        function renderPagesList() {
+            const list = document.getElementById('pagesList');
+            document.getElementById('totalPagesCount').textContent = state.pages.length;
+            list.innerHTML = '';
+
+            state.pages.forEach((page, idx) => {
+                const isActive = idx === state.activePageIndex;
+                const div = document.createElement('div');
+                div.onclick = () => {
+                    state.activePageIndex = idx;
+                    state.selectedItemUid = null;
+                    renderPagesList();
+                    renderActivePageStage();
+                };
+                div.className = `p-3 rounded-2xl border cursor-pointer transition flex items-center justify-between ${
+                    isActive ? 'bg-brand-50 border-brand-500 shadow-sm' : 'bg-slate-50 border-slate-200/80 hover:bg-slate-100'
+                }`;
+
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="w-7 h-7 rounded-xl ${isActive ? 'bg-brand-600 text-white' : 'bg-white text-slate-700 border border-slate-200'} font-bold text-xs flex items-center justify-center">
+                            ${idx + 1}
+                        </span>
+                        <div>
+                            <p class="text-xs font-bold ${isActive ? 'text-brand-900' : 'text-slate-800'}">Page ${idx + 1}</p>
+                            <p class="text-[11px] text-slate-500">${page.widthMm}×${page.heightMm}mm • ${page.items.length} img</p>
+                        </div>
+                    </div>
+                    ${state.groupingMode === 'multi' ? `
+                        <button onclick="deletePage(${idx}, event)" class="text-slate-400 hover:text-rose-600 p-1 rounded-lg">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    ` : ''}
+                `;
+                list.appendChild(div);
+            });
+            lucide.createIcons();
+        }
+
+        // ==================== INTERACTIVE PAGE CANVAS (DRAG & RESIZE) ====================
+        function renderActivePageStage() {
+            const page = state.pages[state.activePageIndex];
+            if (!page) return;
+
+            document.getElementById('activePageTitle').textContent = `Page ${state.activePageIndex + 1} Layout`;
+            document.getElementById('activePageDimLabel').textContent = `${page.widthMm}mm × ${page.heightMm}mm`;
+
+            const stage = document.getElementById('pageStage');
+            const maxStageW = Math.min(window.innerWidth - 80, 420);
+            const maxStageH = 440;
+            const aspect = page.widthMm / page.heightMm;
+
+            let stageW = maxStageW;
+            let stageH = stageW / aspect;
+            if (stageH > maxStageH) {
+                stageH = maxStageH;
+                stageW = stageH * aspect;
+            }
+
+            stage.style.width = `${Math.round(stageW)}px`;
+            stage.style.height = `${Math.round(stageH)}px`;
+            stage.innerHTML = '';
+
+            // Update item controls panel visibility
+            const controlsPanel = document.getElementById('itemControlsPanel');
+            const selectedItem = page.items.find(i => i.uid === state.selectedItemUid);
+            if (selectedItem && state.groupingMode === 'multi') {
+                controlsPanel.classList.remove('hidden');
+                document.getElementById('itemScaleSlider').value = Math.round(selectedItem.wPct);
+                document.getElementById('itemScaleValue').textContent = `${Math.round(selectedItem.wPct)}%`;
+            } else {
+                controlsPanel.classList.add('hidden');
+            }
+
+            // Render each image placed on this page
+            page.items.forEach(item => {
+                const imgObj = state.images.find(i => i.id === item.imageId);
+                if (!imgObj) return;
+
+                const el = document.createElement('div');
+                const isSelected = item.uid === state.selectedItemUid && state.groupingMode === 'multi';
+                el.style.position = 'absolute';
+                el.style.left = `${item.xPct}%`;
+                el.style.top = `${item.yPct}%`;
+                el.style.width = `${item.wPct}%`;
+                el.style.height = `${item.hPct}%`;
+                el.style.zIndex = item.zIndex;
+                el.className = `flex items-center justify-center overflow-hidden transition-shadow ${
+                    state.groupingMode === 'multi' ? 'cursor-move' : ''
+                } ${isSelected ? 'ring-2 ring-brand-600 shadow-md bg-brand-50/10' : ''}`;
+
+                el.innerHTML = `<img src="${imgObj.currentSrc}" class="w-full h-full object-contain pointer-events-none select-none">`;
+
+                if (state.groupingMode === 'multi') {
+                    setupDraggableItem(el, item, stage);
+                }
+                stage.appendChild(el);
+            });
+        }
+
+        function setupDraggableItem(el, item, stage) {
+            let isDragging = false;
+            let startX, startY, origXPct, origYPct;
+
+            const onStart = (clientX, clientY) => {
+                state.selectedItemUid = item.uid;
+                isDragging = true;
+                startX = clientX;
+                startY = clientY;
+                origXPct = item.xPct;
+                origYPct = item.yPct;
+                renderActivePageStage();
+            };
+
+            const onMove = (clientX, clientY) => {
+                if (!isDragging) return;
+                const rect = stage.getBoundingClientRect();
+                const dxPct = ((clientX - startX) / rect.width) * 100;
+                const dyPct = ((clientY - startY) / rect.height) * 100;
+
+                item.xPct = Math.max(-20, Math.min(95, origXPct + dxPct));
+                item.yPct = Math.max(-20, Math.min(95, origYPct + dyPct));
+
+                // Live DOM update without full re-render during drag
+                const activeEl = stage.querySelector(`[style*="z-index: ${item.zIndex}"]`);
+                if (activeEl) {
+                    activeEl.style.left = `${item.xPct}%`;
+                    activeEl.style.top = `${item.yPct}%`;
+                }
+            };
+
+            const onEnd = () => {
+                if (isDragging) {
+                    isDragging = false;
+                    renderActivePageStage();
+                }
+            };
+
+            el.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                onStart(e.clientX, e.clientY);
+            });
+            window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
+            window.addEventListener('mouseup', onEnd);
+
+            // Touch support for mobile
+            el.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    e.stopPropagation();
+                    onStart(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: true });
+            window.addEventListener('touchmove', (e) => {
+                if (isDragging && e.touches.length === 1) {
+                    onMove(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: true });
+            window.addEventListener('touchend', onEnd);
+        }
+
+        function updateSelectedItemScale(val) {
+            const page = state.pages[state.activePageIndex];
+            const item = page?.items.find(i => i.uid === state.selectedItemUid);
+            if (!item) return;
+            const newPct = parseFloat(val);
+            item.wPct = newPct;
+            item.hPct = newPct;
+            document.getElementById('itemScaleValue').textContent = `${Math.round(newPct)}%`;
+            renderActivePageStage();
+        }
+
+        function centerSelectedItem() {
+            const page = state.pages[state.activePageIndex];
+            const item = page?.items.find(i => i.uid === state.selectedItemUid);
+            if (!item) return;
+            item.xPct = (100 - item.wPct) / 2;
+            item.yPct = (100 - item.hPct) / 2;
+            renderActivePageStage();
+        }
+
+        function bringItemFront() {
+            const page = state.pages[state.activePageIndex];
+            const item = page?.items.find(i => i.uid === state.selectedItemUid);
+            if (!item) return;
+            const maxZ = Math.max(...page.items.map(i => i.zIndex), 1);
+            item.zIndex = maxZ + 1;
+            renderActivePageStage();
+        }
+
+        function removeSelectedItemFromPage() {
+            const page = state.pages[state.activePageIndex];
+            if (!page) return;
+            page.items = page.items.filter(i => i.uid !== state.selectedItemUid);
+            state.selectedItemUid = null;
+            renderPagesList();
+            renderActivePageStage();
+        }
+
+        function autoArrangeGrid() {
+            const page = state.pages[state.activePageIndex];
+            if (!page || page.items.length === 0) return;
+
+            const count = page.items.length;
+            const cols = count <= 1 ? 1 : count <= 4 ? 2 : 3;
+            const rows = Math.ceil(count / cols);
+            const pad = 4;
+            const cellW = (100 - pad * (cols + 1)) / cols;
+            const cellH = (100 - pad * (rows + 1)) / rows;
+
+            page.items.forEach((item, idx) => {
+                const r = Math.floor(idx / cols);
+                const c = idx % cols;
+                item.xPct = pad + c * (cellW + pad);
+                item.yPct = pad + r * (cellH + pad);
+                item.wPct = cellW;
+                item.hPct = cellH;
+            });
+            renderActivePageStage();
+            showToast('Arranged into clean grid.');
+        }
+
+        function openAddImageToPageModal() {
+            const grid = document.getElementById('modalImagePickerGrid');
+            grid.innerHTML = '';
+            state.images.forEach(img => {
+                const btn = document.createElement('button');
+                btn.className = 'border border-slate-200 hover:border-brand-500 rounded-xl p-2 bg-slate-50 flex flex-col items-center gap-1.5 transition';
+                btn.innerHTML = `
+                    <img src="${img.currentSrc}" class="w-full h-20 object-contain">
+                    <span class="text-[11px] text-slate-700 truncate w-full">${img.name}</span>
+                `;
+                btn.onclick = () => {
+                    const page = state.pages[state.activePageIndex];
+                    const uid = 'item_' + Date.now();
+                    page.items.push({
+                        uid,
+                        imageId: img.id,
+                        xPct: 15,
+                        yPct: 15,
+                        wPct: 60,
+                        hPct: 60,
+                        zIndex: page.items.length + 1
+                    });
+                    state.selectedItemUid = uid;
+                    closeAddImageModal();
+                    renderPagesList();
+                    renderActivePageStage();
+                };
+                grid.appendChild(btn);
+            });
+            document.getElementById('addImageModal').classList.remove('hidden');
+        }
+
+        function closeAddImageModal() {
+            document.getElementById('addImageModal').classList.add('hidden');
+        }
+
+        // ==================== STEP 3: STORAGE SAVING METHODS & PREVIEW ====================
+        const compressionPresets = [
+            { id: 'archive', name: 'Archival Quality', badge: 'Best Clarity', quality: 0.96, scale: 1.0, grayscale: false, desc: 'Near-lossless quality for printing & permanent archiving.' },
+            { id: 'balanced', name: 'Balanced Standard', badge: 'Recommended', quality: 0.80, scale: 0.85, grayscale: false, desc: 'Crisp visuals with ~55% smaller file footprint.' },
+            { id: 'email', name: 'Web & Email Friendly', badge: 'Compact', quality: 0.60, scale: 0.65, grayscale: false, desc: 'Fast sharing over messaging apps & email attachments.' },
+            { id: 'ultralight', name: 'Ultra-Light / B&W Scan', badge: 'Max Savings', quality: 0.45, scale: 0.50, grayscale: true, desc: 'Grayscale & high compression for minimum storage use.' }
+        ];
+
+        let uncompressedBaselineBytes = 0;
+
+        async function initStep3Compression() {
+            // Populate Page Selector
+            const select = document.getElementById('previewPageSelect');
+            select.innerHTML = '';
+            state.pages.forEach((_, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.textContent = `Page ${idx + 1}`;
+                select.appendChild(opt);
+            });
+
+            // Calculate baseline size (100% quality, 100% scale)
+            uncompressedBaselineBytes = await estimateTotalPdfSize(0.98, 1.0, false);
+
+            // Render Preset Cards with dynamic size estimates
+            const grid = document.getElementById('compressionPresetsGrid');
+            grid.innerHTML = '';
+
+            for (const preset of compressionPresets) {
+                const estBytes = await estimateTotalPdfSize(preset.quality, preset.scale, preset.grayscale);
+                const isSelected = state.compression.preset === preset.id;
+
+                const card = document.createElement('div');
+                card.id = `presetCard_${preset.id}`;
+                card.onclick = () => selectCompressionPreset(preset);
+                card.className = `p-4 rounded-2xl border-2 cursor-pointer transition flex flex-col justify-between ${
+                    isSelected ? 'border-brand-600 bg-brand-50/50 shadow-sm' : 'border-slate-200 bg-white hover:border-brand-300'
+                }`;
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-1.5">
+                            <span class="text-xs font-bold uppercase tracking-wider text-brand-600">${preset.badge}</span>
+                            <span class="text-xs font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">${formatBytes(estBytes)}</span>
+                        </div>
+                        <h4 class="font-bold text-slate-900 text-sm mb-1">${preset.name}</h4>
+                        <p class="text-xs text-slate-500 leading-relaxed">${preset.desc}</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                        <span>Quality: ${Math.round(preset.quality * 100)}%</span>
+                        <span>Scale: ${Math.round(preset.scale * 100)}%</span>
+                    </div>
+                `;
+                grid.appendChild(card);
+            }
+
+            updateCustomCompressionUI();
+            await renderCompressionPreview();
+        }
+
+        async function selectCompressionPreset(preset) {
+            state.compression.preset = preset.id;
+            state.compression.quality = preset.quality;
+            state.compression.scale = preset.scale;
+            state.compression.grayscale = preset.grayscale;
+
+            document.querySelectorAll('[id^="presetCard_"]').forEach(el => {
+                el.className = 'p-4 rounded-2xl border-2 border-slate-200 bg-white hover:border-brand-300 cursor-pointer transition flex flex-col justify-between';
+            });
+            const activeCard = document.getElementById(`presetCard_${preset.id}`);
+            if (activeCard) {
+                activeCard.className = 'p-4 rounded-2xl border-2 border-brand-600 bg-brand-50/50 shadow-sm cursor-pointer transition flex flex-col justify-between';
+            }
+
+            updateCustomCompressionUI();
+            await renderCompressionPreview();
+        }
+
+        function updateCustomCompressionUI() {
+            document.getElementById('customQualityRange').value = Math.round(state.compression.quality * 100);
+            document.getElementById('qualityValLabel').textContent = `${Math.round(state.compression.quality * 100)}%`;
+
+            document.getElementById('customResolutionRange').value = Math.round(state.compression.scale * 100);
+            document.getElementById('resolutionValLabel').textContent = `${Math.round(state.compression.scale * 100)}%`;
+
+            document.getElementById('grayscaleToggle').checked = state.compression.grayscale;
+        }
+
+        let previewDebounce;
+        function handleCustomCompressionChange() {
+            state.compression.preset = 'custom';
+            state.compression.quality = parseInt(document.getElementById('customQualityRange').value) / 100;
+            state.compression.scale = parseInt(document.getElementById('customResolutionRange').value) / 100;
+            state.compression.grayscale = document.getElementById('grayscaleToggle').checked;
+
+            document.getElementById('qualityValLabel').textContent = `${Math.round(state.compression.quality * 100)}%`;
+            document.getElementById('resolutionValLabel').textContent = `${Math.round(state.compression.scale * 100)}%`;
+
+            document.querySelectorAll('[id^="presetCard_"]').forEach(el => {
+                el.className = 'p-4 rounded-2xl border-2 border-slate-200 bg-white hover:border-brand-300 cursor-pointer transition flex flex-col justify-between';
+            });
+
+            clearTimeout(previewDebounce);
+            previewDebounce = setTimeout(renderCompressionPreview, 180);
+        }
+
+        // Renders a composite page onto an offscreen canvas with exact compression settings
+        async function renderCompositePageDataUrl(pageIndex, quality, scale, grayscale) {
+            const page = state.pages[pageIndex];
+            if (!page) return '';
+
+            // 1mm ≈ 5.5px at high print baseline, scaled by user setting
+            const pxPerMm = 5.5 * scale;
+            const canvasW = Math.max(120, Math.round(page.widthMm * pxPerMm));
+            const canvasH = Math.max(120, Math.round(page.heightMm * pxPerMm));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasW;
+            canvas.height = canvasH;
+            const ctx = canvas.getContext('2d');
+
+            // White page background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvasW, canvasH);
+
+            if (grayscale) {
+                ctx.filter = 'grayscale(100%)';
+            }
+
+            // Sort items by zIndex
+            const sortedItems = [...page.items].sort((a, b) => a.zIndex - b.zIndex);
+
+            for (const item of sortedItems) {
+                const imgObj = state.images.find(i => i.id === item.imageId);
+                if (!imgObj) continue;
+
+                const imgEl = await loadHtmlImage(imgObj.currentSrc);
+                const boxX = (item.xPct / 100) * canvasW;
+                const boxY = (item.yPct / 100) * canvasH;
+                const boxW = (item.wPct / 100) * canvasW;
+                const boxH = (item.hPct / 100) * canvasH;
+
+                // Contain fit inside bounding box
+                const imgAspect = imgEl.naturalWidth / imgEl.naturalHeight;
+                const boxAspect = boxW / boxH;
+                let drawW = boxW, drawH = boxH, drawX = boxX, drawY = boxY;
+
+                if (imgAspect > boxAspect) {
+                    drawH = boxW / imgAspect;
+                    drawY = boxY + (boxH - drawH) / 2;
+                } else {
+                    drawW = boxH * imgAspect;
+                    drawX = boxX + (boxW - drawW) / 2;
+                }
+
+                ctx.drawImage(imgEl, drawX, drawY, drawW, drawH);
+            }
+
+            return canvas.toDataURL('image/jpeg', quality);
+        }
+
+        function loadHtmlImage(src) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.src = src;
+            });
+        }
+
+        async function estimateTotalPdfSize(quality, scale, grayscale) {
+            let totalBytes = 2500; // PDF header/catalog overhead
+            for (let i = 0; i < state.pages.length; i++) {
+                const dataUrl = await renderCompositePageDataUrl(i, quality, scale, grayscale);
+                // Base64 length to binary bytes approximation
+                const base64Str = dataUrl.split(',')[1] || '';
+                totalBytes += Math.round((base64Str.length * 3) / 4) + 650;
+            }
+            return totalBytes;
+        }
+
+        async function renderCompressionPreview() {
+            const pageIdx = parseInt(document.getElementById('previewPageSelect').value) || 0;
+            const { quality, scale, grayscale } = state.compression;
+
+            const previewDataUrl = await renderCompositePageDataUrl(pageIdx, quality, scale, grayscale);
+            document.getElementById('compressionPreviewImg').src = previewDataUrl;
+
+            const totalEstBytes = await estimateTotalPdfSize(quality, scale, grayscale);
+            document.getElementById('finalEstimatedSize').textContent = formatBytes(totalEstBytes);
+
+            const savedPct = uncompressedBaselineBytes > 0
+                ? Math.max(0, Math.round((1 - totalEstBytes / uncompressedBaselineBytes) * 100))
+                : 0;
+            document.getElementById('spaceSavedBadge').textContent = `${savedPct}% smaller`;
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // ==================== FINAL PDF COMPILATION & DOWNLOAD ====================
+        async function generateAndDownloadPDF() {
+            if (state.pages.length === 0) return;
+
+            const btn = document.getElementById('downloadPdfBtn');
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>Building PDF...</span>`;
+            lucide.createIcons();
+
+            try {
+                const { jsPDF } = window.jspdf;
+                const { quality, scale, grayscale } = state.compression;
+
+                const firstPage = state.pages[0];
+                const pdf = new jsPDF({
+                    orientation: firstPage.widthMm >= firstPage.heightMm ? 'landscape' : 'portrait',
+                    unit: 'mm',
+                    format: [firstPage.widthMm, firstPage.heightMm],
+                    compress: true
+                });
+
+                for (let i = 0; i < state.pages.length; i++) {
+                    const p = state.pages[i];
+                    if (i > 0) {
+                        pdf.addPage([p.widthMm, p.heightMm], p.widthMm >= p.heightMm ? 'landscape' : 'portrait');
+                    }
+                    const pageImgData = await renderCompositePageDataUrl(i, quality, scale, grayscale);
+                    pdf.addImage(pageImgData, 'JPEG', 0, 0, p.widthMm, p.heightMm, undefined, 'FAST');
+                }
+
+                const timestamp = new Date().toISOString().slice(0, 10);
+                pdf.save(`Custom_Document_${timestamp}.pdf`);
+                showToast('PDF downloaded successfully!');
+            } catch (err) {
+                console.error(err);
+                showToast('Error generating PDF. Try lowering resolution scale.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                lucide.createIcons();
+            }
+        }
+
+        // ==================== INFO MODAL & RELATED FILES DISCOVERY ====================
+        function openInfoModal() {
+            document.getElementById('infoModal').classList.remove('hidden');
+            discoverRelatedFilesInFolder();
+        }
+
+        function closeInfoModal() {
+            document.getElementById('infoModal').classList.add('hidden');
+        }
+
+        /**
+         * Automatically scans the same directory on GitHub Pages (via GitHub Contents API)
+         * or falls back to scanning local/relative directory listings so all sibling files appear.
+         */
+        async function discoverRelatedFilesInFolder() {
+            const listContainer = document.getElementById('relatedFilesList');
+            const badge = document.getElementById('folderStatusBadge');
+            listContainer.innerHTML = `<div class="text-xs text-slate-400 py-2">Checking directory contents...</div>`;
+
+            const currentPath = window.location.pathname;
+            const currentFileName = currentPath.split('/').pop() || 'index.html';
+            const folderPath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+            const host = window.location.hostname;
+
+            let discoveredFiles = [];
+
+            // 1. Detect GitHub Pages hosting (*.github.io)
+            if (host.endsWith('.github.io')) {
+                try {
+                    const owner = host.split('.')[0];
+                    const pathParts = folderPath.split('/').filter(Boolean);
+                    const repo = pathParts.length > 0 ? pathParts[0] : `${owner}.github.io`;
+                    const subDir = pathParts.length > 1 ? pathParts.slice(1).join('/') : '';
+
+                    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${subDir}`;
+                    const response = await fetch(apiUrl);
+                    if (response.ok) {
+                        const items = await response.json();
+                        if (Array.isArray(items)) {
+                            discoveredFiles = items
+                                .filter(item => item.type === 'file' && item.name !== currentFileName)
+                                .map(item => ({
+                                    name: item.name,
+                                    href: item.name
+                                }));
+                            badge.textContent = 'GitHub Folder Synced';
+                            badge.className = 'text-[11px] font-medium bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full';
+                        }
+                    }
+                } catch (e) {
+                    console.warn('GitHub API directory scan skipped:', e);
+                }
+            }
+
+            // 2. Fallback: Attempt fetching local directory index or manifest if running locally/custom host
+            if (discoveredFiles.length === 0) {
+                try {
+                    const dirRes = await fetch('./');
+                    if (dirRes.ok) {
+                        const htmlText = await dirRes.text();
+                        const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+                        const anchors = Array.from(doc.querySelectorAll('a[href]'));
+                        const links = anchors
+                            .map(a => a.getAttribute('href'))
+                            .filter(href => href && !href.startsWith('http') && !href.startsWith('#') && !href.startsWith('?') && !href.endsWith('/'))
+                            .map(href => decodeURIComponent(href.split('/').pop()))
+                            .filter(name => name && name !== currentFileName);
+
+                        discoveredFiles = [...new Set(links)].map(name => ({ name, href: name }));
+                        if (discoveredFiles.length > 0) {
+                            badge.textContent = 'Folder Indexed';
+                        }
+                    }
+                } catch (e) {
+                    // Directory listing disabled on host
+                }
+            }
+
+            // Render results
+            listContainer.innerHTML = '';
+            if (discoveredFiles.length > 0) {
+                discoveredFiles.forEach(file => {
+                    const a = document.createElement('a');
+                    a.href = file.href;
+                    a.className = 'flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-brand-400 hover:bg-brand-50/40 transition group';
+                    a.innerHTML = `
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="file-code" class="w-4 h-4 text-brand-600"></i>
+                            <span class="text-xs sm:text-sm font-semibold text-slate-800 group-hover:text-brand-700">${file.name}</span>
+                        </div>
+                        <i data-lucide="external-link" class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-600"></i>
+                    `;
+                    listContainer.appendChild(a);
+                });
+            } else {
+                badge.textContent = 'Single File Mode';
+                listContainer.innerHTML = `
+                    <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 text-xs text-slate-500">
+                        No other files detected in <code class="text-slate-700 font-semibold">${folderPath || '/'}</code> yet. When you upload additional HTML tools to the same GitHub Pages folder, they will automatically appear here as clickable links.
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>
